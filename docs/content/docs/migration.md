@@ -4,13 +4,13 @@ linkTitle: Migration
 weight: 5
 ---
 
-Adopting ForgeGo in an existing Go project reduces configuration overhead, but means retiring the tooling it replaces. ForgeGo adds no starter code to an existing project and never changes your source, or your `go.mod`'s module and `go` lines: it only adds a `toolchain` line when the pinned tools need a newer Go than the project declares. It leaves existing config files alone unless you pass `--force`.
+Adopting Forge.go in an existing Go project reduces configuration overhead, but means retiring the tooling it replaces. Forge.go adds no starter code to an existing project and never changes your source, or your `go.mod`'s module and `go` lines: it only adds a `toolchain` line when the pinned tools need a newer Go than the project declares. It leaves existing config files alone unless you pass `--force`.
 
 ## Migration Checklist
 
 ### 1. Move Your golangci-lint Config Aside
 
-`.golangci.yml` is the one existing file `init` always replaces: it is generated from ForgeGo's base config and `.golangci.local.yml`. Keep your settings by renaming your config to `.golangci.local.yml` **before** running `init`:
+`.golangci.yml` is the one existing file `init` always replaces: it is generated from Forge.go's base config and `.golangci.local.yml`. Keep your settings by renaming your config to `.golangci.local.yml` **before** running `init`:
 
 ```bash
 git mv .golangci.yml .golangci.local.yml
@@ -27,14 +27,14 @@ forgego init --dry-run
 forgego init
 ```
 
-Existing files are left alone. Pass `--force` to replace your current `lefthook.yml`, `.goreleaser.yaml`, `Dockerfile`, release-please config and `.github/workflows/index.yml` with the ForgeGo versions; your source code is never overwritten.
+Existing files are left alone. Pass `--force` to replace your current `lefthook.yml`, `.goreleaser.yaml`, `Dockerfile`, release-please config and `.github/workflows/index.yml` with the Forge.go versions; your source code is never overwritten.
 
 ### 3. Retire Old Tooling
 
-Remove what ForgeGo now does, to avoid running two versions of the same check:
+Remove what Forge.go now does, to avoid running two versions of the same check:
 
-- **Makefile:** move the targets ForgeGo doesn't cover into `Taskfile.yml` as your own tasks (see [Adding Your Own Tasks]({{< relref "examples.md#adding-your-own-tasks" >}})), then delete the `Makefile`. An existing `Taskfile.yml` keeps its tasks and vars; `init` only adds the ones it's missing.
-- **Tools pinned in `go.mod`:** remove `tool` directives (or a `tools.go` file of blank imports) for golangci-lint, govulncheck, gotestsum, lefthook or Task, then run `go mod tidy`. ForgeGo pins each in its own module under `.forgego/`, so they no longer need to share your dependency graph.
+- **Makefile:** move the targets Forge.go doesn't cover into `Taskfile.yml` as your own tasks (see [Adding Your Own Tasks]({{< relref "examples.md#adding-your-own-tasks" >}})), then delete the `Makefile`. An existing `Taskfile.yml` keeps its tasks and vars; `init` only adds the ones it's missing.
+- **Tools pinned in `go.mod`:** remove `tool` directives (or a `tools.go` file of blank imports) for golangci-lint, govulncheck, gotestsum, lefthook or Task, then run `go mod tidy`. Forge.go pins each in its own module under `.forgego/`, so they no longer need to share your dependency graph.
 - **Hand-written git hooks:** delete the scripts in `.git/hooks/`, and unset `core.hooksPath` if you pointed Git at a hooks directory of your own, then install lefthook's hooks with `task hooks`.
 - **Old CI workflows:** delete the workflows the generated `.github/workflows/index.yml` replaces — linting, tests, release and image builds.
 
@@ -74,7 +74,7 @@ If you'd rather adopt the base config as it is, delete your `.golangci.yml` inst
 
 ### Existing GoReleaser Config
 
-`init` keeps an existing `.goreleaser.yaml`. ForgeGo's release job runs GoReleaser after release-please has created the release, so make sure yours doesn't try to create one or write its own notes:
+`init` keeps an existing `.goreleaser.yaml`. Forge.go's release job runs GoReleaser after release-please has created the release, so make sure yours doesn't try to create one or write its own notes:
 
 ```yaml
 changelog:
@@ -83,11 +83,11 @@ release:
   mode: keep-existing
 ```
 
-To pick up ForgeGo's config instead, run `forgego init --force` (adding `--debian` if you package a `.deb`), then copy back anything specific to your project.
+To pick up Forge.go's config instead, run `forgego init --force` (adding `--debian` if you package a `.deb`), then copy back anything specific to your project.
 
 ### Existing Releases
 
-release-please starts from the version in `.github/.release.json`, which ForgeGo creates at `0.0.0`. If the project already has release tags, set it to the latest released version before the first release PR:
+release-please starts from the version in `.github/.release.json`, which Forge.go creates at `0.0.0`. If the project already has release tags, set it to the latest released version before the first release PR:
 
 ```json
 {
@@ -99,4 +99,4 @@ Remove any other version-bumping or changelog tooling; releases are driven by Co
 
 ### Existing Dockerfile
 
-`--docker` keeps an existing `Dockerfile`. The `docker` CI job builds it for every platform in one job, so a Dockerfile that builds for the target platform under emulation still works but is slower. ForgeGo's backend `Dockerfile` cross-compiles on the build platform instead; to compare, run `forgego init --docker` in a scratch directory and diff the result with yours.
+`--docker` keeps an existing `Dockerfile`. The `docker` CI job builds it for every platform in one job, so a Dockerfile that builds for the target platform under emulation still works but is slower. Forge.go's backend `Dockerfile` cross-compiles on the build platform instead; to compare, run `forgego init --docker` in a scratch directory and diff the result with yours.

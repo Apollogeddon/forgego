@@ -5,7 +5,7 @@ weight: 1
 
 ## Requirements
 
-- [Go](https://go.dev/dl/). ForgeGo itself builds with Go 1.26 or newer. The pinned tools need Go 1.27, which `go` downloads automatically through the `toolchain` line in `go.mod` (unless you've set `GOTOOLCHAIN=local`).
+- [Go](https://go.dev/dl/). Forge.go itself builds with Go 1.26 or newer. The pinned tools need Go 1.27, which `go` downloads automatically through the `toolchain` line in `go.mod` (unless you've set `GOTOOLCHAIN=local`).
 - Git, for the generated lefthook hooks.
 - Docker, only for the `docker:build` and `docker:run` tasks that `--docker` adds.
 
@@ -13,7 +13,7 @@ weight: 1
 
 ### 1. Installation
 
-Install ForgeGo with `go install`:
+Install Forge.go with `go install`:
 
 ```bash
 go install github.com/apollogeddon/forgego/cmd/forgego@latest
@@ -25,7 +25,7 @@ Or run it once without installing:
 go run github.com/apollogeddon/forgego/cmd/forgego@latest init
 ```
 
-Generated projects don't need ForgeGo installed: their `Taskfile.yml` runs the same version with `go run` (see [`sync`](#keeping-up-to-date)).
+Generated projects don't need Forge.go installed: their `Taskfile.yml` runs the same version with `go run` (see [`sync`](#keeping-up-to-date)).
 
 ### 2. Initialisation
 
@@ -50,7 +50,7 @@ A website skips `go mod tidy`: Hugo manages a site's `go.mod` itself, and tidyin
 
 ### 3. Advanced: Overwriting Files
 
-Pass `--force` to overwrite existing config files, tasks and Taskfile vars with the ForgeGo defaults:
+Pass `--force` to overwrite existing config files, tasks and Taskfile vars with the Forge.go defaults:
 
 ```bash
 forgego init --force
@@ -81,7 +81,7 @@ The rest of this site writes `task <name>`. `task --list` shows every task with 
 
 ## Generated Tasks
 
-ForgeGo adds these tasks to `Taskfile.yml`. Tools are referenced through Taskfile vars (`{{.GOLANGCI_LINT}}` and so on), each set to `go tool -modfile=.forgego/<tool>/go.mod <tool>`.
+Forge.go adds these tasks to `Taskfile.yml`. Tools are referenced through Taskfile vars (`{{.GOLANGCI_LINT}}` and so on), each set to `go tool -modfile=.forgego/<tool>/go.mod <tool>`.
 
 | Task | Command | Added when |
 | :--- | :--- | :--- |
@@ -145,15 +145,15 @@ Only one mode can be chosen. An invalid combination — `--docker` with `--libra
 
 ### Keeping Up to Date
 
-`forgego sync` refreshes the files ForgeGo manages; `forgego sync --check` reports drift and exits `1` without writing anything. Both also accept `-C DIR`. See [Configuration]({{< relref "configuration.md#managed-files" >}}).
+`forgego sync` refreshes the files Forge.go manages; `forgego sync --check` reports drift and exits `1` without writing anything. Both also accept `-C DIR`. See [Configuration]({{< relref "configuration.md#managed-files" >}}).
 
-The generated `Taskfile.yml` runs ForgeGo through a `FORGEGO` var, `go run github.com/apollogeddon/forgego/cmd/forgego@<version>`, pinned to the version that scaffolded the project. To upgrade, run the newer version's `sync` once:
+The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go run github.com/apollogeddon/forgego/cmd/forgego@<version>`, pinned to the version that scaffolded the project. To upgrade, run the newer version's `sync` once:
 
 ```bash
 go run github.com/apollogeddon/forgego/cmd/forgego@latest sync
 ```
 
-That refreshes the managed files and moves the `FORGEGO` var to the new version. A `FORGEGO` var that runs ForgeGo some other way, such as a local build, is left alone.
+That refreshes the managed files and moves the `FORGEGO` var to the new version. A `FORGEGO` var that runs Forge.go some other way, such as a local build, is left alone.
 
 ### Commit Message Checks
 

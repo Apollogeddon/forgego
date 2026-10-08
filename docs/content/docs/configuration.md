@@ -3,7 +3,7 @@ title: Configuration
 weight: 2
 ---
 
-ForgeGo splits what it writes into three kinds of file, so you always know which ones are yours to edit:
+Forge.go splits what it writes into three kinds of file, so you always know which ones are yours to edit:
 
 | Kind | Examples | Re-running `init` |
 | :--- | :--- | :--- |
@@ -13,15 +13,15 @@ ForgeGo splits what it writes into three kinds of file, so you always know which
 
 ## Managed Files
 
-Managed files belong to ForgeGo. Don't edit them: `init` and `sync` overwrite them.
+Managed files belong to Forge.go. Don't edit them: `init` and `sync` overwrite them.
 
 | File | Purpose |
 | :--- | :--- |
 | `.forgego/<tool>/go.mod` / `go.sum` | The pinned module for each tool — see [Pinned Tools](#pinned-tools). |
-| `.forgego/golangci.yml` | ForgeGo's base golangci-lint config. |
+| `.forgego/golangci.yml` | Forge.go's base golangci-lint config. |
 | `.golangci.yml` | The config golangci-lint reads, generated from the base and `.golangci.local.yml`. |
 
-After upgrading ForgeGo, or after editing `.golangci.local.yml`, refresh them:
+After upgrading Forge.go, or after editing `.golangci.local.yml`, refresh them:
 
 ```bash
 task sync
@@ -32,8 +32,8 @@ task sync
 - each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use;
 - `.forgego/golangci.yml` and `.golangci.yml`, when the project has a `.golangci.local.yml`;
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
-- the `FORGEGO` var in `Taskfile.yml`, when it runs a published ForgeGo, so it runs the version doing the sync;
-- tools pinned by an earlier ForgeGo as `.forgego/<tool>.mod` and `.sum`, which it moves to `.forgego/<tool>/` and repoints `Taskfile.yml` and `lefthook.yml` at. Run `task hooks` afterwards, as the installed git hooks still name the old path.
+- the `FORGEGO` var in `Taskfile.yml`, when it runs a published Forge.go, so it runs the version doing the sync;
+- tools pinned by an earlier Forge.go as `.forgego/<tool>.mod` and `.sum`, which it moves to `.forgego/<tool>/` and repoints `Taskfile.yml` and `lefthook.yml` at. Run `task hooks` afterwards, as the installed git hooks still name the old path.
 
 `task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It is already wired into the lefthook pre-commit hook and the CI linting job, so a stale file can't slip through.
 
@@ -56,7 +56,7 @@ Keeping one module per tool means no two tools' dependencies are ever resolved t
 | `gotestsum` | `gotest.tools/gotestsum` | `v1.13.0` | 1.24.0 | Tests (testing on, not websites) |
 | `hugo` | `github.com/gohugoio/hugo` | `v0.167.0` | 1.27.0 | Building the site (websites) |
 
-These are the versions this release of ForgeGo pins; `sync` moves a project to the versions of the ForgeGo that runs it.
+These are the versions this release of Forge.go pins; `sync` moves a project to the versions of the Forge.go that runs it.
 
 ### The `toolchain` Line
 
@@ -76,11 +76,11 @@ The `go` line, which modules that depend on yours see, is left alone.
 
 ### golangci-lint — Linting & Formatting
 
-golangci-lint can't extend another config file, so ForgeGo merges two files into the `.golangci.yml` that golangci-lint reads:
+golangci-lint can't extend another config file, so Forge.go merges two files into the `.golangci.yml` that golangci-lint reads:
 
 | File | Owner |
 | :--- | :--- |
-| `.forgego/golangci.yml` | ForgeGo — the base config |
+| `.forgego/golangci.yml` | Forge.go — the base config |
 | `.golangci.local.yml` | You — your project's changes |
 | `.golangci.yml` | Generated from the two above. **Don't edit.** |
 
@@ -182,7 +182,7 @@ CI builds the image for every configured platform — see [Job Reference]({{< re
 
 `task release:snapshot` builds the `.deb` into `dist/` alongside the binaries. There's no separate packaging workflow: CI's release job runs GoReleaser, which builds the `.deb` with everything else.
 
-Update `maintainer`, `description` and `license` in the `nfpms` section; ForgeGo fills them with placeholders (`license: MIT`).
+Update `maintainer`, `description` and `license` in the `nfpms` section; Forge.go fills them with placeholders (`license: MIT`).
 
 ## Websites
 

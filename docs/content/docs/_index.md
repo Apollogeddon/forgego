@@ -3,7 +3,7 @@ title: Overview
 weight: 1
 ---
 
-ForgeGo scaffolds tooling into Go projects: linting, testing, CI/CD, Docker images and Debian packaging. One command, `forgego init`, writes the configuration, the tasks and a GitHub Actions workflow that calls ForgeGo's reusable workflows. `forgego sync` keeps the files ForgeGo manages up to date afterwards.
+Forge.go scaffolds tooling into Go projects: linting, testing, CI/CD, Docker images and Debian packaging. One command, `forgego init`, writes the configuration, the tasks and a GitHub Actions workflow that calls Forge.go's reusable workflows. `forgego sync` keeps the files Forge.go manages up to date afterwards.
 
 ## What You Get
 
@@ -28,12 +28,12 @@ ForgeGo scaffolds tooling into Go projects: linting, testing, CI/CD, Docker imag
 
 ## No Global Installs
 
-Every tool ForgeGo sets up is pinned in its own module file under `.forgego/` and run with `go tool -modfile=.forgego/<tool>/go.mod <tool>`. A fresh clone needs only Go and Git: the first run of a task downloads the pinned tool, and no tool's dependencies end up in your project's `go.mod`. See [Configuration]({{< relref "configuration.md#pinned-tools" >}}) for how it works.
+Every tool Forge.go sets up is pinned in its own module file under `.forgego/` and run with `go tool -modfile=.forgego/<tool>/go.mod <tool>`. A fresh clone needs only Go and Git: the first run of a task downloads the pinned tool, and no tool's dependencies end up in your project's `go.mod`. See [Configuration]({{< relref "configuration.md#pinned-tools" >}}) for how it works.
 
 ## Where Next
 
-- [Getting Started]({{< relref "getting-started.md" >}}) — install ForgeGo and scaffold a project.
+- [Getting Started]({{< relref "getting-started.md" >}}) — install Forge.go and scaffold a project.
 - [Configuration]({{< relref "configuration.md" >}}) — the managed files and how to change them.
 - [Examples]({{< relref "examples.md" >}}) — common configuration and workflow recipes.
 - [Workflows]({{< relref "workflows" >}}) — the reusable GitHub Actions workflows.
-- [Migrating an Existing Project]({{< relref "migration.md" >}}) — adopting ForgeGo in a project that already has tooling.
+- [Migrating an Existing Project]({{< relref "migration.md" >}}) — adopting Forge.go in a project that already has tooling.

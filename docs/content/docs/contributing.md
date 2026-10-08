@@ -3,7 +3,7 @@ title: Contributing
 weight: 7
 ---
 
-This repository uses a strict set of tools to ensure code quality and a standard development experience — the same toolchain ForgeGo scaffolds into other projects. Its `.forgego/`, `Taskfile.yml`, `lefthook.yml`, `.golangci*.yml` and `.goreleaser.yaml` came from `forgego init`.
+This repository uses a strict set of tools to ensure code quality and a standard development experience — the same toolchain Forge.go scaffolds into other projects. Its `.forgego/`, `Taskfile.yml`, `lefthook.yml`, `.golangci*.yml` and `.goreleaser.yaml` came from `forgego init`.
 
 ## Development Setup
 
@@ -13,9 +13,9 @@ cd forgego
 go tool -modfile=.forgego/task/go.mod task hooks
 ```
 
-As in any ForgeGo project, every task runs as `go tool -modfile=.forgego/task/go.mod task <name>`; alias it or install Task to type `task <name>`.
+As in any Forge.go project, every task runs as `go tool -modfile=.forgego/task/go.mod task <name>`; alias it or install Task to type `task <name>`.
 
-In this repository the `FORGEGO` Taskfile var is `go run ./cmd/forgego`, so `task sync`, `task sync-check` and the commit message hook run the ForgeGo in your working tree rather than a published release.
+In this repository the `FORGEGO` Taskfile var is `go run ./cmd/forgego`, so `task sync`, `task sync-check` and the commit message hook run the Forge.go in your working tree rather than a published release.
 
 ## Quality Control Tools
 
@@ -32,11 +32,11 @@ In this repository the `FORGEGO` Taskfile var is `go run ./cmd/forgego`, so `tas
 Run `lint`, `test` and `sync-check` before opening a pull request.
 
 > [!NOTE]
-> The integration test builds ForgeGo, scaffolds a real project in each mode, and runs its generated tasks and git hooks, downloading every pinned tool. It is the only test that catches a tool pin, task or hook that doesn't work, so run the full `task test` for changes to templates, tool pins, the Taskfile or hooks. The website test needs network access for the theme's search script; set `FORGEGO_OFFLINE=1` to skip it.
+> The integration test builds Forge.go, scaffolds a real project in each mode, and runs its generated tasks and git hooks, downloading every pinned tool. It is the only test that catches a tool pin, task or hook that doesn't work, so run the full `task test` for changes to templates, tool pins, the Taskfile or hooks. The website test needs network access for the theme's search script; set `FORGEGO_OFFLINE=1` to skip it.
 
 ## Tool Versions
 
-Each tool a generated project pins comes from its own module under `tools/<tool>/`, which ForgeGo embeds. After changing a version there, run:
+Each tool a generated project pins comes from its own module under `tools/<tool>/`, which Forge.go embeds. After changing a version there, run:
 
 ```bash
 task generate
