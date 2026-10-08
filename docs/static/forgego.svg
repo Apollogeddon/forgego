@@ -2,9 +2,9 @@
   <title>ForgeGo</title>
   <defs>
     <linearGradient id="ag" x1="256" y1="115" x2="256" y2="444" gradientUnits="userSpaceOnUse">
-      <stop offset="0%"   stop-color="#7FD5EA"/>
-      <stop offset="55%"  stop-color="#00ADD8"/>
-      <stop offset="100%" stop-color="#007D9C"/>
+      <stop offset="0%"   stop-color="#4A86C8"/>
+      <stop offset="55%"  stop-color="#1F5FA8"/>
+      <stop offset="100%" stop-color="#0E3A70"/>
     </linearGradient>
     <linearGradient id="fg" x1="271" y1="115" x2="271" y2="263" gradientUnits="userSpaceOnUse">
       <stop offset="0%"   stop-color="#FEF9C3"/>
