@@ -18,6 +18,7 @@ func (Workflow) Apply(ctx *Context) bool {
 		Go:         ctx.Cfg.Go,
 		Docker:     ctx.Cfg.Docker,
 		Testing:    ctx.Cfg.Testing,
+		Linting:    ctx.Cfg.Linting,
 		Versioning: ctx.Cfg.Versioning,
 	}))
 }

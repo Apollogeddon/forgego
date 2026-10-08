@@ -11,6 +11,7 @@ type WorkflowOptions struct {
 	Go         string
 	Docker     bool
 	Testing    bool
+	Linting    bool
 	Versioning bool
 }
 
@@ -68,6 +69,9 @@ func RenderWorkflow(o WorkflowOptions) string {
 	// Disabled standard features become pipeline inputs, so CI doesn't run what the project doesn't have.
 	if !o.Testing && o.Mode != "website" {
 		b.WriteString("      run_tests: false\n")
+	}
+	if !o.Linting && o.Mode != "website" {
+		b.WriteString("      lint: false\n")
 	}
 	if !o.Versioning {
 		b.WriteString("      enable_versioning: false\n")

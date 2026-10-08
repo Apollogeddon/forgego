@@ -161,7 +161,8 @@ const ReleaseConfig = `{
 }
 `
 
-// ReleaseManifest starts the version history, so the first release is v0.1.0.
+// ReleaseManifest starts the version history at 0.0.0: the first release is v0.1.0
+// for a feat, or v0.0.1 if it only has fixes.
 const ReleaseManifest = `{
   ".": "0.0.0"
 }

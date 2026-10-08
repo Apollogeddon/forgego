@@ -36,7 +36,6 @@ func (Linting) Apply(ctx *Context) bool {
 
 func lintGo(ctx *Context) bool {
 	ok := useTool(ctx, templates.GolangciLint)
-	ok = useTool(ctx, templates.Govulncheck) && ok
 	ok = WriteManaged(ctx, golangci.BasePath, golangci.Base()) && ok
 	ok = CreateIfMissing(ctx, golangci.LocalPath, golangci.LocalStarter) && ok
 
@@ -54,7 +53,6 @@ func lintGo(ctx *Context) bool {
 	lint := ref(templates.GolangciLint)
 	ctx.Tasks.Add(taskfile.Task{Name: "lint", Desc: "Format, then lint and fix what can be fixed", Cmds: []string{lint + " fmt", lint + " run --fix"}})
 	ctx.Tasks.Add(taskfile.Task{Name: "format", Desc: "Format the code", Cmds: []string{lint + " fmt"}})
-	ctx.Tasks.Add(taskfile.Task{Name: "security", Desc: "Report known vulnerabilities the code calls", Cmds: []string{ref(templates.Govulncheck) + " ./..."}})
 	return ok
 }
 
@@ -67,7 +65,6 @@ func (Linting) Cleanup(ctx *Context) {
 	RemoveFile(ctx, golangci.BasePath)
 	dropTool(ctx, templates.Lefthook)
 	dropTool(ctx, templates.GolangciLint)
-	dropTool(ctx, templates.Govulncheck)
 }
 
 func trimNewline(s string) string {
