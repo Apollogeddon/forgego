@@ -1,0 +1,139 @@
+name: Go Library
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      test_on_push:
+        description: "Run the checks on pushes too; false runs them on pull requests (and scheduled runs) only"
+        required: false
+        type: boolean
+        default: true
+      test_release_prs:
+        description: "Run the checks on release-please's release pull requests"
+        required: false
+        type: boolean
+        default: true
+      enable_secrets:
+        required: false
+        type: boolean
+        default: true
+      go_version:
+        description: "Go version; empty reads it from go.mod"
+        required: false
+        type: string
+        default: ''
+      working_directory:
+        required: false
+        type: string
+        default: '.'
+      enable_versioning:
+        required: false
+        type: boolean
+        default: true
+      auto_patch:
+        description: "On main, upgrade the modules govulncheck finds vulnerable and commit the result"
+        required: false
+        type: boolean
+        default: true
+      run_tests:
+        required: false
+        type: boolean
+        default: true
+      publish:
+        description: "Ask the Go module proxy for each new release, so it's on pkg.go.dev straight away"
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      new_release_published:
+        description: "Whether a new release was published"
+        value: ${{ jobs.version.outputs.new_release_published }}
+      version:
+        description: "Released version (e.g. 1.2.3); empty when nothing was released"
+        value: ${{ jobs.version.outputs.version }}
+      tag_name:
+        description: "Released tag (e.g. v1.2.3); empty when nothing was released"
+        value: ${{ jobs.version.outputs.tag_name }}
+
+jobs:
+  testing:
+    # With test_on_push false, a push checks only when a release is made, in release-testing.
+    if: >-
+      (github.event_name != 'push' || inputs.test_on_push) &&
+      (inputs.test_release_prs || !startsWith(github.head_ref, 'release-please--'))
+    uses: ./.github/workflows/testing.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      working_directory: ${{ inputs.working_directory }}
+      go_version: ${{ inputs.go_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+      auto_patch: ${{ inputs.auto_patch }}
+      run_tests: ${{ inputs.run_tests }}
+
+  auto-merge:
+    uses: ./.github/workflows/merge.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+    needs: [testing]
+    permissions:
+      contents: write
+      pull-requests: write
+
+  version:
+    # Runs when the checks were skipped, as on a push to main with test_on_push false, but not when they failed.
+    if: ${{ !failure() && !cancelled() && inputs.enable_versioning }}
+    uses: ./.github/workflows/version.yml
+    needs: [testing]
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      working_directory: ${{ inputs.working_directory }}
+
+  release-testing:
+    # With test_on_push false, a push to main is checked and built only when release-please made a release.
+    needs: [version]
+    if: >-
+      !cancelled() && github.event_name == 'push' && !inputs.test_on_push &&
+      (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
+    uses: ./.github/workflows/testing.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      working_directory: ${{ inputs.working_directory }}
+      go_version: ${{ inputs.go_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+      auto_patch: ${{ inputs.auto_patch }}
+      run_tests: ${{ inputs.run_tests }}
+
+  publish:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    needs: [testing, version, release-testing]
+    if: ${{ !failure() && !cancelled() && inputs.publish && (needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ inputs.go_version }}
+          go-version-file: ${{ inputs.working_directory }}/go.mod
+          cache: false
+      # A Go module is published by its tag; fetching it through the proxy makes the
+      # proxy and pkg.go.dev pick the release up now rather than on first use.
+      - name: Fetch the release through the Go module proxy
+        env:
+          GOPROXY: https://proxy.golang.org
+          TAG: ${{ needs.version.outputs.tag_name }}
+        run: |
+          module=$(go list -m)
+          version="${TAG##*/}"
+          (cd "$RUNNER_TEMP" && go mod download -json "$module@$version")

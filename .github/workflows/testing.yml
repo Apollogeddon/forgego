@@ -1,0 +1,159 @@
+name: Go Tests
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      working_directory:
+        required: false
+        type: string
+        default: '.'
+      go_version:
+        description: "Go version; empty reads it from go.mod"
+        required: false
+        type: string
+        default: ''
+      enable_secrets:
+        required: false
+        type: boolean
+        default: true
+      lint:
+        description: "Run golangci-lint; a website has no Go to lint"
+        required: false
+        type: boolean
+        default: true
+      run_tests:
+        required: false
+        type: boolean
+        default: true
+      auto_patch:
+        description: "On main, upgrade the modules govulncheck finds vulnerable and commit the result"
+        required: false
+        type: boolean
+        default: true
+      artifact_name:
+        required: false
+        type: string
+        default: 'dist'
+      artifact_path:
+        description: "What the build writes, relative to working_directory"
+        required: false
+        type: string
+        default: 'dist'
+      build_command:
+        required: false
+        type: string
+        default: 'go tool -modfile=.forgego/task.mod task build'
+
+jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      working_directory: ${{ inputs.working_directory }}
+      go_version: ${{ inputs.go_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+      lint: ${{ inputs.lint }}
+
+  testing:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 15
+    needs: [quality]
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ inputs.go_version }}
+          go-version-file: ${{ inputs.working_directory }}/go.mod
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*.sum
+      - name: Tests
+        if: inputs.run_tests
+        # the race detector needs cgo, which GitHub's Ubuntu runners have
+        env:
+          GOFLAGS: -race
+        run: go tool -modfile=.forgego/task.mod task test
+      - name: Upload Coverage
+        if: always() && inputs.run_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ inputs.artifact_name }}
+          path: |
+            ${{ inputs.working_directory }}/coverage.out
+            ${{ inputs.working_directory }}/junit-report.xml
+          if-no-files-found: ignore
+
+  build:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    needs: [quality, testing]
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ inputs.go_version }}
+          go-version-file: ${{ inputs.working_directory }}/go.mod
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*.sum
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
+          if-no-files-found: ignore
+
+  patch:
+    if: inputs.auto_patch && github.ref == 'refs/heads/main'
+    needs: [quality, testing, build]
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      # keeps the token in .git/config, as this job pushes the patch commit
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ inputs.go_version }}
+          go-version-file: ${{ inputs.working_directory }}/go.mod
+          # no module cache in a job that pushes to main
+          cache: false
+      # govulncheck names the fixed version of each vulnerable module, so this upgrades
+      # just those. The standard library is fixed by a newer Go, not by go get.
+      - name: Upgrade vulnerable modules
+        run: |
+          go tool -modfile=.forgego/govulncheck.mod govulncheck -format json ./... > "$RUNNER_TEMP/govulncheck.json"
+          mapfile -t upgrades < <(jq -r '
+            select((.finding.fixed_version // "") != "")
+            | .finding
+            | select(.trace[0].module != "stdlib")
+            | "\(.trace[0].module)@\(.fixed_version)"' "$RUNNER_TEMP/govulncheck.json" | sort -u)
+          if [ "${#upgrades[@]}" -eq 0 ]; then exit 0; fi
+          go get "${upgrades[@]}"
+          go mod tidy
+      - name: Commit Security Patches
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "fix(deps): upgrade modules with known vulnerabilities via govulncheck"
+          file_pattern: 'go.mod go.sum'
