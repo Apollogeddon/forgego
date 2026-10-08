@@ -5,7 +5,8 @@
 [extend]
 useDefault = true
 
-[[allowlists]]
+# [allowlist] rather than [[allowlists]]: gitleaks-action runs gitleaks 8.24, before 8.25 added it
+[allowlist]
 description = "Go checksum files"
 paths = [
   '''^internal/templates/tools/[a-z-]+\.sum$''',
