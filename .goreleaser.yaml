@@ -1,0 +1,31 @@
+# Builds and attaches the release binaries. Try it locally with: task release:snapshot
+version: 2
+project_name: forgego
+
+builds:
+  - id: forgego
+    main: ./cmd/forgego
+    binary: forgego
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/apollogeddon/forgego/internal/version.injected={{ .Tag }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+# release-please writes the release notes and creates the release
+changelog:
+  disable: true
+release:
+  mode: keep-existing

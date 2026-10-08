@@ -1,0 +1,43 @@
+name: ForgeGo CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # never cancel a run on main mid-release, or the release is created but never published
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  index:
+    uses: ./.github/workflows/service.yml
+    with:
+      # The self-hosted `xerus` runners; a public repository never uses them.
+      runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      working_directory: '.'
+    permissions:
+      contents: write
+      pull-requests: write
+
+  pages:
+    uses: ./.github/workflows/website.yml
+    with:
+      runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      working_directory: 'docs'
+      enable_secrets: false
+      enable_versioning: false
+      # the service job already auto-merges this repo's PRs
+      auto_merge: false
+      # distinct from the service job's 'dist' artifact in the same run
+      artifact_name: 'pages-dist'
+    permissions:
+      contents: write
+      id-token: write
+      pages: write
+      pull-requests: write

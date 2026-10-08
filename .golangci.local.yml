@@ -1,0 +1,12 @@
+# This project's changes to forgego's golangci-lint config (.forgego/golangci.yml).
+# Mappings merge key by key, lists gain the items listed here, and any other value
+# replaces the base one. Run `task sync` after editing to regenerate .golangci.yml.
+#
+# linters:
+#   enable:
+#     - wsl_v5
+#   settings:
+#     gosec:
+#       excludes:
+#         - G104
+version: "2"

@@ -1,0 +1,48 @@
+baseURL = "https://apollogeddon.github.io/forgego/"
+title = "Forge.go"
+locale = "en"
+enableGitInfo = false
+
+[module]
+  [[module.imports]]
+    path = "github.com/imfing/hextra"
+
+[markup.goldmark.renderer]
+  unsafe = false
+
+[menu]
+  [[menu.main]]
+    name = "Docs"
+    pageRef = "/docs"
+    weight = 1
+  [[menu.main]]
+    name = "Workflows"
+    pageRef = "/docs/workflows"
+    weight = 2
+  [[menu.main]]
+    name = "Search"
+    weight = 3
+    [menu.main.params]
+      type = "search"
+  [[menu.main]]
+    name = "GitHub"
+    url = "https://github.com/apollogeddon/forgego"
+    weight = 4
+    [menu.main.params]
+      icon = "github"
+
+[params.navbar]
+  displayTitle = true
+  displayLogo = true
+  [params.navbar.logo]
+    path = "forgego.svg"
+    width = "28"
+    height = "28"
+
+[params.footer]
+  displayPoweredBy = false
+  displayCopyright = false
+
+[params.theme]
+  default = "dark"
+  displayToggle = false

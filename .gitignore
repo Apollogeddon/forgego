@@ -1,0 +1,7 @@
+# Build output
+/dist/
+
+# Test reports
+coverage.out
+coverage.html
+junit-report.xml
