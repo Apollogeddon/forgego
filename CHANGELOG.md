@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.4](https://github.com/Apollogeddon/forgego/compare/v1.0.3...v1.0.4) (2026-10-08)
+
+
+### Bug Fixes
+
+* **deps:** upgrade gotestsum's x/mod and x/text past known vulnerabilities ([95f7d4a](https://github.com/Apollogeddon/forgego/commit/95f7d4aecef90b72c90216d5db0bbec5cedda5c0))
+* **deps:** upgrade gotestsum's x/mod and x/text past known vulnerabilities ([da702eb](https://github.com/Apollogeddon/forgego/commit/da702eb765990ae33fcd6cca1f2814a4281f8c19))
+
 ## [1.0.3](https://github.com/Apollogeddon/forgego/compare/v1.0.2...v1.0.3) (2026-10-08)
 
 
