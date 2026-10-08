@@ -3,7 +3,7 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
     # Limit open PRs to prevent flooding
     open-pull-requests-limit: 10
     # Group non-major updates to reduce PR volume
@@ -54,7 +54,7 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
     groups:
       actions:
         patterns:

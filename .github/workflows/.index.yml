@@ -15,9 +15,51 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # Which pipelines this change needs: the tool's runs unless only docs/ changed, and the
+  # docs site's runs when docs/ or anything it builds from changed.
+  changes:
+    runs-on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      docs: ${{ steps.diff.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Find what changed
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # the site's sync check runs cmd/forgego
+          DOCS_INPUTS: '^(docs/|\.github/|cmd/|internal/|go\.(mod|sum)$)'
+        run: |
+          # a manual run, a new branch or a rewritten history has no base to compare with
+          if [ "$EVENT" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$BASE" HEAD)
+          printf '%s\n' "$files"
+          if printf '%s\n' "$files" | grep -qv '^docs/'; then code=true; else code=false; fi
+          if printf '%s\n' "$files" | grep -qE "$DOCS_INPUTS"; then docs=true; else docs=false; fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+          echo "docs=$docs" | tee -a "$GITHUB_OUTPUT"
+
   index:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/service.yml
     with:
+      # the PR run tested this change; release-testing re-tests main before a release
+      test_on_push: false
+      # a release PR only bumps the version and changelog
+      test_release_prs: false
       # The self-hosted `xerus` runners; a public repository never uses them.
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
       working_directory: '.'
@@ -26,14 +68,17 @@ jobs:
       pull-requests: write
 
   pages:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
     uses: ./.github/workflows/website.yml
     with:
+      test_release_prs: false
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
       working_directory: 'docs'
       enable_secrets: false
       enable_versioning: false
-      # the service job already auto-merges this repo's PRs
-      auto_merge: false
+      # the tool's pipeline auto-merges Dependabot PRs; this one does when only docs/ changed
+      auto_merge: ${{ needs.changes.outputs.code != 'true' }}
       # distinct from the service job's 'dist' artifact in the same run
       artifact_name: 'pages-dist'
     permissions:
