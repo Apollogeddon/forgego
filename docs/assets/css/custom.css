@@ -1,0 +1,13 @@
+/* A deeper blue than Hextra's default azure, matching the logo's anvil */
+:root {
+  --primary-hue: 214deg;
+  --primary-saturation: 75%;
+  --primary-lightness: 38%;
+}
+
+/* lighter on the dark background, so links keep their contrast */
+.dark {
+  --primary-hue: 214deg;
+  --primary-saturation: 80%;
+  --primary-lightness: 60%;
+}
