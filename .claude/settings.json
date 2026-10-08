@@ -25,16 +25,16 @@
   },
   "permissions": {
     "allow": [
-      "Bash(go tool -modfile=.forgego/task.mod task lint*)",
-      "Bash(go tool -modfile=.forgego/task.mod task test*)",
-      "Bash(go tool -modfile=.forgego/task.mod task build*)",
-      "Bash(go tool -modfile=.forgego/task.mod task sync-check*)",
+      "Bash(go tool -modfile=.forgego/task/go.mod task lint*)",
+      "Bash(go tool -modfile=.forgego/task/go.mod task test*)",
+      "Bash(go tool -modfile=.forgego/task/go.mod task build*)",
+      "Bash(go tool -modfile=.forgego/task/go.mod task sync-check*)",
       "Bash(go test*)",
       "Bash(go vet*)"
     ],
     "deny": [
       "Read(./go.sum)",
-      "Read(./.forgego/*.sum)",
+      "Read(./.forgego/*/go.sum)",
       "Read(./tools/*/go.sum)",
       "Read(./internal/templates/tools/*.sum)",
       "Read(./docs/go.sum)",

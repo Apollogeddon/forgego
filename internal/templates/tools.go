@@ -14,9 +14,9 @@ import (
 //go:embed tools configs
 var toolFiles embed.FS
 
-// Tool is a command forgego pins and runs with `go tool -modfile=.forgego/<name>.mod`.
+// Tool is a command forgego pins and runs with `go tool -modfile=.forgego/<name>/go.mod`.
 type Tool struct {
-	Name    string // file name under .forgego/, and the command
+	Name    string // directory under .forgego/, and the command
 	Package string // the package `go tool` builds
 }
 
@@ -32,11 +32,18 @@ var (
 // Tools is every tool forgego knows, in a stable order.
 var Tools = []Tool{Task, Lefthook, GolangciLint, Gotestsum, Govulncheck, Hugo}
 
-// ModPath is where the tool's module file lives in a generated project.
-func (t Tool) ModPath() string { return ".forgego/" + t.Name + ".mod" }
+// ModPath is where the tool's module file lives in a generated project. Naming it go.mod
+// keeps its go.sum out of secret scanners, which skip go.sum but flag its h1: hashes
+// under any other name.
+func (t Tool) ModPath() string { return ".forgego/" + t.Name + "/go.mod" }
 
 // SumPath is the checksum file `go tool -modfile` reads next to ModPath.
-func (t Tool) SumPath() string { return ".forgego/" + t.Name + ".sum" }
+func (t Tool) SumPath() string { return ".forgego/" + t.Name + "/go.sum" }
+
+// LegacyModPath and LegacySumPath are where forgego pinned the tool before it had a
+// directory of its own; `forgego sync` moves them.
+func (t Tool) LegacyModPath() string { return ".forgego/" + t.Name + ".mod" }
+func (t Tool) LegacySumPath() string { return ".forgego/" + t.Name + ".sum" }
 
 // Command is how a Taskfile or hook runs the tool.
 func (t Tool) Command() string {

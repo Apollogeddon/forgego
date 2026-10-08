@@ -10,10 +10,10 @@ This repository uses a strict set of tools to ensure code quality and a standard
 ```bash
 git clone https://github.com/apollogeddon/forgego
 cd forgego
-go tool -modfile=.forgego/task.mod task hooks
+go tool -modfile=.forgego/task/go.mod task hooks
 ```
 
-As in any ForgeGo project, every task runs as `go tool -modfile=.forgego/task.mod task <name>`; alias it or install Task to type `task <name>`.
+As in any ForgeGo project, every task runs as `go tool -modfile=.forgego/task/go.mod task <name>`; alias it or install Task to type `task <name>`.
 
 In this repository the `FORGEGO` Taskfile var is `go run ./cmd/forgego`, so `task sync`, `task sync-check` and the commit message hook run the ForgeGo in your working tree rather than a published release.
 
@@ -50,7 +50,7 @@ This site lives in `docs/` as its own Go module, scaffolded with `forgego init -
 
 ```bash
 cd docs
-go tool -modfile=.forgego/task.mod task dev    # live preview
+go tool -modfile=.forgego/task/go.mod task dev    # live preview
 ```
 
 `task build` builds it into `docs/public/`.

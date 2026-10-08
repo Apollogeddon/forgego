@@ -9,7 +9,7 @@ ForgeGo implements an opinionated toolchain designed to prioritise reproducibili
 
 Everything a ForgeGo project runs is a Go program, pinned by version and run with `go tool`. A fresh clone needs only Go and Git.
 
-- **One module per tool:** each tool has its own `.forgego/<tool>.mod` and `.sum`, run with `go tool -modfile=.forgego/<tool>.mod <tool>`. No two tools' dependencies are resolved together, so they can't conflict, and none of them reach your `go.mod`.
+- **One module per tool:** each tool has its own `.forgego/<tool>/go.mod` and `go.sum`, run with `go tool -modfile=.forgego/<tool>/go.mod <tool>`. No two tools' dependencies are resolved together, so they can't conflict, and none of them reach your `go.mod`.
 - **No global installs:** the Taskfile, the git hooks and CI all run the same pinned versions, so "works on my machine" and "passes in CI" mean the same thing.
 - **Checksummed:** each tool's `.sum` file is verified by `go` like any other module, and cached after the first run.
 

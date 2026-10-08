@@ -45,7 +45,7 @@ func lint(file string) {
 	if !strings.HasSuffix(file, ".go") {
 		return
 	}
-	golangci := []string{"tool", "-modfile=.forgego/golangci-lint.mod", "golangci-lint"}
+	golangci := []string{"tool", "-modfile=.forgego/golangci-lint/go.mod", "golangci-lint"}
 	_ = exec.Command("go", append(golangci, "fmt", file)...).Run()
 	pkg := "./" + filepath.ToSlash(filepath.Dir(relative(file)))
 	out, err := exec.Command("go", append(golangci, "run", "--fix", pkg)...).CombinedOutput()

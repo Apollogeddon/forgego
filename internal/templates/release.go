@@ -115,7 +115,7 @@ const DockerfileWebsite = `# syntax=docker/dockerfile:1
 FROM --platform=$BUILDPLATFORM golang:__GO_MINOR__ AS build
 WORKDIR /src
 COPY . .
-RUN go tool -modfile=.forgego/hugo.mod hugo --gc --minify
+RUN go tool -modfile=.forgego/hugo/go.mod hugo --gc --minify
 
 FROM nginx:stable-alpine
 COPY --from=build /src/public /usr/share/nginx/html

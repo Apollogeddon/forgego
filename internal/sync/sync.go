@@ -4,6 +4,7 @@ package sync
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/apollogeddon/forgego/internal/console"
 	"github.com/apollogeddon/forgego/internal/fsys"
@@ -22,15 +23,20 @@ type managed struct {
 }
 
 // Expected lists every managed file present in dir with the content this forgego writes.
-// Tool modules are only refreshed when the project already has them.
+// Tool modules are only refreshed when the project already has them, at either path.
 func expected(fs fsys.FS, dir string) ([]managed, error) {
 	var files []managed
 	var pinned []templates.Tool
 	for _, tool := range templates.Tools {
-		if fs.Exists(filepath.Join(dir, tool.ModPath())) {
+		if fs.Exists(filepath.Join(dir, tool.ModPath())) || fs.Exists(filepath.Join(dir, tool.LegacyModPath())) {
 			pinned = append(pinned, tool)
 			files = append(files, managed{tool.ModPath(), tool.ModFile()}, managed{tool.SumPath(), tool.SumFile()})
 		}
+	}
+	if content, err := fs.ReadFile(filepath.Join(dir, "lefthook.yml")); err == nil {
+		files = append(files, managed{"lefthook.yml", movePins(content)})
+	} else if !fsys.IsNotExist(err) {
+		return nil, err
 	}
 	if gomodContent, err := fs.ReadFile(filepath.Join(dir, "go.mod")); err == nil {
 		updated, _, err := gomod.EnsureToolchain(gomodContent, gomod.ToolsGo(pinned))
@@ -74,10 +80,18 @@ func Run(fs fsys.FS, dir string, check bool) int {
 			drifted = append(drifted, f)
 		}
 	}
-	taskfile, taskfileDrift, err := forgegoVar(fs, dir)
+	taskfile, taskfileDrift, err := updateTaskfile(fs, dir)
 	if err != nil {
 		console.Err("Failed to read Taskfile.yml: %v", err)
 		return 1
+	}
+	var legacy []string
+	for _, tool := range templates.Tools {
+		for _, rel := range []string{tool.LegacyModPath(), tool.LegacySumPath()} {
+			if fs.Exists(filepath.Join(dir, rel)) {
+				legacy = append(legacy, rel)
+			}
+		}
 	}
 
 	if check {
@@ -85,9 +99,12 @@ func Run(fs fsys.FS, dir string, check bool) int {
 			console.Warn("%s is out of date", f.rel)
 		}
 		if taskfileDrift {
-			console.Warn("Taskfile.yml's %s var doesn't run forgego %s", TaskfileVar, version.Current())
+			console.Warn("Taskfile.yml is out of date: its tool or %s vars don't match forgego %s", TaskfileVar, version.Current())
 		}
-		if n := len(drifted) + boolInt(taskfileDrift); n > 0 {
+		for _, rel := range legacy {
+			console.Warn("%s has moved under .forgego/<tool>/", rel)
+		}
+		if n := len(drifted) + boolInt(taskfileDrift) + len(legacy); n > 0 {
 			console.Err("%d managed file(s) out of date - run `task sync` to refresh", n)
 			return 1
 		}
@@ -95,7 +112,7 @@ func Run(fs fsys.FS, dir string, check bool) int {
 		return 0
 	}
 
-	if len(drifted) == 0 && !taskfileDrift {
+	if len(drifted) == 0 && !taskfileDrift && len(legacy) == 0 {
 		console.Info("All managed files already up to date")
 		return 0
 	}
@@ -111,38 +128,58 @@ func Run(fs fsys.FS, dir string, check bool) int {
 			console.Err("Failed to update Taskfile.yml: %v", err)
 			return 1
 		}
-		console.OK("Updated Taskfile.yml's %s var to forgego %s", TaskfileVar, version.Current())
+		console.OK("Updated Taskfile.yml for forgego %s", version.Current())
+	}
+	for _, rel := range legacy {
+		if err := fs.Remove(filepath.Join(dir, rel)); err != nil {
+			console.Err("Failed to remove %s: %v", rel, err)
+			return 1
+		}
+		console.OK("Removed %s, now under .forgego/<tool>/", rel)
+		if rel == templates.Lefthook.LegacyModPath() {
+			// installed git hooks name the command they run lefthook with
+			console.Info("Run `task hooks` to reinstall the git hooks at lefthook's new path")
+		}
 	}
 	return 0
 }
 
-// forgegoVar returns the Taskfile with its FORGEGO var pointing at this forgego, and
-// whether that differs from the file on disk. A Taskfile without the var is left alone.
-func forgegoVar(fs fsys.FS, dir string) (string, bool, error) {
-	content, err := fs.ReadFile(filepath.Join(dir, "Taskfile.yml"))
+// movePins points every command that runs a tool from an earlier forgego's
+// .forgego/<tool>.mod at .forgego/<tool>/go.mod.
+func movePins(content string) string {
+	for _, tool := range templates.Tools {
+		content = strings.ReplaceAll(content, "-modfile="+tool.LegacyModPath(), "-modfile="+tool.ModPath())
+	}
+	return content
+}
+
+// updateTaskfile returns the Taskfile with its tool vars on the current pin paths and its
+// FORGEGO var pointing at this forgego, and whether that differs from the file on disk.
+// A project that runs forgego some other way, such as a local build, keeps it.
+func updateTaskfile(fs fsys.FS, dir string) (string, bool, error) {
+	original, err := fs.ReadFile(filepath.Join(dir, "Taskfile.yml"))
 	if fsys.IsNotExist(err) {
 		return "", false, nil
 	}
 	if err != nil {
 		return "", false, err
 	}
+	content := movePins(original)
 	root, err := yamlx.Parse(content)
 	if err != nil {
 		return "", false, err
 	}
-	vars := yamlx.Get(root, "vars")
-	if vars == nil {
-		return "", false, nil
+	if vars := yamlx.Get(root, "vars"); vars != nil {
+		current := yamlx.Get(vars, TaskfileVar)
+		want := version.RunCommand()
+		if current != nil && current.Value != want && version.IsPublishedRun(current.Value) {
+			current.Value = want
+			if content, err = yamlx.Encode(root); err != nil {
+				return "", false, err
+			}
+		}
 	}
-	current := yamlx.Get(vars, TaskfileVar)
-	want := version.RunCommand()
-	// a project that runs forgego some other way, such as a local build, keeps it
-	if current == nil || current.Value == want || !version.IsPublishedRun(current.Value) {
-		return "", false, nil
-	}
-	current.Value = want
-	out, err := yamlx.Encode(root)
-	return out, true, err
+	return content, content != original, nil
 }
 
 func boolInt(b bool) int {

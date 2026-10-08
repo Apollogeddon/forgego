@@ -58,7 +58,7 @@ This command will:
 * **Inject Tasks:** Add `lint`, `test`, `build`, `security` and more to the project's `Taskfile.yml`, keeping any task it already has.
 * **Standardise:** Create `go.mod` and a starter command or package so the generated tooling works immediately, and leave existing files alone unless you pass `--force`.
 
-Every task runs with `go tool -modfile=.forgego/task.mod task <name>`; alias it, or install [Task](https://taskfile.dev/). Run `forgego init --help` for the full flag reference.
+Every task runs with `go tool -modfile=.forgego/task/go.mod task <name>`; alias it, or install [Task](https://taskfile.dev/). Run `forgego init --help` for the full flag reference.
 
 ## Standardised Stack
 

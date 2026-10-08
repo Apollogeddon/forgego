@@ -56,7 +56,7 @@ func scaffold(t *testing.T, args ...string) string {
 // task runs a generated task, with forgego itself pointed at the build under test.
 func task(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	return sh(t, dir, "go", append([]string{"tool", "-modfile=.forgego/task.mod", "task"}, args...)...)
+	return sh(t, dir, "go", append([]string{"tool", "-modfile=.forgego/task/go.mod", "task"}, args...)...)
 }
 
 func sh(t *testing.T, dir, name string, args ...string) string {

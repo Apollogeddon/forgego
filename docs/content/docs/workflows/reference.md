@@ -94,7 +94,7 @@ In this mode release-please tags the release before the push's checks run. If th
 | `auto_patch` | `true` | Run the `patch` job on `main` |
 | `artifact_name` | `'dist'` | Name of the build artifact |
 | `artifact_path` | `'dist'` | What the build writes, relative to `working_directory` |
-| `build_command` | `'go tool -modfile=.forgego/task.mod task build'` | The build step |
+| `build_command` | `'go tool -modfile=.forgego/task/go.mod task build'` | The build step |
 
 ## version.yml
 
@@ -158,7 +158,7 @@ Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}) except `lint
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
 | `artifact_name` | `'dist'` | Name of the site artifact passed to the deploy |
-| `build_command` | `'go tool -modfile=.forgego/task.mod task build'` | Builds the site into `public/` |
+| `build_command` | `'go tool -modfile=.forgego/task/go.mod task build'` | Builds the site into `public/` |
 | `auto_merge` | `true` | Auto-merge Dependabot PRs |
 
 ## docker.yml
