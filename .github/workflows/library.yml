@@ -136,4 +136,11 @@ jobs:
         run: |
           module=$(go list -m)
           version="${TAG##*/}"
+          # From v2 on, Go only finds a release whose module path ends in its major version.
+          major="${version%%.*}"
+          major="${major#v}"
+          if [ "$major" -ge 2 ] && [ "${module##*/}" != "v$major" ]; then
+            echo "::error::$version needs the module path $module/v$major: Go can't fetch a v2+ release of $module. See https://go.dev/doc/modules/major-version"
+            exit 1
+          fi
           (cd "$RUNNER_TEMP" && go mod download -json "$module@$version")

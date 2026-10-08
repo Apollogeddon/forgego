@@ -68,19 +68,24 @@ Group=__NAME__
 WantedBy=multi-user.target
 `
 
-// Postinstall creates the service user, with no home or login shell, then starts it.
+// Postinstall creates the service user, with no home or login shell, then starts it
+// where systemd is running (not in a container image build, for one).
 const Postinstall = `#!/bin/sh
 set -e
 id -u __NAME__ >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin --user-group __NAME__
-systemctl daemon-reload
-systemctl enable __NAME__.service
-systemctl restart __NAME__.service
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+    systemctl enable __NAME__.service
+    systemctl restart __NAME__.service
+fi
 `
 
 // Preremove stops the service before its files go.
 const Preremove = `#!/bin/sh
 set -e
-systemctl disable --now __NAME__.service || true
+if [ -d /run/systemd/system ]; then
+    systemctl disable --now __NAME__.service || true
+fi
 `
 
 // GoreleaserVersion is the GoReleaser the snapshot task runs. CI pins ~> v2 through
