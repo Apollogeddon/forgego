@@ -14,7 +14,11 @@ func (Versioning) Name() string                   { return "versioning" }
 func (Versioning) ShouldRun(cfg config.Init) bool { return cfg.Versioning }
 
 func (Versioning) Apply(ctx *Context) bool {
-	ok := CreateFile(ctx, ".github/release.json", templates.ReleaseConfig)
+	config := templates.ReleaseConfig
+	if ctx.Cfg.IsBackend() {
+		config = templates.ServiceReleaseConfig
+	}
+	ok := CreateFile(ctx, ".github/release.json", config)
 	ok = CreateFile(ctx, ".github/.release.json", templates.ReleaseManifest) && ok
 	ctx.Tasks.Add(taskfile.Task{
 		Name: "commit-msg",
