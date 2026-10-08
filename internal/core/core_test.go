@@ -264,13 +264,13 @@ func TestGeneratedWorkflowIsLeastPrivilegeAndNeverCancelsMain(t *testing.T) {
 
 func TestDisabledFeaturesBecomeWorkflowInputs(t *testing.T) {
 	fs := fsys.NewMemory(nil)
-	run(t, fs, func(c *config.Init) { c.Testing, c.Versioning = false, false })
+	run(t, fs, func(c *config.Init) { c.Testing, c.Versioning, c.Linting = false, false, false })
 	var w workflow
 	if err := yaml.Unmarshal([]byte(read(t, fs, ".github/workflows/index.yml")), &w); err != nil {
 		t.Fatal(err)
 	}
 	with := w.Jobs["service"].With
-	if with["run_tests"] != false || with["enable_versioning"] != false || with["go_version"] != "1.27" {
+	if with["run_tests"] != false || with["enable_versioning"] != false || with["lint"] != false || with["go_version"] != "1.27" {
 		t.Errorf("with = %v", with)
 	}
 }
@@ -369,4 +369,15 @@ func TestASubdirectoryOfARepositoryIsAModuleInsideIt(t *testing.T) {
 	if !strings.HasPrefix(got, "module github.com/acme/platform/services/billing\n") {
 		t.Errorf("go.mod = %q", got)
 	}
+}
+
+func TestSecurityScanningDoesNotNeedLinting(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, func(c *config.Init) { c.Linting = false })
+	// CI's patch job runs govulncheck on every Go project
+	assertFiles(t, fs, ".forgego/govulncheck.mod")
+	if !strings.Contains(read(t, fs, "Taskfile.yml"), "  security:") {
+		t.Error("no security task without linting")
+	}
+	refuteFiles(t, fs, ".forgego/golangci-lint.mod", ".golangci.yml")
 }

@@ -44,6 +44,11 @@ on:
         required: false
         type: boolean
         default: true
+      lint:
+        description: "Run golangci-lint; false for a project scaffolded with --no-linting"
+        required: false
+        type: boolean
+        default: true
       release_binaries:
         description: "Build the release binaries with GoReleaser and attach them to the release"
         required: false
@@ -74,6 +79,7 @@ jobs:
       enable_secrets: ${{ inputs.enable_secrets }}
       auto_patch: ${{ inputs.auto_patch }}
       run_tests: ${{ inputs.run_tests }}
+      lint: ${{ inputs.lint }}
 
   auto-merge:
     uses: ./.github/workflows/merge.yml
@@ -107,6 +113,7 @@ jobs:
       enable_secrets: ${{ inputs.enable_secrets }}
       auto_patch: ${{ inputs.auto_patch }}
       run_tests: ${{ inputs.run_tests }}
+      lint: ${{ inputs.lint }}
 
   release:
     runs-on: ${{ inputs.runs_on }}

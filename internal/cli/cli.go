@@ -45,7 +45,7 @@ Modes (default --backend):
 
 Standard features (on by default; turn off with --no-<feature> or --no-all):
   --testing            go test through gotestsum
-  --linting            golangci-lint, govulncheck and lefthook git hooks
+  --linting            golangci-lint and lefthook git hooks
   --versioning         release-please and commit message checks
   --all                Turn every standard feature on; an explicit flag still wins
 
