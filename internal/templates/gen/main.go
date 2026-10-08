@@ -1,6 +1,7 @@
 // Command gen copies each pinned tool module from tools/<name>/ into the embedded
-// templates as <name>.mod and <name>.sum. Run it with `go generate ./...` after a tool
-// version changes; a test fails while the copies are out of date.
+// templates as <name>.mod and <name>.sum: a go.mod would make its directory a module,
+// which go:embed can't reach. Run it with `go generate ./...` after a tool version
+// changes; a test fails while the copies are out of date.
 package main
 
 import (

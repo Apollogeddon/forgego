@@ -13,6 +13,7 @@ import (
 	"github.com/apollogeddon/forgego/internal/gomod"
 	"github.com/apollogeddon/forgego/internal/project"
 	"github.com/apollogeddon/forgego/internal/taskfile"
+	"github.com/apollogeddon/forgego/internal/templates"
 )
 
 // ExitInvalidConfig is returned when the options can't be combined.
@@ -82,7 +83,7 @@ func Init(cfg config.Init, fs fsys.FS) int {
 		return 1
 	}
 	console.OK("forgego init complete")
-	task := "go tool -modfile=.forgego/task.mod task "
+	task := templates.Task.Command() + " "
 	switch {
 	case cfg.IsWebsite():
 		// Hugo manages a site's go.mod itself; go mod tidy would drop the theme

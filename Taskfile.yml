@@ -1,12 +1,12 @@
 version: '3'
 vars:
-  TASK: go tool -modfile=.forgego/task.mod task
+  TASK: go tool -modfile=.forgego/task/go.mod task
   FORGEGO: go run ./cmd/forgego
-  LEFTHOOK: go tool -modfile=.forgego/lefthook.mod lefthook
-  GOLANGCI_LINT: go tool -modfile=.forgego/golangci-lint.mod golangci-lint
-  GOVULNCHECK: go tool -modfile=.forgego/govulncheck.mod govulncheck
+  LEFTHOOK: go tool -modfile=.forgego/lefthook/go.mod lefthook
+  GOLANGCI_LINT: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint
+  GOVULNCHECK: go tool -modfile=.forgego/govulncheck/go.mod govulncheck
   VERSION: dev
-  GOTESTSUM: go tool -modfile=.forgego/gotestsum.mod gotestsum
+  GOTESTSUM: go tool -modfile=.forgego/gotestsum/go.mod gotestsum
 tasks:
   sync:
     desc: Refresh the files forgego manages in .forgego/ and .golangci.yml

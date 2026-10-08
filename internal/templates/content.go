@@ -108,7 +108,7 @@ func TestGreeting(t *testing.T) {
 // LefthookConfig runs the formatter on commit, the linter on push, and checks commit
 // messages when versioning is on (__COMMIT_MSG__). The git hooks run the pinned
 // lefthook through go tool, as there's no lefthook on PATH to find.
-const LefthookConfig = `lefthook: go tool -modfile=.forgego/lefthook.mod lefthook
+const LefthookConfig = `lefthook: go tool -modfile=.forgego/lefthook/go.mod lefthook
 
 pre-commit:
   commands:
@@ -121,33 +121,33 @@ __COMMIT_MSG__`
 // LefthookGoPreCommit formats the staged Go files.
 const LefthookGoPreCommit = `    format:
       glob: "*.go"
-      run: go tool -modfile=.forgego/golangci-lint.mod golangci-lint fmt {staged_files}
+      run: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint fmt {staged_files}
       stage_fixed: true
     sync-check:
-      run: go tool -modfile=.forgego/task.mod task sync-check
+      run: go tool -modfile=.forgego/task/go.mod task sync-check
 `
 
 // LefthookGoPrePush lints the whole module before it leaves the machine.
 const LefthookGoPrePush = `    lint:
       glob: "*.go"
-      run: go tool -modfile=.forgego/golangci-lint.mod golangci-lint run
+      run: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint run
 `
 
 // LefthookWebsitePreCommit has no Go to format, so only checks forgego's files.
 const LefthookWebsitePreCommit = `    sync-check:
-      run: go tool -modfile=.forgego/task.mod task sync-check
+      run: go tool -modfile=.forgego/task/go.mod task sync-check
 `
 
 // LefthookWebsitePrePush builds the site, which fails on broken templates and links.
 const LefthookWebsitePrePush = `    build:
-      run: go tool -modfile=.forgego/task.mod task build
+      run: go tool -modfile=.forgego/task/go.mod task build
 `
 
 // LefthookCommitMsg checks each commit message against Conventional Commits.
 const LefthookCommitMsg = `commit-msg:
   commands:
     conventional-commit:
-      run: go tool -modfile=.forgego/task.mod task commit-msg -- {1}
+      run: go tool -modfile=.forgego/task/go.mod task commit-msg -- {1}
 `
 
 // ReleaseConfig configures release-please for a Go module: versions are git tags, so

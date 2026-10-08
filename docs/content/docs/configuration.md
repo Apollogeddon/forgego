@@ -17,7 +17,7 @@ Managed files belong to ForgeGo. Don't edit them: `init` and `sync` overwrite th
 
 | File | Purpose |
 | :--- | :--- |
-| `.forgego/<tool>.mod` / `.sum` | The pinned module for each tool — see [Pinned Tools](#pinned-tools). |
+| `.forgego/<tool>/go.mod` / `go.sum` | The pinned module for each tool — see [Pinned Tools](#pinned-tools). |
 | `.forgego/golangci.yml` | ForgeGo's base golangci-lint config. |
 | `.golangci.yml` | The config golangci-lint reads, generated from the base and `.golangci.local.yml`. |
 
@@ -29,19 +29,20 @@ task sync
 
 `sync` refreshes:
 
-- each `.forgego/<tool>.mod` and `.sum` the project already has — it never adds a tool the project doesn't use;
+- each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use;
 - `.forgego/golangci.yml` and `.golangci.yml`, when the project has a `.golangci.local.yml`;
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
-- the `FORGEGO` var in `Taskfile.yml`, when it runs a published ForgeGo, so it runs the version doing the sync.
+- the `FORGEGO` var in `Taskfile.yml`, when it runs a published ForgeGo, so it runs the version doing the sync;
+- tools pinned by an earlier ForgeGo as `.forgego/<tool>.mod` and `.sum`, which it moves to `.forgego/<tool>/` and repoints `Taskfile.yml` and `lefthook.yml` at. Run `task hooks` afterwards, as the installed git hooks still name the old path.
 
 `task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It is already wired into the lefthook pre-commit hook and the CI linting job, so a stale file can't slip through.
 
 ## Pinned Tools
 
-Each tool lives in its own module file under `.forgego/` and runs with:
+Each tool lives in its own module, a `go.mod` and `go.sum` under `.forgego/<tool>/`, and runs with:
 
 ```bash
-go tool -modfile=.forgego/<tool>.mod <tool>
+go tool -modfile=.forgego/<tool>/go.mod <tool>
 ```
 
 Keeping one module per tool means no two tools' dependencies are ever resolved together, so a tool can't force another onto an incompatible version — and none of them touch your project's `go.mod` or `go.sum`. `go` downloads and caches a tool the first time it runs.
@@ -111,7 +112,7 @@ The base config uses golangci-lint's config `version: "2"`:
 `lefthook.yml` runs everything through the pinned tools, so the hooks need nothing on `PATH` and use the same versions as CI. Its first line tells the installed hooks how to run lefthook itself:
 
 ```yaml
-lefthook: go tool -modfile=.forgego/lefthook.mod lefthook
+lefthook: go tool -modfile=.forgego/lefthook/go.mod lefthook
 ```
 
 | Hook | Runs | Stage |
@@ -187,7 +188,7 @@ Update `maintainer`, `description` and `license` in the `nfpms` section; ForgeGo
 
 ### Hugo — Static Site
 
-`--website` scaffolds a [Hugo](https://gohugo.io/) site using the [Hextra](https://github.com/imfing/hextra) theme as a Hugo module, so the theme is versioned in `go.mod` like any other dependency. Hugo itself is pinned in `.forgego/hugo.mod`.
+`--website` scaffolds a [Hugo](https://gohugo.io/) site using the [Hextra](https://github.com/imfing/hextra) theme as a Hugo module, so the theme is versioned in `go.mod` like any other dependency. Hugo itself is pinned in `.forgego/hugo/go.mod`.
 
 | File | Purpose |
 | :--- | :--- |

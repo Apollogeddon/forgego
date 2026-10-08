@@ -42,7 +42,7 @@ on:
       build_command:
         required: false
         type: string
-        default: 'go tool -modfile=.forgego/task.mod task build'
+        default: 'go tool -modfile=.forgego/task/go.mod task build'
       auto_merge:
         required: false
         type: boolean

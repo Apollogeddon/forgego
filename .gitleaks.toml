@@ -1,0 +1,13 @@
+# Gitleaks skips go.sum files, but reads the h1: hashes in a checksum file under any
+# other name as API keys. forgego embeds each tool's go.sum as internal/templates/tools/
+# <tool>.sum (a go.mod there would make it a module go:embed can't reach), and pinned
+# tools as .forgego/<tool>.sum before they moved to .forgego/<tool>/go.sum.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Go checksum files"
+paths = [
+  '''^internal/templates/tools/[a-z-]+\.sum$''',
+  '''(^|/)\.forgego/[a-z-]+\.sum$''',
+]

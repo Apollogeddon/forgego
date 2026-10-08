@@ -59,7 +59,7 @@ Tidy the module and install the git hooks:
 
 ```bash
 go mod tidy
-go tool -modfile=.forgego/task.mod task hooks
+go tool -modfile=.forgego/task/go.mod task hooks
 ```
 
 ### 3. Extend
@@ -67,7 +67,7 @@ go tool -modfile=.forgego/task.mod task hooks
 Put your project's lint changes in `.golangci.local.yml`, then regenerate `.golangci.yml`:
 
 ```bash
-go tool -modfile=.forgego/task.mod task sync
+go tool -modfile=.forgego/task/go.mod task sync
 ```
 
 ## The Toolchain

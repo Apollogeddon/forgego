@@ -28,7 +28,7 @@ ForgeGo scaffolds tooling into Go projects: linting, testing, CI/CD, Docker imag
 
 ## No Global Installs
 
-Every tool ForgeGo sets up is pinned in its own module file under `.forgego/` and run with `go tool -modfile=.forgego/<tool>.mod <tool>`. A fresh clone needs only Go and Git: the first run of a task downloads the pinned tool, and no tool's dependencies end up in your project's `go.mod`. See [Configuration]({{< relref "configuration.md#pinned-tools" >}}) for how it works.
+Every tool ForgeGo sets up is pinned in its own module file under `.forgego/` and run with `go tool -modfile=.forgego/<tool>/go.mod <tool>`. A fresh clone needs only Go and Git: the first run of a task downloads the pinned tool, and no tool's dependencies end up in your project's `go.mod`. See [Configuration]({{< relref "configuration.md#pinned-tools" >}}) for how it works.
 
 ## Where Next
 

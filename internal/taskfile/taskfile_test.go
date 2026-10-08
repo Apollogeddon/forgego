@@ -7,7 +7,7 @@ import (
 
 func TestRenderNewTaskfile(t *testing.T) {
 	b := NewBuilder()
-	b.Var("LINT", "go tool -modfile=.forgego/golangci-lint.mod golangci-lint")
+	b.Var("LINT", "go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint")
 	b.Add(Task{Name: "lint", Desc: "Lint and fix", Cmds: []string{"{{.LINT}} run --fix"}})
 	out, changed, err := b.Render("", false)
 	if err != nil {
@@ -15,7 +15,7 @@ func TestRenderNewTaskfile(t *testing.T) {
 	}
 	want := `version: '3'
 vars:
-  LINT: go tool -modfile=.forgego/golangci-lint.mod golangci-lint
+  LINT: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint
 tasks:
   lint:
     desc: Lint and fix

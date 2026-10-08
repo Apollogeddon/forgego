@@ -41,10 +41,10 @@ Then tidy the module and install the git hooks:
 
 ```bash
 go mod tidy
-go tool -modfile=.forgego/task.mod task hooks
+go tool -modfile=.forgego/task/go.mod task hooks
 ```
 
-A website skips `go mod tidy`: Hugo manages a site's `go.mod` itself, and tidying would drop the theme. Run `go tool -modfile=.forgego/task.mod task dev` to preview it instead.
+A website skips `go mod tidy`: Hugo manages a site's `go.mod` itself, and tidying would drop the theme. Run `go tool -modfile=.forgego/task/go.mod task dev` to preview it instead.
 
 `init` is safe to re-run. It creates missing files and tasks, and leaves anything that already exists alone.
 
@@ -68,20 +68,20 @@ forgego init --force
 Every task runs through the pinned copy of [Task](https://taskfile.dev/):
 
 ```bash
-go tool -modfile=.forgego/task.mod task <name>
+go tool -modfile=.forgego/task/go.mod task <name>
 ```
 
 That is long to type, so alias it, or [install Task](https://taskfile.dev/installation/) and run `task <name>` — both read the same `Taskfile.yml`:
 
 ```bash
-alias task='go tool -modfile=.forgego/task.mod task'
+alias task='go tool -modfile=.forgego/task/go.mod task'
 ```
 
 The rest of this site writes `task <name>`. `task --list` shows every task with its description.
 
 ## Generated Tasks
 
-ForgeGo adds these tasks to `Taskfile.yml`. Tools are referenced through Taskfile vars (`{{.GOLANGCI_LINT}}` and so on), each set to `go tool -modfile=.forgego/<tool>.mod <tool>`.
+ForgeGo adds these tasks to `Taskfile.yml`. Tools are referenced through Taskfile vars (`{{.GOLANGCI_LINT}}` and so on), each set to `go tool -modfile=.forgego/<tool>/go.mod <tool>`.
 
 | Task | Command | Added when |
 | :--- | :--- | :--- |
@@ -183,11 +183,11 @@ A default `forgego init` (backend) in a project named `billing-api` produces:
 .
 ├── .forgego/
 │   ├── golangci.yml            # managed base config — refreshed by `forgego sync`
-│   ├── golangci-lint.mod/.sum  # pinned tools — refreshed by `forgego sync`
-│   ├── gotestsum.mod/.sum
-│   ├── govulncheck.mod/.sum
-│   ├── lefthook.mod/.sum
-│   └── task.mod/.sum
+│   ├── golangci-lint/          # pinned tools (go.mod, go.sum) — refreshed by `forgego sync`
+│   ├── gotestsum/
+│   ├── govulncheck/
+│   ├── lefthook/
+│   └── task/
 ├── .github/
 │   ├── .release.json           # release-please manifest
 │   ├── release.json            # release-please config
@@ -204,6 +204,6 @@ A default `forgego init` (backend) in a project named `billing-api` produces:
 └── Taskfile.yml
 ```
 
-`--library` replaces `cmd/` with `billingapi.go` and `billingapi_test.go` at the root, and has no `.goreleaser.yaml`. `--website` has no Go source, lint config or tests: it adds `hugo.toml`, `content/_index.md`, `content/docs/_index.md` and `.forgego/hugo.mod`. `--docker` adds `Dockerfile` and `.dockerignore`, and `--debian` adds a `packaging/` directory.
+`--library` replaces `cmd/` with `billingapi.go` and `billingapi_test.go` at the root, and has no `.goreleaser.yaml`. `--website` has no Go source, lint config or tests: it adds `hugo.toml`, `content/_index.md`, `content/docs/_index.md` and `.forgego/hugo/go.mod`. `--docker` adds `Dockerfile` and `.dockerignore`, and `--debian` adds a `packaging/` directory.
 
 The starter source is only created in a new project, one without a `go.mod`: an existing project keeps its own code, and the build tasks point at `./cmd/<name>`, so adjust them if your `main` package lives elsewhere. The starter test is only created next to the untouched starter source, never beside your own code.

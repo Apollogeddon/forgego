@@ -151,7 +151,7 @@ jobs:
     permissions:
       contents: write
     with:
-      build_command: 'go tool -modfile=.forgego/task.mod task build VERSION=ci'
+      build_command: 'go tool -modfile=.forgego/task/go.mod task build VERSION=ci'
       artifact_path: 'dist'
 ```
 

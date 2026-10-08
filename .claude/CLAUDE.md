@@ -4,13 +4,13 @@ General working rules (subagent routing, tool use, response style) live in the u
 
 ## Reading the codebase
 
-`internal/` and `cmd/` are ~2.5k lines of Go and the tests ~900: read what you need directly rather than delegating. Use an `Explore` agent only for `docs/` (a separate Hugo module) and the module cache. `go.sum`, the `.forgego/*.sum` and `tools/*/go.sum` files, `dist/`, `coverage.out` and `junit-report.xml` are denied to `Read` in `settings.json` — use `go list -m <module>` to check a resolved version.
+`internal/` and `cmd/` are ~2.5k lines of Go and the tests ~900: read what you need directly rather than delegating. Use an `Explore` agent only for `docs/` (a separate Hugo module) and the module cache. `go.sum`, the `.forgego/*/go.sum` and `tools/*/go.sum` files, `dist/`, `coverage.out` and `junit-report.xml` are denied to `Read` in `settings.json` — use `go list -m <module>` to check a resolved version.
 
 A `PostToolUse` hook (`.claude/hooks/hooks.go reads`) reminds you past 10 Read/Grep/Glob calls in a session.
 
 ## Quality Control
 
-Every task runs as `go tool -modfile=.forgego/task.mod task <name>`.
+Every task runs as `go tool -modfile=.forgego/task/go.mod task <name>`.
 
 - A `PostToolUse` hook (`.claude/hooks/hooks.go lint`) runs `golangci-lint fmt`, then `golangci-lint run --fix` on the package of every `.go` file touched by `Edit`/`Write`. Findings it can't fix are returned to you — fix them before moving on.
 - While iterating, run `task test:unit` (`go test -short ./...`: skips the integration test that scaffolds real projects and downloads every tool).
@@ -24,7 +24,7 @@ forgego is a project-scaffolding CLI for Go. `cmd/forgego` calls `internal/cli`,
 
 `core.Init` detects the project (`internal/project`: the module path from `go.mod`, else the enclosing repository's git remote plus the subdirectory, else the directory name), then runs the ordered **Feature pipeline** in `internal/features` (`Pipeline`): `Base → Linting → Build → Testing → Versioning → Docker → Debian → Workflow`. Each feature implements `Feature` (`ShouldRun`, `Apply`, `Cleanup`) and is mode-aware (`cfg.IsBackend()`/`IsLibrary()`/`IsWebsite()`). Shared helpers in `features/feature.go`: `CreateFile` (configs: only overwritten with `--force`), `CreateIfMissing` (the project's own source and go.mod: never overwritten), `WriteManaged` (`.forgego/` files: always refreshed), `RemoveFile` (only with `--force`). After the pipeline, core raises go.mod's `toolchain` line if the pinned tools need a newer Go (`internal/gomod`) and merges the features' tasks into `Taskfile.yml` (`internal/taskfile`, keeping the project's own tasks unless `--force`).
 
-**Tools.** Each tool a project uses is pinned in its own module file, `.forgego/<tool>.mod` and `.sum`, and run with `go tool -modfile=.forgego/<tool>.mod <tool>`, so no two tools' dependencies are resolved together and none touch the project's `go.mod` (golangci-lint and Hugo can't build from one module). The pins come from `tools/<tool>/go.mod`, separate modules Dependabot updates; `go generate` (`internal/templates/gen`) copies them into `internal/templates/tools/`, which is embedded. `internal/templates/tools.go` lists the tools. lefthook's git hooks name the `go tool` command in `lefthook.yml`, as there's no lefthook on PATH.
+**Tools.** Each tool a project uses is pinned in its own module file, `.forgego/<tool>/go.mod` and `go.sum`, and run with `go tool -modfile=.forgego/<tool>/go.mod <tool>`, so no two tools' dependencies are resolved together and none touch the project's `go.mod` (golangci-lint and Hugo can't build from one module). The pins come from `tools/<tool>/go.mod`, separate modules Dependabot updates; `go generate` (`internal/templates/gen`) copies them into `internal/templates/tools/`, which is embedded. `internal/templates/tools.go` lists the tools. lefthook's git hooks name the `go tool` command in `lefthook.yml`, as there's no lefthook on PATH.
 
 **golangci-lint** can't extend a config, so `internal/golangci` merges forgego's base (`internal/templates/configs/golangci.yml`, written to `.forgego/golangci.yml`) with the project's `.golangci.local.yml` into `.golangci.yml`. `forgego sync` (`internal/sync`) refreshes all the managed files, go.mod's toolchain line, and the `FORGEGO` Taskfile var while it points at a published forgego; `--check` reports drift for CI and the pre-commit hook.
 

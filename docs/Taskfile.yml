@@ -1,8 +1,8 @@
 version: '3'
 vars:
-  TASK: go tool -modfile=.forgego/task.mod task
+  TASK: go tool -modfile=.forgego/task/go.mod task
   FORGEGO: go -C .. run ./cmd/forgego -C docs
-  HUGO: go tool -modfile=.forgego/hugo.mod hugo
+  HUGO: go tool -modfile=.forgego/hugo/go.mod hugo
 tasks:
   sync:
     desc: Refresh the files forgego manages in .forgego/ and .golangci.yml

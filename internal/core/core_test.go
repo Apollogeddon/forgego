@@ -76,12 +76,12 @@ func TestBackend(t *testing.T) {
 	run(t, fs, nil)
 	assertFiles(t, fs,
 		"go.mod", "cmd/billing-api/main.go", "cmd/billing-api/main_test.go", ".gitignore",
-		".forgego/task.mod", ".forgego/task.sum", ".forgego/golangci-lint.mod", ".forgego/gotestsum.mod",
-		".forgego/govulncheck.mod", ".forgego/lefthook.mod", ".forgego/golangci.yml",
+		".forgego/task/go.mod", ".forgego/task/go.sum", ".forgego/golangci-lint/go.mod", ".forgego/gotestsum/go.mod",
+		".forgego/govulncheck/go.mod", ".forgego/lefthook/go.mod", ".forgego/golangci.yml",
 		".golangci.yml", ".golangci.local.yml", "lefthook.yml", ".goreleaser.yaml",
 		".github/release.json", ".github/.release.json", ".github/workflows/index.yml", "Taskfile.yml",
 	)
-	refuteFiles(t, fs, ".forgego/hugo.mod", "Dockerfile", "hugo.toml")
+	refuteFiles(t, fs, ".forgego/hugo/go.mod", "Dockerfile", "hugo.toml")
 	if got := read(t, fs, "go.mod"); got != "module billing-api\n\ngo 1.27.0\n" {
 		t.Errorf("go.mod = %q", got)
 	}
@@ -109,9 +109,9 @@ func TestLibrary(t *testing.T) {
 func TestWebsite(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, func(c *config.Init) { c.Mode = config.Website })
-	assertFiles(t, fs, "hugo.toml", "content/_index.md", "content/docs/_index.md", ".forgego/hugo.mod", "lefthook.yml")
+	assertFiles(t, fs, "hugo.toml", "content/_index.md", "content/docs/_index.md", ".forgego/hugo/go.mod", "lefthook.yml")
 	// a Hugo site has no Go to lint or test
-	refuteFiles(t, fs, ".golangci.yml", ".forgego/golangci-lint.mod", ".forgego/gotestsum.mod", "cmd/billing-api/main.go")
+	refuteFiles(t, fs, ".golangci.yml", ".forgego/golangci-lint/go.mod", ".forgego/gotestsum/go.mod", "cmd/billing-api/main.go")
 }
 
 func TestModuleComesFromTheGitRemote(t *testing.T) {
@@ -200,7 +200,7 @@ func TestDisabledFeaturesAreRemovedOnlyWithForce(t *testing.T) {
 
 	run(t, fs, func(c *config.Init) { c.Linting, c.Testing, c.Force = false, false, true })
 	refuteFiles(t, fs, "Dockerfile", "packaging/billing-api.service", "lefthook.yml", ".golangci.yml",
-		".forgego/golangci-lint.mod", ".forgego/gotestsum.mod")
+		".forgego/golangci-lint/go.mod", ".forgego/gotestsum/go.mod")
 	// the project's own local config is never removed
 	assertFiles(t, fs, ".golangci.local.yml")
 }
@@ -285,14 +285,14 @@ func TestSyncFindsAndFixesDrift(t *testing.T) {
 		t.Fatalf("a fresh project has drift: %d", code)
 	}
 
-	_ = fs.WriteFile(dir+"/.forgego/task.mod", "stale\n")
+	_ = fs.WriteFile(dir+"/.forgego/task/go.mod", "stale\n")
 	_ = fs.WriteFile(dir+"/.golangci.local.yml", "linters:\n  enable: [wsl_v5]\n")
 	version.Set("v1.3.0")
 	defer version.Set("v1.2.3")
 	if code := sync.Run(fs, dir, true); code != 1 {
 		t.Fatalf("sync --check found no drift")
 	}
-	if read(t, fs, ".forgego/task.mod") != "stale\n" {
+	if read(t, fs, ".forgego/task/go.mod") != "stale\n" {
 		t.Error("sync --check wrote a file")
 	}
 
@@ -307,6 +307,42 @@ func TestSyncFindsAndFixesDrift(t *testing.T) {
 	}
 	if !strings.Contains(read(t, fs, "Taskfile.yml"), "forgego@v1.3.0") {
 		t.Error("sync didn't move the Taskfile to the new forgego")
+	}
+}
+
+func TestSyncMovesToolsPinnedAtTheOldPaths(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	// an earlier forgego pinned each tool as .forgego/<tool>.mod and .sum
+	for _, rel := range []string{"Taskfile.yml", "lefthook.yml"} {
+		_ = fs.WriteFile(dir+"/"+rel, strings.NewReplacer(
+			"/task/go.mod", "/task.mod", "/lefthook/go.mod", "/lefthook.mod", "/golangci-lint/go.mod", "/golangci-lint.mod",
+		).Replace(read(t, fs, rel)))
+	}
+	for _, tool := range []string{"task", "lefthook", "golangci-lint"} {
+		_ = fs.WriteFile(dir+"/.forgego/"+tool+".mod", read(t, fs, ".forgego/"+tool+"/go.mod"))
+		_ = fs.WriteFile(dir+"/.forgego/"+tool+".sum", read(t, fs, ".forgego/"+tool+"/go.sum"))
+		_ = fs.Remove(dir + "/.forgego/" + tool + "/go.mod")
+		_ = fs.Remove(dir + "/.forgego/" + tool + "/go.sum")
+	}
+	if code := sync.Run(fs, dir, true); code != 1 {
+		t.Fatalf("sync --check didn't report the old paths")
+	}
+
+	if code := sync.Run(fs, dir, false); code != 0 {
+		t.Fatalf("sync returned %d", code)
+	}
+	if code := sync.Run(fs, dir, true); code != 0 {
+		t.Errorf("drift remains after sync")
+	}
+	assertFiles(t, fs, ".forgego/task/go.mod", ".forgego/task/go.sum", ".forgego/lefthook/go.mod", ".forgego/golangci-lint/go.sum")
+	refuteFiles(t, fs, ".forgego/task.mod", ".forgego/task.sum", ".forgego/lefthook.mod", ".forgego/golangci-lint.sum")
+	for _, rel := range []string{"Taskfile.yml", "lefthook.yml"} {
+		for _, tool := range []string{"task", "lefthook", "golangci-lint"} {
+			if content := read(t, fs, rel); strings.Contains(content, ".forgego/"+tool+".mod") {
+				t.Errorf("%s still runs %s from its old path:\n%s", rel, tool, content)
+			}
+		}
 	}
 }
 
@@ -378,11 +414,11 @@ func TestSecurityScanningDoesNotNeedLinting(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, func(c *config.Init) { c.Linting = false })
 	// CI's patch job runs govulncheck on every Go project
-	assertFiles(t, fs, ".forgego/govulncheck.mod")
+	assertFiles(t, fs, ".forgego/govulncheck/go.mod")
 	if !strings.Contains(read(t, fs, "Taskfile.yml"), "  security:") {
 		t.Error("no security task without linting")
 	}
-	refuteFiles(t, fs, ".forgego/golangci-lint.mod", ".golangci.yml")
+	refuteFiles(t, fs, ".forgego/golangci-lint/go.mod", ".golangci.yml")
 }
 
 func TestAnExistingGoModsGoVersionDrivesCIUnlessGoIsGiven(t *testing.T) {

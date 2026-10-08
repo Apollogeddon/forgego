@@ -47,7 +47,7 @@ on:
       build_command:
         required: false
         type: string
-        default: 'go tool -modfile=.forgego/task.mod task build'
+        default: 'go tool -modfile=.forgego/task/go.mod task build'
 
 jobs:
   quality:
@@ -76,13 +76,13 @@ jobs:
           go-version-file: ${{ inputs.working_directory }}/go.mod
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
-            ${{ inputs.working_directory }}/.forgego/*.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
       - name: Tests
         if: inputs.run_tests
         # the race detector needs cgo, which GitHub's Ubuntu runners have
         env:
           GOFLAGS: -race
-        run: go tool -modfile=.forgego/task.mod task test
+        run: go tool -modfile=.forgego/task/go.mod task test
       - name: Upload Coverage
         if: always() && inputs.run_tests
         uses: actions/upload-artifact@v7
@@ -110,7 +110,7 @@ jobs:
           go-version-file: ${{ inputs.working_directory }}/go.mod
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
-            ${{ inputs.working_directory }}/.forgego/*.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
       - name: Build
         run: ${{ inputs.build_command }}
       - name: Upload Build Artifact
@@ -143,7 +143,7 @@ jobs:
       # just those. The standard library is fixed by a newer Go, not by go get.
       - name: Upgrade vulnerable modules
         run: |
-          go tool -modfile=.forgego/govulncheck.mod govulncheck -format json ./... > "$RUNNER_TEMP/govulncheck.json"
+          go tool -modfile=.forgego/govulncheck/go.mod govulncheck -format json ./... > "$RUNNER_TEMP/govulncheck.json"
           mapfile -t upgrades < <(jq -r '
             select((.finding.fixed_version // "") != "")
             | .finding

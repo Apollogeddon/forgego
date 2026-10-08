@@ -1,19 +1,19 @@
-lefthook: go tool -modfile=.forgego/lefthook.mod lefthook
+lefthook: go tool -modfile=.forgego/lefthook/go.mod lefthook
 
 pre-commit:
   commands:
     format:
       glob: "*.go"
-      run: go tool -modfile=.forgego/golangci-lint.mod golangci-lint fmt {staged_files}
+      run: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint fmt {staged_files}
       stage_fixed: true
     sync-check:
-      run: go tool -modfile=.forgego/task.mod task sync-check
+      run: go tool -modfile=.forgego/task/go.mod task sync-check
 pre-push:
   commands:
     lint:
       glob: "*.go"
-      run: go tool -modfile=.forgego/golangci-lint.mod golangci-lint run
+      run: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint run
 commit-msg:
   commands:
     conventional-commit:
-      run: go tool -modfile=.forgego/task.mod task commit-msg -- {1}
+      run: go tool -modfile=.forgego/task/go.mod task commit-msg -- {1}
