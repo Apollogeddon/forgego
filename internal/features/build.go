@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/apollogeddon/forgego/internal/config"
+	"github.com/apollogeddon/forgego/internal/console"
 	"github.com/apollogeddon/forgego/internal/taskfile"
 	"github.com/apollogeddon/forgego/internal/templates"
 )
@@ -30,11 +31,15 @@ func (Build) Apply(ctx *Context) bool {
 
 func buildBackend(ctx *Context) bool {
 	name := ctx.Project.Name
-	values := map[string]string{"NAME": name, "NFPMS": ""}
+	values := map[string]string{"NAME": name, "SLUG": ctx.Project.Slug, "NFPMS": ""}
 	if ctx.Cfg.Debian {
 		values["NFPMS"] = templates.Render(templates.GoreleaserNfpms, values)
 	}
 	ok := CreateFile(ctx, ".goreleaser.yaml", templates.Render(templates.Goreleaser, values))
+	if existing, err := ctx.FS.ReadFile(ctx.path(".goreleaser.yaml")); err == nil && ctx.Cfg.Debian &&
+		!ctx.Cfg.Force && !strings.Contains(existing, "nfpms:") {
+		console.Warn(".goreleaser.yaml builds no .deb: re-run with --force, or add its nfpms section yourself")
+	}
 
 	ctx.Tasks.Add(taskfile.Task{
 		Name: "build",

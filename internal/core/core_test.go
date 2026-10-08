@@ -127,7 +127,10 @@ func TestModuleComesFromTheGitRemote(t *testing.T) {
 func TestAnExistingGoModNamesTheProject(t *testing.T) {
 	fs := fsys.NewMemory(map[string]string{dir + "/go.mod": "module example.com/tools/v2\n\ngo 1.27.1\n"})
 	run(t, fs, nil)
-	assertFiles(t, fs, "cmd/tools/main.go", "cmd/tools/main_test.go")
+	refuteFiles(t, fs, "cmd/tools/main.go", "cmd/tools/main_test.go")
+	if !strings.Contains(read(t, fs, "Taskfile.yml"), "./cmd/tools") {
+		t.Error("the build task doesn't use the module's name")
+	}
 	if read(t, fs, "go.mod") != "module example.com/tools/v2\n\ngo 1.27.1\n" {
 		t.Error("rewrote an existing go.mod")
 	}
@@ -380,4 +383,57 @@ func TestSecurityScanningDoesNotNeedLinting(t *testing.T) {
 		t.Error("no security task without linting")
 	}
 	refuteFiles(t, fs, ".forgego/golangci-lint.mod", ".golangci.yml")
+}
+
+func TestAnExistingGoModsGoVersionDrivesCIUnlessGoIsGiven(t *testing.T) {
+	fs := fsys.NewMemory(map[string]string{dir + "/go.mod": "module example.com/api\n\ngo 1.25.3\n"})
+	run(t, fs, func(c *config.Init) { c.Go = ""; c.Docker = true })
+	if !strings.Contains(read(t, fs, ".github/workflows/index.yml"), "go_version: '1.25.3'") {
+		t.Error("CI doesn't use go.mod's Go")
+	}
+	if !strings.Contains(read(t, fs, "Dockerfile"), "golang:1.25 AS build") {
+		t.Error("the Dockerfile doesn't use go.mod's Go")
+	}
+}
+
+func TestAnExistingProjectGetsNoStarterBesideItsOwnCode(t *testing.T) {
+	fs := fsys.NewMemory(map[string]string{
+		dir + "/go.mod":     "module github.com/acme/billing-api\n\ngo 1.27.0\n",
+		dir + "/billing.go": "package billing\n",
+	})
+	run(t, fs, func(c *config.Init) { c.Mode = config.Library })
+	refuteFiles(t, fs, "billingapi.go", "billingapi_test.go")
+	run(t, fs, nil)
+	refuteFiles(t, fs, "cmd/billing-api/main.go", "cmd/billing-api/main_test.go")
+}
+
+func TestSwitchingAFeatureOffWithForceRemovesItsTasksAndLeavesNoDrift(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, func(c *config.Init) { c.Docker = true })
+	run(t, fs, func(c *config.Init) { c.Linting, c.Testing, c.Docker, c.Force = false, false, false, true })
+	taskfile := read(t, fs, "Taskfile.yml")
+	for _, gone := range []string{"  lint:", "  format:", "  hooks:", "  test:", "docker:build", "GOLANGCI_LINT", "LEFTHOOK", "GOTESTSUM"} {
+		if strings.Contains(taskfile, gone) {
+			t.Errorf("Taskfile.yml still has %s:\n%s", gone, taskfile)
+		}
+	}
+	if !strings.Contains(taskfile, "  build:") || !strings.Contains(taskfile, "  security:") {
+		t.Error("removed tasks that are still in use")
+	}
+	assertFiles(t, fs, ".golangci.local.yml")
+	if code := sync.Run(fs, dir, true); code != 0 {
+		t.Error("sync --check reports drift after linting was switched off")
+	}
+}
+
+func TestDryRunOnlyReportsRealChanges(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	var out strings.Builder
+	console.SetOutput(&out, &out)
+	defer console.SetOutput(io.Discard, io.Discard)
+	run(t, fs, func(c *config.Init) { c.DryRun = true })
+	if strings.Contains(out.String(), "Would refresh") {
+		t.Errorf("an up-to-date project still reports refreshes:\n%s", out.String())
+	}
 }

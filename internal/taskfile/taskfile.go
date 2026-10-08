@@ -22,11 +22,16 @@ type Var struct {
 	Value string
 }
 
-// Builder accumulates vars and tasks in the order features add them.
+// Builder accumulates vars and tasks in the order features add them, and the names of
+// tasks and vars to remove.
 type Builder struct {
-	vars  []Var
-	tasks []Task
+	vars    []Var
+	tasks   []Task
+	removed []string
 }
+
+// Remove drops tasks or vars of these names from the Taskfile when it's rendered.
+func (b *Builder) Remove(names ...string) { b.removed = append(b.removed, names...) }
 
 // NewBuilder returns an empty Builder.
 func NewBuilder() *Builder { return &Builder{} }
@@ -77,6 +82,13 @@ func (b *Builder) Render(existing string, force bool) (string, []string, error) 
 	for _, t := range b.tasks {
 		if yamlx.SetIfAbsent(tasks, t.Name, taskNode(t), force) {
 			changed = append(changed, "task "+t.Name)
+		}
+	}
+	for _, name := range b.removed {
+		for _, section := range []string{"tasks", "vars"} {
+			if m := yamlx.Get(root, section); m != nil && yamlx.Delete(m, name) {
+				changed = append(changed, "removed "+name)
+			}
 		}
 	}
 	out, err := yamlx.Encode(root)

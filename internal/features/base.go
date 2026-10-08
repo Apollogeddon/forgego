@@ -61,6 +61,14 @@ func (Base) Apply(ctx *Context) bool {
 // starter creates the starter source when it's missing, and notes whether the project's
 // source is still the starter.
 func starter(ctx *Context, rel, content string) bool {
-	ctx.Starter = isStarter(ctx, rel, content)
+	// An existing project has its own code, which a starter beside it could break: a second
+	// package in the directory, or a main the build tasks would point at instead.
+	existing, err := ctx.FS.ReadFile(ctx.path(rel))
+	if ctx.Project.HasGoMod {
+		ctx.Starter = err == nil && existing == content
+		return true
+	}
+	// missing, so about to be created, or still forgego's untouched starter
+	ctx.Starter = err != nil || existing == content
 	return CreateIfMissing(ctx, rel, content)
 }

@@ -56,7 +56,7 @@ Optional features:
 Options:
   --force              Overwrite existing config files and tasks
   --dry-run            Show what would change without writing
-  --go VERSION         Target Go version (default ` + config.DefaultGo + `)
+  --go VERSION         Target Go version (default: go.mod's, else ` + config.DefaultGo + `)
   -C, --path DIR       Target directory (default: current directory)
 `
 
@@ -125,7 +125,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 
 	var backend, library, website, docker, debian, force, dryRun bool
 	var all, testing, linting, versioning feature
-	goVersion, target := config.DefaultGo, "."
+	goVersion, target := "", "."
 	fs.BoolVar(&backend, "backend", false, "")
 	fs.BoolVar(&library, "library", false, "")
 	fs.BoolVar(&website, "website", false, "")

@@ -2,7 +2,6 @@ package templates
 
 import (
 	"embed"
-	"strings"
 
 	"golang.org/x/mod/modfile"
 )
@@ -49,23 +48,6 @@ func (t Tool) ModFile() string { return mustRead("tools/" + t.Name + ".mod") }
 
 // SumFile is the pinned go.sum for the tool.
 func (t Tool) SumFile() string { return mustRead("tools/" + t.Name + ".sum") }
-
-// Version is the pinned version of the module that provides the tool: the
-// longest required module path that is a prefix of the tool's package.
-func (t Tool) Version() string {
-	f, err := modfile.ParseLax(t.ModPath(), []byte(t.ModFile()), nil)
-	if err != nil {
-		panic(err)
-	}
-	best, version := "", ""
-	for _, r := range f.Require {
-		p := r.Mod.Path
-		if (t.Package == p || strings.HasPrefix(t.Package, p+"/")) && len(p) > len(best) {
-			best, version = p, r.Mod.Version
-		}
-	}
-	return version
-}
 
 func mustRead(name string) string {
 	b, err := toolFiles.ReadFile(name)

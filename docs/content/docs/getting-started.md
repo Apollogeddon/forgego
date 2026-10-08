@@ -103,7 +103,7 @@ ForgeGo adds these tasks to `Taskfile.yml`. Tools are referenced through Taskfil
 
 A backend also gets a `VERSION` var, `dev` by default, which `build` stamps into `main.version`. Pass arguments to `start` after `--`: `task start -- --help`.
 
-Existing tasks and vars with the same name are kept unless you pass `--force`. Tasks you add yourself are never touched, and `init` never removes a task.
+Existing tasks and vars with the same name are kept unless you pass `--force`. Tasks you add yourself are never touched. With `--force`, turning a feature off also removes the tasks and vars it added, along with its files.
 
 ## CLI Options
 
@@ -133,12 +133,12 @@ forgego --version
 | `--debian` | Add a `.deb` package with a systemd unit (`--backend` only). |
 | `--force` | Overwrite existing config files and tasks. |
 | `--dry-run` | Show what would change without writing anything. |
-| `--go VERSION` | Target Go version, such as `1.27` or `1.27.1` (default: `1.27`). |
+| `--go VERSION` | Target Go version, such as `1.27` or `1.27.1` (default: the existing `go.mod`'s, else `1.27`). |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
 Only one mode can be chosen. An invalid combination — `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`.
 
-`--go` sets the `go` line of a new `go.mod` (`1.27` becomes `go 1.27.0`), the `go_version` passed to CI, and the `golang` image the `Dockerfile` builds with. An existing `go.mod`'s `go` line is never changed.
+`--go` sets the `go` line of a new `go.mod` (`1.27` becomes `go 1.27.0`), the `go_version` passed to CI, and the `golang` image the `Dockerfile` builds with. Without it, an existing project's `go.mod` decides those, and its `go` line is never changed.
 
 `--no-testing`, `--no-linting` and `--no-versioning` also switch off the matching jobs in the generated CI workflow.
 
@@ -172,7 +172,7 @@ With versioning on, lefthook runs it as the `commit-msg` hook.
 2. The first remote in the enclosing Git repository's `.git/config`, plus the subdirectory: `git@github.com:acme/api.git` and `https://github.com/acme/api` both give `github.com/acme/api`, and its `services/billing` directory gives `github.com/acme/api/services/billing`.
 3. The directory name.
 
-The project name is the last element of the module path without a `/vN` suffix (`billing-api`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit.
+The project name is the last element of the module path without a `/vN` suffix (`billing-api`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit. The Docker image, the `.deb` package, its systemd unit and its system user use the name lowercased, with anything but letters and digits turned into dashes (`BillingAPI` gives `billingapi`).
 
 ## Project Structure
 
@@ -205,4 +205,4 @@ A default `forgego init` (backend) in a project named `billing-api` produces:
 
 `--library` replaces `cmd/` with `billingapi.go` and `billingapi_test.go` at the root, and has no `.goreleaser.yaml`. `--website` has no Go source, lint config or tests: it adds `hugo.toml`, `content/_index.md`, `content/docs/_index.md` and `.forgego/hugo.mod`. `--docker` adds `Dockerfile` and `.dockerignore`, and `--debian` adds a `packaging/` directory.
 
-The starter test is only created next to the untouched starter source. If `main.go` (or the library's starter file) already holds your own code, `init` doesn't add a test for code that isn't there.
+The starter source is only created in a new project, one without a `go.mod`: an existing project keeps its own code, and the build tasks point at `./cmd/<name>`, so adjust them if your `main` package lives elsewhere. The starter test is only created next to the untouched starter source, never beside your own code.

@@ -10,7 +10,7 @@ const (
 	Website Mode = "website"
 )
 
-// DefaultGo is the Go version new projects target.
+// DefaultGo is the Go version a new project targets; an existing go.mod's version wins.
 const DefaultGo = "1.27"
 
 // Init is the resolved configuration for `forgego init`.
@@ -52,7 +52,7 @@ func (c Init) Validate() []string {
 	if c.Debian && !c.IsBackend() {
 		errs = append(errs, "--debian is only available in backend mode")
 	}
-	if !validGoVersion(c.Go) {
+	if c.Go != "" && !validGoVersion(c.Go) {
 		errs = append(errs, "--go must be a Go release such as 1.27 or 1.27.1, got "+c.Go)
 	}
 	return errs

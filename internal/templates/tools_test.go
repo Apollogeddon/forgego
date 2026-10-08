@@ -19,11 +19,3 @@ func TestToolCopiesMatchTheToolsModules(t *testing.T) {
 		}
 	}
 }
-
-func TestEveryToolHasAPinnedVersion(t *testing.T) {
-	for _, tool := range Tools {
-		if tool.Version() == "" {
-			t.Errorf("%s has no version for %s", tool.Name, tool.Package)
-		}
-	}
-}

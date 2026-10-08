@@ -38,15 +38,15 @@ __NFPMS__`
 // GoreleaserNfpms adds the .deb package for --debian.
 const GoreleaserNfpms = `
 nfpms:
-  - package_name: __NAME__
+  - package_name: __SLUG__
     formats: [deb]
-    maintainer: __NAME__ maintainers
+    maintainer: __SLUG__ maintainers
     description: __NAME__
     license: MIT
     bindir: /usr/bin
     contents:
-      - src: packaging/__NAME__.service
-        dst: /lib/systemd/system/__NAME__.service
+      - src: packaging/__SLUG__.service
+        dst: /lib/systemd/system/__SLUG__.service
     scripts:
       postinstall: packaging/postinstall.sh
       preremove: packaging/preremove.sh
@@ -61,8 +61,8 @@ After=network.target
 Type=simple
 ExecStart=/usr/bin/__NAME__
 Restart=on-failure
-User=__NAME__
-Group=__NAME__
+User=__SLUG__
+Group=__SLUG__
 
 [Install]
 WantedBy=multi-user.target
@@ -72,11 +72,11 @@ WantedBy=multi-user.target
 // where systemd is running (not in a container image build, for one).
 const Postinstall = `#!/bin/sh
 set -e
-id -u __NAME__ >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin --user-group __NAME__
+id -u __SLUG__ >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin --user-group __SLUG__
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload
-    systemctl enable __NAME__.service
-    systemctl restart __NAME__.service
+    systemctl enable __SLUG__.service
+    systemctl restart __SLUG__.service
 fi
 `
 
@@ -84,7 +84,7 @@ fi
 const Preremove = `#!/bin/sh
 set -e
 if [ -d /run/systemd/system ]; then
-    systemctl disable --now __NAME__.service || true
+    systemctl disable --now __SLUG__.service || true
 fi
 `
 

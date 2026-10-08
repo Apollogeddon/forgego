@@ -4,7 +4,7 @@ linkTitle: Migration
 weight: 5
 ---
 
-Adopting ForgeGo in an existing Go project reduces configuration overhead, but means retiring the tooling it replaces. ForgeGo never overwrites your `go.mod` or source code, and leaves existing config files alone unless you pass `--force`.
+Adopting ForgeGo in an existing Go project reduces configuration overhead, but means retiring the tooling it replaces. ForgeGo adds no starter code to an existing project and never changes your source, or your `go.mod`'s module and `go` lines: it only adds a `toolchain` line when the pinned tools need a newer Go than the project declares. It leaves existing config files alone unless you pass `--force`.
 
 ## Migration Checklist
 
