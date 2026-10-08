@@ -356,3 +356,17 @@ func TestAnOlderGoGetsAToolchainTheToolsCanRunOn(t *testing.T) {
 		t.Error("sync --check missed the toolchain the tools need")
 	}
 }
+
+func TestASubdirectoryOfARepositoryIsAModuleInsideIt(t *testing.T) {
+	fs := fsys.NewMemory(map[string]string{
+		"/work/.git/config": "[remote \"origin\"]\n\turl = https://github.com/acme/platform.git\n",
+	})
+	cfg := config.Default("/work/services/Billing")
+	if code := Init(cfg, fs); code != 0 {
+		t.Fatalf("Init returned %d", code)
+	}
+	got, _ := fs.ReadFile("/work/services/Billing/go.mod")
+	if !strings.HasPrefix(got, "module github.com/acme/platform/services/billing\n") {
+		t.Errorf("go.mod = %q", got)
+	}
+}

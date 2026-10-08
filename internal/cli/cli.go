@@ -28,6 +28,8 @@ Usage:
   forgego commit-msg FILE      Check a commit message against Conventional Commits
   forgego --version
 
+  -C DIR                       Run as if forgego was started in DIR
+
 Run forgego <command> --help for a command's options.
 `
 
@@ -61,6 +63,14 @@ Options:
 // Run executes forgego with args (without the program name) and returns the exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
 	console.SetOutput(stdout, stderr)
+	// like git -C and go -C: run as if started in another directory
+	if len(args) >= 2 && (args[0] == "-C" || args[0] == "--path") {
+		if err := os.Chdir(args[1]); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		args = args[2:]
+	}
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return 1

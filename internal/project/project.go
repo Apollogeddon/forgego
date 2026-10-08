@@ -57,13 +57,35 @@ func Detect(fs fsys.FS, dir string) (Info, error) {
 	return info, nil
 }
 
-// moduleFromRemote turns the first remote URL in .git/config into a module path:
-// git@github.com:acme/api.git and https://github.com/acme/api both give github.com/acme/api.
+// moduleFromRemote turns the first remote URL in the repository's .git/config into a
+// module path: git@github.com:acme/api.git and https://github.com/acme/api both give
+// github.com/acme/api, and the services/billing directory of that repository gives
+// github.com/acme/api/services/billing.
 func moduleFromRemote(fs fsys.FS, dir string) string {
-	content, err := fs.ReadFile(filepath.Join(dir, ".git", "config"))
+	root, content := dir, ""
+	for {
+		if c, err := fs.ReadFile(filepath.Join(root, ".git", "config")); err == nil {
+			content = c
+			break
+		}
+		parent := filepath.Dir(root)
+		if parent == root {
+			return ""
+		}
+		root = parent
+	}
+	sub, err := filepath.Rel(root, dir)
 	if err != nil {
 		return ""
 	}
+	module := remoteModule(content)
+	if module == "" || sub == "." {
+		return module
+	}
+	return module + "/" + strings.ToLower(filepath.ToSlash(sub))
+}
+
+func remoteModule(content string) string {
 	match := remoteURL.FindStringSubmatch(content)
 	if match == nil {
 		return ""
