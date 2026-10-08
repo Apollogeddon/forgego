@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/Apollogeddon/forgego/compare/v1.0.0...v1.0.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* release a backend as a draft, so GoReleaser can attach its binaries ([9adffad](https://github.com/Apollogeddon/forgego/commit/9adffade9968157dbff4e8c0c88c1c6e5eff78b4))
+* release a backend as a draft, so GoReleaser can attach its binaries ([862a0fd](https://github.com/Apollogeddon/forgego/commit/862a0fd202f74ed89e2dc87054c7ed5e4d81fb7e))
+
 ## 1.0.0 (2026-10-08)
 
 
