@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/Apollogeddon/forgego/compare/v1.0.1...v1.0.2) (2026-10-08)
+
+
+### Bug Fixes
+
+* auto-merge Dependabot PRs through the API, so a runner needs no gh CLI ([e860f43](https://github.com/Apollogeddon/forgego/commit/e860f43eefcfd86c0fe444f1e99586ad72b86881))
+* auto-merge Dependabot PRs through the API, so a runner needs no gh CLI ([d68b82b](https://github.com/Apollogeddon/forgego/commit/d68b82b975a632cdf21115274163dd045680f58c))
+
 ## [1.0.1](https://github.com/Apollogeddon/forgego/compare/v1.0.0...v1.0.1) (2026-10-08)
 
 
