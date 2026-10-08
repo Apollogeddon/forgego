@@ -2,6 +2,7 @@ package features
 
 import (
 	"github.com/apollogeddon/forgego/internal/config"
+	"github.com/apollogeddon/forgego/internal/console"
 	"github.com/apollogeddon/forgego/internal/golangci"
 	"github.com/apollogeddon/forgego/internal/taskfile"
 	"github.com/apollogeddon/forgego/internal/templates"
@@ -46,6 +47,7 @@ func lintGo(ctx *Context) bool {
 	}
 	merged, err := golangci.Render(local)
 	if err != nil {
+		console.Err("Failed to merge %s into the base config: %v", golangci.LocalPath, err)
 		return false
 	}
 	ok = WriteManaged(ctx, golangci.ConfigPath, merged) && ok
@@ -60,6 +62,7 @@ func (Linting) Cleanup(ctx *Context) {
 	if ctx.Cfg.Linting {
 		return
 	}
+	RemoveTasks(ctx, "hooks", "lint", "format", "LEFTHOOK", "GOLANGCI_LINT")
 	RemoveFile(ctx, "lefthook.yml")
 	RemoveFile(ctx, golangci.ConfigPath)
 	RemoveFile(ctx, golangci.BasePath)

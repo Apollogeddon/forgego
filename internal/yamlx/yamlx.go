@@ -87,6 +87,17 @@ func SetIfAbsent(m *yaml.Node, key string, value *yaml.Node, force bool) bool {
 	return true
 }
 
+// Delete removes key from a mapping, reporting whether it was there.
+func Delete(m *yaml.Node, key string) bool {
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			m.Content = append(m.Content[:i], m.Content[i+2:]...)
+			return true
+		}
+	}
+	return false
+}
+
 // Child returns the mapping under key, creating it when missing.
 func Child(m *yaml.Node, key string) *yaml.Node {
 	if child := Get(m, key); child != nil && child.Kind == yaml.MappingNode {

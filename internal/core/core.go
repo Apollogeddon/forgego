@@ -50,6 +50,13 @@ func Init(cfg config.Init, fs fsys.FS) int {
 		return 1
 	}
 	console.Info("Module: %s", info.Module)
+	if cfg.Go == "" {
+		// CI and the Docker image use the project's own Go unless --go says otherwise
+		cfg.Go = config.DefaultGo
+		if info.GoVersion != "" {
+			cfg.Go = info.GoVersion
+		}
+	}
 
 	ctx := &features.Context{Cfg: cfg, FS: fs, Project: info, Tasks: taskfile.NewBuilder()}
 	failed := false
@@ -59,15 +66,15 @@ func Init(cfg config.Init, fs fsys.FS) int {
 		}
 	}
 
+	// cleanup first, so the tasks of a feature switched off leave the Taskfile with its files
+	for _, f := range features.Pipeline {
+		f.Cleanup(ctx)
+	}
 	if !ensureToolchain(ctx) {
 		failed = true
 	}
 	if !writeTaskfile(ctx) {
 		failed = true
-	}
-
-	for _, f := range features.Pipeline {
-		f.Cleanup(ctx)
 	}
 
 	if failed {

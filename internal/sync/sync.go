@@ -25,15 +25,11 @@ type managed struct {
 // Tool modules are only refreshed when the project already has them.
 func expected(fs fsys.FS, dir string) ([]managed, error) {
 	var files []managed
-	for _, tool := range templates.Tools {
-		if fs.Exists(filepath.Join(dir, tool.ModPath())) {
-			files = append(files, managed{tool.ModPath(), tool.ModFile()}, managed{tool.SumPath(), tool.SumFile()})
-		}
-	}
 	var pinned []templates.Tool
 	for _, tool := range templates.Tools {
 		if fs.Exists(filepath.Join(dir, tool.ModPath())) {
 			pinned = append(pinned, tool)
+			files = append(files, managed{tool.ModPath(), tool.ModFile()}, managed{tool.SumPath(), tool.SumFile()})
 		}
 	}
 	if gomodContent, err := fs.ReadFile(filepath.Join(dir, "go.mod")); err == nil {
@@ -44,18 +40,23 @@ func expected(fs fsys.FS, dir string) ([]managed, error) {
 		files = append(files, managed{"go.mod", updated})
 	}
 
+	// The project lints while forgego's base config is there; .golangci.local.yml is the
+	// project's own and stays when linting is switched off.
+	if !fs.Exists(filepath.Join(dir, golangci.BasePath)) {
+		return files, nil
+	}
 	local, err := fs.ReadFile(filepath.Join(dir, golangci.LocalPath))
-	switch {
-	case err == nil:
-		config, err := golangci.Render(local)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, managed{golangci.BasePath, golangci.Base()}, managed{golangci.ConfigPath, config})
-	case !fsys.IsNotExist(err):
+	if fsys.IsNotExist(err) {
+		local, err = golangci.LocalStarter, nil
+	}
+	if err != nil {
 		return nil, err
 	}
-	return files, nil
+	config, err := golangci.Render(local)
+	if err != nil {
+		return nil, err
+	}
+	return append(files, managed{golangci.BasePath, golangci.Base()}, managed{golangci.ConfigPath, config}), nil
 }
 
 // Run refreshes the managed files in dir, or with check only reports drift. It returns

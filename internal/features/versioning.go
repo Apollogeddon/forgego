@@ -26,6 +26,7 @@ func (Versioning) Apply(ctx *Context) bool {
 
 func (Versioning) Cleanup(ctx *Context) {
 	if !ctx.Cfg.Versioning {
+		RemoveTasks(ctx, "commit-msg")
 		RemoveFile(ctx, ".github/release.json")
 		RemoveFile(ctx, ".github/.release.json")
 	}

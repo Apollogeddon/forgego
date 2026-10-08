@@ -13,15 +13,15 @@ func (Debian) Name() string                   { return "debian" }
 func (Debian) ShouldRun(cfg config.Init) bool { return cfg.Debian }
 
 func (Debian) Apply(ctx *Context) bool {
-	values := map[string]string{"NAME": ctx.Project.Name}
-	ok := CreateFile(ctx, "packaging/"+ctx.Project.Name+".service", templates.Render(templates.SystemdUnit, values))
+	values := map[string]string{"NAME": ctx.Project.Name, "SLUG": ctx.Project.Slug}
+	ok := CreateFile(ctx, "packaging/"+ctx.Project.Slug+".service", templates.Render(templates.SystemdUnit, values))
 	ok = CreateFile(ctx, "packaging/postinstall.sh", templates.Render(templates.Postinstall, values)) && ok
 	return CreateFile(ctx, "packaging/preremove.sh", templates.Render(templates.Preremove, values)) && ok
 }
 
 func (Debian) Cleanup(ctx *Context) {
 	if !ctx.Cfg.Debian {
-		RemoveFile(ctx, "packaging/"+ctx.Project.Name+".service")
+		RemoveFile(ctx, "packaging/"+ctx.Project.Slug+".service")
 		RemoveFile(ctx, "packaging/postinstall.sh")
 		RemoveFile(ctx, "packaging/preremove.sh")
 	}

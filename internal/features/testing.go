@@ -35,6 +35,7 @@ func (Testing) Apply(ctx *Context) bool {
 
 func (Testing) Cleanup(ctx *Context) {
 	if !ctx.Cfg.Testing || ctx.Cfg.IsWebsite() {
+		RemoveTasks(ctx, "test", "GOTESTSUM")
 		dropTool(ctx, templates.Gotestsum)
 	}
 }

@@ -16,6 +16,7 @@ import (
 type Info struct {
 	Module    string // module path, e.g. github.com/acme/billing-api
 	Name      string // last element of the module path, without a /vN suffix: billing-api
+	Slug      string // Name made safe for an image tag, a systemd unit and a user: billing-api
 	Package   string // a valid Go package name for the library starter: billingapi
 	HasGoMod  bool
 	GoVersion string // the go directive of an existing go.mod
@@ -25,6 +26,8 @@ var (
 	majorSuffix = regexp.MustCompile(`/v[0-9]+$`)
 	remoteURL   = regexp.MustCompile(`(?m)^\s*url\s*=\s*(\S+)\s*$`)
 	nonIdent    = regexp.MustCompile(`[^a-z0-9]`)
+	nonSlug     = regexp.MustCompile(`[^a-z0-9]+`)
+	sshPort     = regexp.MustCompile(`^([^/]+):[0-9]+/`)
 )
 
 // Detect reads go.mod when there is one; otherwise it derives the module path from
@@ -50,9 +53,10 @@ func Detect(fs fsys.FS, dir string) (Info, error) {
 		info.Module = moduleFromRemote(fs, dir)
 	}
 	if info.Module == "" {
-		info.Module = strings.ToLower(filepath.Base(dir))
+		info.Module = Slug(filepath.Base(dir))
 	}
 	info.Name = path.Base(majorSuffix.ReplaceAllString(info.Module, ""))
+	info.Slug = Slug(info.Name)
 	info.Package = PackageName(info.Name)
 	return info, nil
 }
@@ -62,17 +66,15 @@ func Detect(fs fsys.FS, dir string) (Info, error) {
 // github.com/acme/api, and the services/billing directory of that repository gives
 // github.com/acme/api/services/billing.
 func moduleFromRemote(fs fsys.FS, dir string) string {
-	root, content := dir, ""
-	for {
-		if c, err := fs.ReadFile(filepath.Join(root, ".git", "config")); err == nil {
-			content = c
-			break
-		}
+	root := dir
+	content, err := fs.ReadFile(filepath.Join(root, ".git", "config"))
+	for err != nil {
 		parent := filepath.Dir(root)
 		if parent == root {
 			return ""
 		}
 		root = parent
+		content, err = fs.ReadFile(filepath.Join(root, ".git", "config"))
 	}
 	sub, err := filepath.Rel(root, dir)
 	if err != nil {
@@ -91,12 +93,19 @@ func remoteModule(content string) string {
 		return ""
 	}
 	url := strings.TrimSuffix(match[1], ".git")
-	for _, prefix := range []string{"https://", "http://", "ssh://", "git@"} {
-		url = strings.TrimPrefix(url, prefix)
+	scheme := ""
+	if i := strings.Index(url, "://"); i >= 0 {
+		scheme, url = url[:i], url[i+3:]
 	}
-	url = strings.Replace(url, ":", "/", 1)
-	if at := strings.Index(url, "@"); at >= 0 {
+	if at := strings.Index(url, "@"); at >= 0 && at < strings.IndexAny(url+"/", ":/") {
 		url = url[at+1:]
+	}
+	if scheme == "" {
+		// scp-like git@host:owner/repo
+		url = strings.Replace(url, ":", "/", 1)
+	} else {
+		// ssh://host:2222/owner/repo: the port isn't part of the module path
+		url = sshPort.ReplaceAllString(url, "$1/")
 	}
 	return strings.ToLower(url)
 }
@@ -109,4 +118,15 @@ func PackageName(name string) string {
 		pkg = "app" + pkg
 	}
 	return pkg
+}
+
+// Slug makes a name safe for a Docker image tag, a systemd unit and a Debian user:
+// lowercase letters, digits and single dashes. BillingAPI gives billingapi, and
+// "my project" gives my-project.
+func Slug(name string) string {
+	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(name), "-"), "-")
+	if slug == "" {
+		return "app"
+	}
+	return slug
 }

@@ -90,21 +90,14 @@ func CreateIfMissing(ctx *Context, rel, content string) bool {
 	return true
 }
 
-// isStarter reports whether rel is missing or still holds content: the starter forgego
-// is about to create, or created on an earlier run.
-func isStarter(ctx *Context, rel, content string) bool {
-	existing, err := ctx.FS.ReadFile(ctx.path(rel))
-	return err != nil || existing == content
-}
-
 // WriteManaged refreshes a file forgego owns under .forgego/, ignoring --force.
 func WriteManaged(ctx *Context, rel, content string) bool {
 	path := ctx.path(rel)
-	if ctx.Cfg.DryRun {
-		console.Dry("Would refresh managed file %s", rel)
+	if current, err := ctx.FS.ReadFile(path); err == nil && current == content {
 		return true
 	}
-	if current, err := ctx.FS.ReadFile(path); err == nil && current == content {
+	if ctx.Cfg.DryRun {
+		console.Dry("Would refresh managed file %s", rel)
 		return true
 	}
 	if err := ctx.FS.WriteFile(path, content); err != nil {
@@ -113,6 +106,14 @@ func WriteManaged(ctx *Context, rel, content string) bool {
 	}
 	console.OK("Refreshed %s", rel)
 	return true
+}
+
+// RemoveTasks drops the tasks and vars a disabled feature added to Taskfile.yml, which
+// would otherwise run files RemoveFile deleted. Like RemoveFile, only with --force.
+func RemoveTasks(ctx *Context, names ...string) {
+	if ctx.Cfg.Force {
+		ctx.Tasks.Remove(names...)
+	}
 }
 
 // RemoveFile deletes a file a disabled feature created, but only with --force.
