@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.5](https://github.com/Apollogeddon/forgego/compare/v1.0.4...v1.0.5) (2026-10-08)
+
+
+### Bug Fixes
+
+* **ci:** leave Dependabot's GitHub Actions updates for a person to merge ([bc1073a](https://github.com/Apollogeddon/forgego/commit/bc1073a027b8c3013782654ab65f06ab9f77e264))
+* **ci:** leave Dependabot's GitHub Actions updates for a person to merge ([e1ac352](https://github.com/Apollogeddon/forgego/commit/e1ac352bc01943019d1e413f88cf51e2b0ceb33f))
+
 ## [1.0.4](https://github.com/Apollogeddon/forgego/compare/v1.0.3...v1.0.4) (2026-10-08)
 
 
