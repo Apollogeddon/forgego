@@ -1,6 +1,6 @@
 <br />
 <div align="center">
-  <a href="https://github.com/Apollogeddon/forgego">
+  <a href="https://apollogeddon.github.io/forgego/">
     <img src="docs/static/forgego.svg" alt="Logo" width="100" height="100">
   </a>
 
