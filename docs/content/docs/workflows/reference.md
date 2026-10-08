@@ -80,7 +80,7 @@ In this mode release-please tags the release before the push's checks run. If th
 
 1. Calls → `quality.yml`.
 2. **`testing`** — Runs `task test` with `GOFLAGS=-race` (skip with `run_tests: false`) and uploads `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: quality)*
-3. **`build`** — Runs `build_command` (default `task build`) and uploads `artifact_path` as the `artifact_name` artifact. *(Needs: quality, testing)*
+3. **`build`** — Runs `build_command` (default `task build`) and uploads `artifact_path` as the `artifact_name` artifact. *(Needs: quality; runs alongside testing)*
 4. **`patch`** — On `main` with `auto_patch` enabled, runs govulncheck, `go get`s the fixed version of each vulnerable module it reports, runs `go mod tidy`, and commits `go.mod` and `go.sum` as `fix(deps): upgrade modules with known vulnerabilities via govulncheck`. Vulnerabilities in the standard library are fixed by a newer Go, not by `go get`, so they're left to you. Needs `contents: write`. *(Needs: quality, testing, build)*
 
 | Input | Default | Purpose |
