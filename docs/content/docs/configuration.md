@@ -3,7 +3,9 @@ title: Configuration
 weight: 2
 ---
 
-Forge.go splits what it writes into three kinds of file, so you always know which ones are yours to edit:
+This page describes the files Forge.go writes into a project, which of them you can edit, and how each tool is configured.
+
+Forge.go writes three kinds of file:
 
 | Kind | Examples | Re-running `init` |
 | :--- | :--- | :--- |
@@ -11,7 +13,7 @@ Forge.go splits what it writes into three kinds of file, so you always know whic
 | **Your source** | `go.mod`, `.gitignore`, `.golangci.local.yml`, the starter source and test, `content/` | Created once, never overwritten — even with `--force` |
 | **Managed** | Everything under `.forgego/`, and `.golangci.yml` | Always refreshed; `--force` makes no difference |
 
-## Managed Files
+## Managed files
 
 Managed files belong to Forge.go. Don't edit them: `init` and `sync` overwrite them.
 
@@ -30,14 +32,14 @@ task sync
 `sync` refreshes:
 
 - each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use;
-- `.forgego/golangci.yml` and `.golangci.yml`, when the project has a `.golangci.local.yml`;
+- `.forgego/golangci.yml` and `.golangci.yml`, when the project has `.forgego/golangci.yml` (linting on, not a website), using `.golangci.local.yml` if it exists;
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
 - the `FORGEGO` var in `Taskfile.yml`, when it runs a published Forge.go, so it runs the version doing the sync;
-- tools pinned by an earlier Forge.go as `.forgego/<tool>.mod` and `.sum`, which it moves to `.forgego/<tool>/` and repoints `Taskfile.yml` and `lefthook.yml` at. Run `task hooks` afterwards, as the installed git hooks still name the old path.
+- tools pinned by an earlier Forge.go as `.forgego/<tool>.mod` and `.sum`, which it moves to `.forgego/<tool>/` and repoints `Taskfile.yml` and `lefthook.yml` at. Run `task hooks` afterwards, as the installed Git hooks still name the old path.
 
-`task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It is already wired into the lefthook pre-commit hook and the CI linting job, so a stale file can't slip through.
+`task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It runs in the lefthook pre-commit hook and in the CI linting job, so a stale file fails the checks.
 
-## Pinned Tools
+## Pinned tools
 
 Each tool lives in its own module, a `go.mod` and `go.sum` under `.forgego/<tool>/`, and runs with:
 
@@ -52,13 +54,13 @@ Keeping one module per tool means no two tools' dependencies are ever resolved t
 | `task` | `github.com/go-task/task/v3` | `v3.54.0` | 1.26.4 | Running every task (all modes) |
 | `lefthook` | `github.com/evilmartians/lefthook/v2` | `v2.2.0` | 1.27.0 | Git hooks (linting on) |
 | `golangci-lint` | `github.com/golangci/golangci-lint/v2` | `v2.14.0` | 1.26.0 | Linting and formatting (linting on, not websites) |
-| `govulncheck` | `golang.org/x/vuln` | `v1.8.0` | 1.26.0 | Vulnerability checks (linting on, not websites) |
-| `gotestsum` | `gotest.tools/gotestsum` | `v1.13.0` | 1.24.0 | Tests (testing on, not websites) |
+| `govulncheck` | `golang.org/x/vuln` | `v1.8.0` | 1.26.0 | Vulnerability checks (not websites) |
+| `gotestsum` | `gotest.tools/gotestsum` | `v1.13.0` | 1.26.0 | Tests (testing on, not websites) |
 | `hugo` | `github.com/gohugoio/hugo` | `v0.167.0` | 1.27.0 | Building the site (websites) |
 
 These are the versions this release of Forge.go pins; `sync` moves a project to the versions of the Forge.go that runs it.
 
-### The `toolchain` Line
+### The `toolchain` line
 
 Go chooses its toolchain from the project's `go.mod` before it reads a tool's `-modfile`, so a project that declares an older Go than a tool needs couldn't run it. When that happens, `init` and `sync` add or raise the `toolchain` line in `go.mod` to the newest Go the project's tools need:
 
@@ -72,9 +74,9 @@ toolchain go1.27.0
 
 The `go` line, which modules that depend on yours see, is left alone.
 
-## Quality & Testing
+## Quality and testing
 
-### golangci-lint — Linting & Formatting
+### golangci-lint: linting and formatting
 
 golangci-lint can't extend another config file, so Forge.go merges two files into the `.golangci.yml` that golangci-lint reads:
 
@@ -99,15 +101,15 @@ The base config uses golangci-lint's config `version: "2"`:
 - **Formatters:** `gofumpt` and `goimports`.
 - **Limits:** no cap on the number of issues reported per linter or per identical issue, and a five-minute timeout.
 
-### govulncheck — Vulnerabilities
+### govulncheck: vulnerabilities
 
-`task security` runs `govulncheck ./...`, which reports only the known vulnerabilities your code actually calls. In CI it warns rather than fails, and the `patch` job upgrades the vulnerable modules on `main` — see [Job Reference]({{< relref "workflows/reference.md#testingyml" >}}).
+`task security` runs `govulncheck ./...`, which reports only the known vulnerabilities your code actually calls. In CI it warns rather than fails, and the `patch` job upgrades the vulnerable modules on `main` — see [Job reference]({{< relref "workflows/reference.md#testingyml" >}}).
 
-### gotestsum — Testing
+### gotestsum: testing
 
 `task test` runs `go test ./...` through gotestsum with atomic coverage, writing `coverage.out` and a JUnit report, `junit-report.xml`. CI runs it with the race detector on. Both reports are in the generated `.gitignore`, along with `dist/`.
 
-### lefthook — Git Hooks
+### lefthook: Git hooks
 
 `lefthook.yml` runs everything through the pinned tools, so the hooks need nothing on `PATH` and use the same versions as CI. Its first line tells the installed hooks how to run lefthook itself:
 
@@ -119,18 +121,18 @@ lefthook: go tool -modfile=.forgego/lefthook/go.mod lefthook
 | :--- | :--- | :--- |
 | `format` | `golangci-lint fmt` on the staged `.go` files, re-staging the result | pre-commit |
 | `sync-check` | `task sync-check` | pre-commit |
-| `lint` | `golangci-lint run` | pre-push |
+| `lint` | `golangci-lint run`, when the push includes `.go` files | pre-push |
 | `conventional-commit` | `task commit-msg` | commit-msg — only with versioning on |
 
 A website has no Go to format or lint: its pre-commit hook runs `sync-check`, and its pre-push hook runs `task build`, which fails on broken templates and links.
 
 Install them with `task hooks`.
 
-## Build & Release
+## Build and release
 
-### Task — Building
+### Task: building
 
-A backend's `build` task compiles `./cmd/<name>` into `dist/<name>` with `-trimpath`, setting `main.version` from the `VERSION` Taskfile var. The starter `main.go` declares that variable and prints it:
+A backend's `build` task compiles `./cmd/<name>` into `dist/<name>` (`dist/<name>.exe` on Windows) with `-trimpath`, setting `main.version` from the `VERSION` Taskfile var. The starter `main.go` declares that variable and prints it:
 
 ```go
 // version is set at build time with -ldflags "-X main.version=...".
@@ -139,13 +141,13 @@ var version = "dev"
 
 A library's `build` task runs `go build ./...` as a compile check; a library ships as source, so there's nothing else to build.
 
-### GoReleaser — Release Binaries
+### GoReleaser: release binaries
 
 A backend gets a `.goreleaser.yaml` that builds `./cmd/<name>` with `CGO_ENABLED=0`, `-trimpath` and `-s -w -X main.version={{ .Version }}` for Linux, macOS and Windows on `amd64` and `arm64`. It packages them as `.tar.gz` (`.zip` on Windows) with a `checksums.txt`.
 
 release-please creates each release and writes its notes, so GoReleaser's changelog is disabled and it uses `release.mode: keep-existing` with `use_existing_draft: true`. release-please creates a backend's release as a draft; GoReleaser attaches the binaries and checksums to it, then publishes it. Files can't be added to a published release once a repository turns on immutable releases, so the release is only published once it's complete. Try it locally with `task release:snapshot`, which runs GoReleaser `v2.18.2` with `--snapshot --clean` and publishes nothing. CI runs the latest GoReleaser `v2`.
 
-### release-please — Versioning
+### release-please: versioning
 
 `.github/release.json` configures release-please for a Go module. A Go module's versions are its Git tags, so there is no version file to bump:
 
@@ -173,7 +175,7 @@ A backend's release CI attaches binaries, so its config makes the release a draf
 }
 ```
 
-`.github/.release.json` is the release-please manifest, starting at `0.0.0`.
+`.github/.release.json` is the release-please manifest, starting at `0.0.0`. The first release is `v0.1.0` if it includes a `feat` commit, or `v0.0.1` if it only has fixes.
 
 ### Docker
 
@@ -182,9 +184,9 @@ A backend's release CI attaches binaries, so its config makes the release a draf
 - **Backend:** builds on the `golang` image for your `--go` minor version (such as `golang:1.27`) on the build platform and cross-compiles for each target platform with `GOOS`/`GOARCH` and `CGO_ENABLED=0`, so a multi-platform image needs no emulation. The binary runs on `gcr.io/distroless/static-debian12:nonroot` as the non-root `nonroot` user. Pass `--build-arg VERSION=<version>` to set `main.version`; CI passes the release version.
 - **Website:** builds the site once with the pinned Hugo on the build host, then serves `public/` with `nginx:stable-alpine` on port 80.
 
-CI builds the image for every configured platform — see [Job Reference]({{< relref "workflows/reference.md#dockeryml" >}}).
+CI builds the image for every configured platform — see [Job reference]({{< relref "workflows/reference.md#dockeryml" >}}).
 
-### Debian Packaging
+### Debian packaging
 
 `--debian` adds an `nfpms` section to `.goreleaser.yaml`, so each release also attaches a `.deb`, and three files under `packaging/`:
 
@@ -200,7 +202,7 @@ Update `maintainer`, `description` and `license` in the `nfpms` section; Forge.g
 
 ## Websites
 
-### Hugo — Static Site
+### Hugo: static site
 
 `--website` scaffolds a [Hugo](https://gohugo.io/) site using the [Hextra](https://github.com/imfing/hextra) theme as a Hugo module, so the theme is versioned in `go.mod` like any other dependency. Hugo itself is pinned in `.forgego/hugo/go.mod`.
 
