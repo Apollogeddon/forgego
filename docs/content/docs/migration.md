@@ -74,14 +74,17 @@ If you'd rather adopt the base config as it is, delete your `.golangci.yml` inst
 
 ### Existing GoReleaser Config
 
-`init` keeps an existing `.goreleaser.yaml`. Forge.go's release job runs GoReleaser after release-please has created the release, so make sure yours doesn't try to create one or write its own notes:
+`init` keeps an existing `.goreleaser.yaml`. Forge.go's release job runs GoReleaser after release-please has created the release as a draft, so make sure yours doesn't try to create one or write its own notes, and that it publishes the draft:
 
 ```yaml
 changelog:
   disable: true
 release:
   mode: keep-existing
+  use_existing_draft: true
 ```
+
+`init` keeps an existing `.github/release.json` too. A project scaffolded by an earlier Forge.go needs `"draft": true` and `"force-tag-creation": true` added to it (see [Configuration]({{< relref "configuration.md#release-please--versioning" >}})) if the repository has immutable releases turned on.
 
 To pick up Forge.go's config instead, run `forgego init --force` (adding `--debian` if you package a `.deb`), then copy back anything specific to your project.
 
