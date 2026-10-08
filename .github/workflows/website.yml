@@ -1,0 +1,158 @@
+name: Go Website
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      test_on_push:
+        description: "Run the checks on pushes too; false runs them on pull requests (and scheduled runs) only"
+        required: false
+        type: boolean
+        default: true
+      test_release_prs:
+        description: "Run the checks on release-please's release pull requests"
+        required: false
+        type: boolean
+        default: true
+      enable_secrets:
+        required: false
+        type: boolean
+        default: true
+      go_version:
+        description: "Go version; empty reads it from go.mod"
+        required: false
+        type: string
+        default: ''
+      working_directory:
+        required: false
+        type: string
+        default: '.'
+      enable_versioning:
+        required: false
+        type: boolean
+        default: true
+      artifact_name:
+        required: false
+        type: string
+        default: 'dist'
+      build_command:
+        required: false
+        type: string
+        default: 'go tool -modfile=.forgego/task/go.mod task build'
+      auto_merge:
+        required: false
+        type: boolean
+        default: true
+      run_tests:
+        description: "Run the Go tests; off, as a Hugo site has none"
+        required: false
+        type: boolean
+        default: false
+      auto_patch:
+        description: "On main, upgrade the modules govulncheck finds vulnerable; off, as a Hugo site has none"
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      new_release_published:
+        description: "Whether a new release was published"
+        value: ${{ jobs.version.outputs.new_release_published }}
+      version:
+        description: "Released version (e.g. 1.2.3); empty when nothing was released"
+        value: ${{ jobs.version.outputs.version }}
+      tag_name:
+        description: "Released tag (e.g. v1.2.3); empty when nothing was released"
+        value: ${{ jobs.version.outputs.tag_name }}
+
+jobs:
+  testing:
+    # With test_on_push false, a push checks only when a release is made, in release-testing.
+    # Without versioning every push deploys, and only these checks build what it deploys, so they always run.
+    if: >-
+      (github.event_name != 'push' || inputs.test_on_push || !inputs.enable_versioning) &&
+      (inputs.test_release_prs || !startsWith(github.head_ref, 'release-please--'))
+    uses: ./.github/workflows/testing.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      working_directory: ${{ inputs.working_directory }}
+      go_version: ${{ inputs.go_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+      lint: false
+      run_tests: ${{ inputs.run_tests }}
+      auto_patch: ${{ inputs.auto_patch }}
+      artifact_name: ${{ inputs.artifact_name }}
+      artifact_path: public
+      build_command: ${{ inputs.build_command }}
+
+  auto-merge:
+    uses: ./.github/workflows/merge.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+    needs: [testing]
+    if: inputs.auto_merge
+    permissions:
+      contents: write
+      pull-requests: write
+
+  version:
+    # Runs when the checks were skipped, as on a push to main with test_on_push false, but not when they failed.
+    if: ${{ !failure() && !cancelled() && inputs.enable_versioning }}
+    uses: ./.github/workflows/version.yml
+    needs: [testing]
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      working_directory: ${{ inputs.working_directory }}
+
+  release-testing:
+    # With test_on_push false, a push to main is checked and built only when release-please made a release.
+    needs: [version]
+    if: >-
+      !cancelled() && github.event_name == 'push' && !inputs.test_on_push &&
+      (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
+    uses: ./.github/workflows/testing.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      working_directory: ${{ inputs.working_directory }}
+      go_version: ${{ inputs.go_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+      lint: false
+      run_tests: ${{ inputs.run_tests }}
+      auto_patch: ${{ inputs.auto_patch }}
+      artifact_name: ${{ inputs.artifact_name }}
+      artifact_path: public
+      build_command: ${{ inputs.build_command }}
+
+  deploy:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    needs: [testing, version, release-testing]
+    # !failure() rather than success(), so a skipped version or checks job doesn't skip the deploy
+    if: |
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' &&
+      (needs.testing.result == 'success' || needs['release-testing'].result == 'success') &&
+      (needs.version.result == 'success' || needs.version.result == 'skipped') &&
+      (!inputs.enable_versioning || needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ./pages-artifact
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./pages-artifact
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

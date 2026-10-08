@@ -1,0 +1,65 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    # Limit open PRs to prevent flooding
+    open-pull-requests-limit: 10
+    # Group non-major updates to reduce PR volume
+    groups:
+      dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "fix(deps)"
+    # Wait 3 days after a version is published before proposing it, so a
+    # compromised release has time to be caught/yanked upstream first.
+    cooldown:
+      default-days: 3
+
+  # The tools every generated project pins. forgego embeds a copy of each, so a bump
+  # needs `task generate` on the PR before its tests pass.
+  - package-ecosystem: "gomod"
+    directories:
+      - "/tools/*"
+    schedule:
+      interval: "weekly"
+    groups:
+      tools:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "fix(tools)"
+    cooldown:
+      default-days: 3
+
+  # The documentation site is its own module: its go.mod holds the Hextra theme
+  - package-ecosystem: "gomod"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+    groups:
+      docs:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "docs(deps)"
+    cooldown:
+      default-days: 3
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci(deps)"
+    cooldown:
+      default-days: 3

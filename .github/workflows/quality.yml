@@ -1,0 +1,98 @@
+name: Go Quality
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      working_directory:
+        required: false
+        type: string
+        default: '.'
+      go_version:
+        description: "Go version; empty reads it from go.mod"
+        required: false
+        type: string
+        default: ''
+      enable_secrets:
+        required: false
+        type: boolean
+        default: true
+      lint:
+        description: "Run golangci-lint; a website has no Go to lint"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  secure:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Gitleaks Scan
+        if: inputs.enable_secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: OSV Scan
+        run: |
+          curl -sL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o osv-scanner
+          chmod +x osv-scanner
+          ./osv-scanner scan source -r . || true
+          rm osv-scanner
+      - uses: actions/setup-go@v7
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        with:
+          go-version: ${{ inputs.go_version }}
+          go-version-file: ${{ inputs.working_directory }}/go.mod
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      # Reports only the vulnerabilities the code actually calls. It doesn't fail the
+      # checks, as the patch job upgrades the vulnerable modules once they pass on main.
+      - name: govulncheck
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        run: |
+          go tool -modfile=.forgego/govulncheck/go.mod govulncheck ./... ||
+            echo "::warning::govulncheck found vulnerabilities the code calls; the patch job upgrades them on main"
+
+  linting:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ inputs.go_version }}
+          go-version-file: ${{ inputs.working_directory }}/go.mod
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Check forgego's files are current
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
+        run: go tool -modfile=.forgego/task/go.mod task sync-check
+      # a Hugo site's go.mod holds its theme, which no Go code imports, so tidy would drop it
+      - name: Check go.mod is tidy
+        if: inputs.lint
+        run: go mod tidy -diff
+      - name: Format Check
+        if: inputs.lint
+        run: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint fmt --diff
+      - name: golangci-lint
+        if: inputs.lint
+        run: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint run
