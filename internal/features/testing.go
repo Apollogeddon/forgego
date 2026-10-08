@@ -18,6 +18,8 @@ func (Testing) Apply(ctx *Context) bool {
 	values := map[string]string{"NAME": ctx.Project.Name, "PACKAGE": ctx.Project.Package}
 	ok := useTool(ctx, templates.Gotestsum)
 	switch {
+	case !ctx.Starter:
+		// the project's own source: the starter test would test code that isn't there
 	case ctx.Cfg.IsBackend():
 		ok = CreateIfMissing(ctx, "cmd/"+ctx.Project.Name+"/main_test.go", templates.Render(templates.BackendMainTest, values)) && ok
 	case ctx.Cfg.IsLibrary():

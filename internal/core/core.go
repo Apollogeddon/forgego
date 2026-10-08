@@ -10,6 +10,7 @@ import (
 	"github.com/apollogeddon/forgego/internal/console"
 	"github.com/apollogeddon/forgego/internal/features"
 	"github.com/apollogeddon/forgego/internal/fsys"
+	"github.com/apollogeddon/forgego/internal/gomod"
 	"github.com/apollogeddon/forgego/internal/project"
 	"github.com/apollogeddon/forgego/internal/taskfile"
 )
@@ -58,6 +59,9 @@ func Init(cfg config.Init, fs fsys.FS) int {
 		}
 	}
 
+	if !ensureToolchain(ctx) {
+		failed = true
+	}
 	if !writeTaskfile(ctx) {
 		failed = true
 	}
@@ -71,11 +75,16 @@ func Init(cfg config.Init, fs fsys.FS) int {
 		return 1
 	}
 	console.OK("forgego init complete")
-	next := "go tool -modfile=.forgego/task.mod task --list"
-	if cfg.Linting {
-		next = "go tool -modfile=.forgego/task.mod task hooks"
+	task := "go tool -modfile=.forgego/task.mod task "
+	switch {
+	case cfg.IsWebsite():
+		// Hugo manages a site's go.mod itself; go mod tidy would drop the theme
+		console.Info("Next steps: %sdev", task)
+	case cfg.Linting:
+		console.Info("Next steps: go mod tidy && %shooks", task)
+	default:
+		console.Info("Next steps: go mod tidy && %s--list", task)
 	}
-	console.Info("Next steps: go mod tidy && %s", next)
 	return 0
 }
 
@@ -106,5 +115,38 @@ func writeTaskfile(ctx *features.Context) bool {
 		return false
 	}
 	console.OK("Updated Taskfile.yml: %s", strings.Join(changed, ", "))
+	return true
+}
+
+// ensureToolchain raises go.mod's toolchain line when the project's Go is older than a
+// pinned tool needs: Go picks the toolchain from go.mod before reading the tool's -modfile.
+func ensureToolchain(ctx *features.Context) bool {
+	path := filepath.Join(ctx.Cfg.Target, "go.mod")
+	content, err := ctx.FS.ReadFile(path)
+	if fsys.IsNotExist(err) && ctx.Cfg.DryRun {
+		return true // a new go.mod targets --go, which the tools are pinned for
+	}
+	if err != nil {
+		console.Err("Failed to read go.mod: %v", err)
+		return false
+	}
+	need := gomod.ToolsGo(ctx.Tools)
+	updated, changed, err := gomod.EnsureToolchain(content, need)
+	if err != nil {
+		console.Err("Failed to update go.mod: %v", err)
+		return false
+	}
+	if !changed {
+		return true
+	}
+	if ctx.Cfg.DryRun {
+		console.Dry("Would set go.mod's toolchain to %s, which the pinned tools need", need)
+		return true
+	}
+	if err := ctx.FS.WriteFile(path, updated); err != nil {
+		console.Err("Failed to write go.mod: %v", err)
+		return false
+	}
+	console.OK("Set go.mod's toolchain to %s, which the pinned tools need", need)
 	return true
 }

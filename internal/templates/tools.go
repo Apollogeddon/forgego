@@ -77,3 +77,12 @@ func mustRead(name string) string {
 
 // Config returns one of forgego's embedded base configs, such as golangci.yml.
 func Config(name string) string { return mustRead("configs/" + name) }
+
+// GoVersion is the Go the tool's module needs, from its go line, such as 1.27.0.
+func (t Tool) GoVersion() string {
+	f, err := modfile.ParseLax(t.ModPath(), []byte(t.ModFile()), nil)
+	if err != nil || f.Go == nil {
+		panic("no go line in " + t.ModPath())
+	}
+	return f.Go.Version
+}

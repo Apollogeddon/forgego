@@ -21,6 +21,7 @@ func useTool(ctx *Context, tool templates.Tool) bool {
 	ok := WriteManaged(ctx, tool.ModPath(), tool.ModFile())
 	ok = WriteManaged(ctx, tool.SumPath(), tool.SumFile()) && ok
 	ctx.Tasks.Var(toolVar(tool), tool.Command())
+	ctx.Tools = append(ctx.Tools, tool)
 	return ok
 }
 
