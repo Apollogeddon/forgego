@@ -7,8 +7,8 @@
       <stop offset="100%" stop-color="#0E3A70"/>
     </linearGradient>
     <linearGradient id="fg" x1="271" y1="115" x2="271" y2="263" gradientUnits="userSpaceOnUse">
-      <stop offset="0%"   stop-color="#FEF9C3"/>
-      <stop offset="100%" stop-color="#FDE68A"/>
+      <stop offset="0%"   stop-color="#E0F2FE"/>
+      <stop offset="100%" stop-color="#93C5FD"/>
     </linearGradient>
     <clipPath id="tableClip">
       <rect x="128.688" y="115.594" width="285" height="147.75"/>
