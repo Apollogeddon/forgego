@@ -3,15 +3,17 @@ title: Getting Started
 weight: 1
 ---
 
+This page covers installing Forge.go, scaffolding a project, and the reference for the CLI flags and the tasks it generates.
+
 ## Requirements
 
 - [Go](https://go.dev/dl/). Forge.go itself builds with Go 1.26 or newer. The pinned tools need Go 1.27, which `go` downloads automatically through the `toolchain` line in `go.mod` (unless you've set `GOTOOLCHAIN=local`).
 - Git, for the generated lefthook hooks.
 - Docker, only for the `docker:build` and `docker:run` tasks that `--docker` adds.
 
-## Setup Guide
+## Setup
 
-### 1. Installation
+### 1. Install Forge.go
 
 Install Forge.go with `go install`:
 
@@ -27,7 +29,7 @@ go run github.com/apollogeddon/forgego/cmd/forgego@latest init
 
 Generated projects don't need Forge.go installed: their `Taskfile.yml` runs the same version with `go run` (see [`sync`](#keeping-up-to-date)).
 
-### 2. Initialisation
+### 2. Initialise a project
 
 Run `init` in an existing project, or in an empty directory to start a new one:
 
@@ -37,18 +39,18 @@ forgego init --library  # Go module others import
 forgego init --website  # static documentation site (Hugo)
 ```
 
-Then tidy the module and install the git hooks:
+Then tidy the module and install the Git hooks:
 
 ```bash
 go mod tidy
 go tool -modfile=.forgego/task/go.mod task hooks
 ```
 
-A website skips `go mod tidy`: Hugo manages a site's `go.mod` itself, and tidying would drop the theme. Run `go tool -modfile=.forgego/task/go.mod task dev` to preview it instead.
+Skip `go mod tidy` for a website: Hugo manages a site's `go.mod` itself, and tidying would drop the theme. Run `go tool -modfile=.forgego/task/go.mod task dev` to preview the site instead.
 
 `init` is safe to re-run. It creates missing files and tasks, and leaves anything that already exists alone.
 
-### 3. Advanced: Overwriting Files
+### 3. Overwrite existing files (optional)
 
 Pass `--force` to overwrite existing config files, tasks and Taskfile vars with the Forge.go defaults:
 
@@ -63,7 +65,7 @@ forgego init --force
 > [!WARNING]
 > Repeat the optional flags when re-running with `--force`. `forgego init --force` in a project scaffolded with `--docker` deletes its `Dockerfile` and `.dockerignore`, because `--docker` wasn't passed this time.
 
-## Running Tasks
+## Running tasks
 
 Every task runs through the pinned copy of [Task](https://taskfile.dev/):
 
@@ -71,7 +73,7 @@ Every task runs through the pinned copy of [Task](https://taskfile.dev/):
 go tool -modfile=.forgego/task/go.mod task <name>
 ```
 
-That is long to type, so alias it, or [install Task](https://taskfile.dev/installation/) and run `task <name>` — both read the same `Taskfile.yml`:
+To shorten it, alias it, or [install Task](https://taskfile.dev/installation/) and run `task <name>`. Both read the same `Taskfile.yml`:
 
 ```bash
 alias task='go tool -modfile=.forgego/task/go.mod task'
@@ -79,7 +81,7 @@ alias task='go tool -modfile=.forgego/task/go.mod task'
 
 The rest of this site writes `task <name>`. `task --list` shows every task with its description.
 
-## Generated Tasks
+## Generated tasks
 
 Forge.go adds these tasks to `Taskfile.yml`. Tools are referenced through Taskfile vars (`{{.GOLANGCI_LINT}}` and so on), each set to `go tool -modfile=.forgego/<tool>/go.mod <tool>`.
 
@@ -94,19 +96,19 @@ Forge.go adds these tasks to `Taskfile.yml`. Tools are referenced through Taskfi
 | `type` | `go vet ./...` | not `--website` |
 | `test` | `gotestsum --junitfile junit-report.xml -- -coverprofile=coverage.out -covermode=atomic ./...` | testing on, not `--website` |
 | `commit-msg` | `forgego commit-msg {{.CLI_ARGS}}` | versioning on |
-| `build` | `go build -trimpath -ldflags "-X main.version={{.VERSION}}" -o dist/<name> ./cmd/<name>` | `--backend` |
+| `build` | `go build -trimpath -ldflags "-X main.version={{.VERSION}}" -o dist/<name>{{exeExt}} ./cmd/<name>` | `--backend` |
 | `build` | `go build ./...` | `--library` |
 | `build` | `hugo --gc --minify` | `--website` |
 | `start` | `go run ./cmd/<name> {{.CLI_ARGS}}` | `--backend` |
 | `release:snapshot` | GoReleaser `release --snapshot --clean`: every release binary (and the `.deb`) into `dist/`, without publishing | `--backend` |
 | `dev` | `hugo server` | `--website` |
-| `docker:build` / `docker:run` | `docker build -t <name> .` / `docker run --rm <name>` (`-p 8080:80` for websites) | `--docker` |
+| `docker:build` / `docker:run` | `docker build -t <image> .` / `docker run --rm <image>` (`-p 8080:80` for websites), where `<image>` is the lowercased project name (see [Module path](#module-path)) | `--docker` |
 
-A backend also gets a `VERSION` var, `dev` by default, which `build` stamps into `main.version`. Pass arguments to `start` after `--`: `task start -- --help`.
+A backend also gets a `VERSION` var, `dev` by default, which `build` stamps into `main.version`. `{{exeExt}}` adds `.exe` on Windows. Pass arguments to `start` after `--`: `task start -- --help`.
 
 Existing tasks and vars with the same name are kept unless you pass `--force`. Tasks you add yourself are never touched. With `--force`, turning a feature off also removes the tasks and vars it added, along with its files.
 
-## CLI Options
+## CLI options
 
 ```text
 forgego init [options]       Scaffold the current (or target) project
@@ -119,7 +121,7 @@ forgego --version
 
 `-C DIR` (or `--path DIR`) before the command works like `git -C` and `go -C`.
 
-### `init` Options
+### `init` options
 
 | Option | Description |
 | :--- | :--- |
@@ -127,7 +129,7 @@ forgego --version
 | `--library` | Go module others import. |
 | `--website` | Static documentation site built with [Hugo](https://gohugo.io/). |
 | `--testing` / `--no-testing` | `go test` through gotestsum (default: on). |
-| `--linting` / `--no-linting` | golangci-lint and lefthook git hooks (default: on). |
+| `--linting` / `--no-linting` | golangci-lint and lefthook Git hooks (default: on). |
 | `--versioning` / `--no-versioning` | release-please and commit message checks (default: on). |
 | `--all` / `--no-all` | Turn every standard feature on or off at once; an explicit flag such as `--testing` still wins. |
 | `--docker` | Add a `Dockerfile` and a Docker CI job (not available for `--library`). |
@@ -137,13 +139,13 @@ forgego --version
 | `--go VERSION` | Target Go version, such as `1.27` or `1.27.1` (default: the existing `go.mod`'s, else `1.27`). |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
-Only one mode can be chosen. An invalid combination — `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`.
+Choose at most one mode; passing more than one exits with code `1`. An invalid combination — `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`.
 
 `--go` sets the `go` line of a new `go.mod` (`1.27` becomes `go 1.27.0`), the `go_version` passed to CI, and the `golang` image the `Dockerfile` builds with. Without it, an existing project's `go.mod` decides those, and its `go` line is never changed.
 
 `--no-testing`, `--no-linting` and `--no-versioning` also switch off the matching jobs in the generated CI workflow.
 
-### Keeping Up to Date
+### Keeping up to date
 
 `forgego sync` refreshes the files Forge.go manages; `forgego sync --check` reports drift and exits `1` without writing anything. Both also accept `-C DIR`. See [Configuration]({{< relref "configuration.md#managed-files" >}}).
 
@@ -155,7 +157,7 @@ go run github.com/apollogeddon/forgego/cmd/forgego@latest sync
 
 That refreshes the managed files and moves the `FORGEGO` var to the new version. A `FORGEGO` var that runs Forge.go some other way, such as a local build, is left alone.
 
-### Commit Message Checks
+### Commit message checks
 
 `forgego commit-msg FILE` checks the first line of a commit message (skipping blank and `#` comment lines) against [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>): <subject>`, with an optional `!` before the colon for a breaking change.
 
@@ -165,7 +167,7 @@ That refreshes the managed files and moves the `FORGEGO` var to the new version.
 
 With versioning on, lefthook runs it as the `commit-msg` hook.
 
-## Module Path
+## Module path
 
 `init` works out the module path in this order:
 
@@ -175,7 +177,7 @@ With versioning on, lefthook runs it as the `commit-msg` hook.
 
 The project name is the last element of the module path without a `/vN` suffix (`billing-api`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit. The Docker image, the `.deb` package, its systemd unit and its system user use the name lowercased, with anything but letters and digits turned into dashes (`BillingAPI` gives `billingapi`).
 
-## Project Structure
+## Project structure
 
 A default `forgego init` (backend) in a project named `billing-api` produces:
 
