@@ -33,9 +33,10 @@ jobs:
               );
               core.info(`Auto-merge enabled for #${pr.number}`);
             } catch (error) {
-              // GitHub won't enable auto-merge on a PR with nothing left to wait for;
-              // merge it now instead, as gh pr merge --auto does
-              if (!/clean status/i.test(error.message)) throw error;
+              // GitHub won't enable auto-merge on a PR it could merge now: one whose checks all
+              // passed (clean) or that only waits on checks it doesn't require (unstable).
+              // Merge it now instead, as gh pr merge --auto does
+              if (!/is in (clean|unstable|has[ _]hooks) status/i.test(error.message)) throw error;
               await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'merge' });
               core.info(`Merged #${pr.number}`);
             }
