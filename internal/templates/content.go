@@ -106,8 +106,11 @@ func TestGreeting(t *testing.T) {
 `
 
 // LefthookConfig runs the formatter on commit, the linter on push, and checks commit
-// messages when versioning is on (__COMMIT_MSG__).
-const LefthookConfig = `pre-commit:
+// messages when versioning is on (__COMMIT_MSG__). The git hooks run the pinned
+// lefthook through go tool, as there's no lefthook on PATH to find.
+const LefthookConfig = `lefthook: go tool -modfile=.forgego/lefthook.mod lefthook
+
+pre-commit:
   commands:
 __PRE_COMMIT__
 pre-push:

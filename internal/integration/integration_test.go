@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -36,6 +37,16 @@ func scaffold(t *testing.T, args ...string) string {
 	sh(t, dir, "git", "init", "-q")
 	sh(t, dir, "git", "remote", "add", "origin", "https://github.com/acme/demo")
 	sh(t, dir, forgego, append([]string{"init"}, args...)...)
+	// run the forgego under test rather than a published one, as a project can
+	taskfile := filepath.Join(dir, "Taskfile.yml")
+	b, err := os.ReadFile(taskfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned := regexp.MustCompile(`(?m)^  FORGEGO: .*$`).ReplaceAll(b, []byte("  FORGEGO: "+forgego))
+	if err := os.WriteFile(taskfile, pinned, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if args[0] != "--website" {
 		sh(t, dir, "go", "mod", "tidy")
 	}
@@ -45,22 +56,24 @@ func scaffold(t *testing.T, args ...string) string {
 // task runs a generated task, with forgego itself pointed at the build under test.
 func task(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	// task vars must come before --, after which everything is passed through as CLI_ARGS
-	full := []string{"tool", "-modfile=.forgego/task.mod", "task", "FORGEGO=" + forgego}
-	return sh(t, dir, "go", append(full, args...)...)
+	return sh(t, dir, "go", append([]string{"tool", "-modfile=.forgego/task.mod", "task"}, args...)...)
 }
 
 func sh(t *testing.T, dir, name string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
-	// CI tests with GOFLAGS=-race, which would rebuild every tool with the race detector
-	cmd.Env = append(os.Environ(), "GOFLAGS=")
-	out, err := cmd.CombinedOutput()
+	out, err := command(dir, name, args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
 	}
 	return string(out)
+}
+
+func command(dir, name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	// CI tests with GOFLAGS=-race, which would rebuild every tool with the race detector
+	cmd.Env = append(os.Environ(), "GOFLAGS=")
+	return cmd
 }
 
 func TestBackend(t *testing.T) {
@@ -76,9 +89,16 @@ func TestBackend(t *testing.T) {
 	}
 	task(t, dir, "sync-check")
 
-	msg := filepath.Join(t.TempDir(), "COMMIT_EDITMSG")
-	_ = os.WriteFile(msg, []byte("feat: scaffold\n"), 0o600)
-	task(t, dir, "commit-msg", "--", msg)
+	// the installed git hook itself runs the pinned lefthook, which finds no lefthook on PATH
+	msgs := t.TempDir()
+	good, bad := filepath.Join(msgs, "good"), filepath.Join(msgs, "bad")
+	_ = os.WriteFile(good, []byte("feat: scaffold\n"), 0o600)
+	_ = os.WriteFile(bad, []byte("scaffolded it\n"), 0o600)
+	hook := filepath.Join(dir, ".git", "hooks", "commit-msg")
+	sh(t, dir, "sh", hook, good)
+	if out, err := command(dir, "sh", hook, bad).CombinedOutput(); err == nil {
+		t.Errorf("the commit-msg hook accepted a bad message:\n%s", out)
+	}
 }
 
 func TestLibrary(t *testing.T) {
