@@ -112,7 +112,7 @@ In this mode release-please tags the release before the push's checks run. If th
 
 *Dependabot auto-merge.*
 
-1. **`auto-merge`** — For pull requests opened by Dependabot, turns on GitHub's auto-merge through the API, so the PR merges once required checks pass; a PR with no checks left to wait for merges straight away. It needs no `gh` CLI on the runner. Needs `contents: write` and `pull-requests: write`.
+1. **`auto-merge`** — For pull requests opened by Dependabot, turns on GitHub's auto-merge through the API, so the PR merges once required checks pass; a PR with no checks left to wait for merges straight away. It needs no `gh` CLI on the runner. Needs `contents: write` and `pull-requests: write`. GitHub Actions updates are left for a person to merge: they change workflow files, which the workflow's `GITHUB_TOKEN` may never merge.
 
 ## service.yml
 
