@@ -1,0 +1,19 @@
+{{ define "main" }}
+  <div class="hx:mx-auto hx:flex hextra-max-page-width">
+    {{ partial "sidebar.html" (dict "context" . "disableSidebar" true) }}
+    <main id="content" class="hx:w-full hx:min-w-0 hx:break-words hx:pb-16 hx:px-6">
+      {{ with .Params.hero }}
+        <section class="fg-hero">
+          <span class="fg-badge">{{ .badge }}</span>
+          <h1>{{ .title | safeHTML }}</h1>
+          <p>{{ .subtitle }}</p>
+          <div class="fg-buttons">
+            <a class="fg-button fg-button--primary" href="{{ relURL .start }}">Get Started →</a>
+            <a class="fg-button" href="{{ .github }}">View on GitHub</a>
+          </div>
+        </section>
+      {{ end }}
+      <div class="content fg-home">{{ .Content }}</div>
+    </main>
+  </div>
+{{ end }}

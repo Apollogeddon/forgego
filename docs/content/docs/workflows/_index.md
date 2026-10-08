@@ -3,7 +3,7 @@ title: Workflows
 weight: 4
 ---
 
-ForgeGo ships reusable GitHub Actions workflows that give every project the same quality gates, release process and delivery pipeline. `forgego init` generates a `.github/workflows/index.yml` that calls the right one for your mode.
+Forge.go ships reusable GitHub Actions workflows that give every project the same quality gates, release process and delivery pipeline. `forgego init` generates a `.github/workflows/index.yml` that calls the right one for your mode.
 
 ## Available Workflows
 

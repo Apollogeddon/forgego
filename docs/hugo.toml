@@ -1,5 +1,5 @@
 baseURL = "https://apollogeddon.github.io/forgego/"
-title = "ForgeGo"
+title = "Forge.go"
 locale = "en"
 enableGitInfo = false
 
@@ -43,6 +43,6 @@ enableGitInfo = false
   displayPoweredBy = false
   displayCopyright = false
 
-[params.editURL]
-  enable = true
-  base = "https://github.com/apollogeddon/forgego/edit/main/docs/content"
+[params.theme]
+  default = "dark"
+  displayToggle = false

@@ -3,11 +3,11 @@ title: Philosophy & Stack
 weight: 6
 ---
 
-ForgeGo implements an opinionated toolchain designed to prioritise reproducibility and configuration simplicity.
+Forge.go implements an opinionated toolchain designed to prioritise reproducibility and configuration simplicity.
 
 ## Go-Native Tooling
 
-Everything a ForgeGo project runs is a Go program, pinned by version and run with `go tool`. A fresh clone needs only Go and Git.
+Everything a Forge.go project runs is a Go program, pinned by version and run with `go tool`. A fresh clone needs only Go and Git.
 
 - **One module per tool:** each tool has its own `.forgego/<tool>/go.mod` and `go.sum`, run with `go tool -modfile=.forgego/<tool>/go.mod <tool>`. No two tools' dependencies are resolved together, so they can't conflict, and none of them reach your `go.mod`.
 - **No global installs:** the Taskfile, the git hooks and CI all run the same pinned versions, so "works on my machine" and "passes in CI" mean the same thing.
@@ -15,9 +15,9 @@ Everything a ForgeGo project runs is a Go program, pinned by version and run wit
 
 ## Standardisation as a Service
 
-ForgeGo abstracts configuration to prevent "drift" across repositories. Improvements to the toolchain reach every project through `forgego sync`.
+Forge.go abstracts configuration to prevent "drift" across repositories. Improvements to the toolchain reach every project through `forgego sync`.
 
-- **Managed versions:** a ForgeGo release pins a tested set of tool versions. Syncing with a newer ForgeGo moves a project to its versions together.
+- **Managed versions:** a Forge.go release pins a tested set of tool versions. Syncing with a newer Forge.go moves a project to its versions together.
 - **Managed base configs:** `forgego sync` refreshes the shared golangci-lint config in `.forgego/` and regenerates `.golangci.yml`, and `forgego sync --check` catches a stale file in the pre-commit hook and CI.
 - **release-please:** automates the release lifecycle. Version numbers and changelogs are derived from commit history, removing manual intervention from releases.
 - **Centralised CI/CD:** reusable GitHub Actions workflows give every project the same security audits, quality gates and delivery patterns.

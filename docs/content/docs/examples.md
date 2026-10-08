@@ -69,7 +69,7 @@ linters:
 
 ### Adding Your Own Tasks
 
-Add tasks alongside the generated ones in `Taskfile.yml`. ForgeGo never removes or changes a task it didn't create, and keeps its own tasks as you've edited them unless you run `init --force`, which also removes the tasks of a feature you've switched off:
+Add tasks alongside the generated ones in `Taskfile.yml`. Forge.go never removes or changes a task it didn't create, and keeps its own tasks as you've edited them unless you run `init --force`, which also removes the tasks of a feature you've switched off:
 
 ```yaml
 tasks:
