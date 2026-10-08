@@ -18,8 +18,24 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      # Through the API rather than the gh CLI, which a self-hosted runner may not have
       - name: Enable auto-merge for Dependabot PRs
-        run: gh pr merge --auto --merge "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            try {
+              await github.graphql(
+                `mutation ($id: ID!) {
+                  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: MERGE }) { clientMutationId }
+                }`,
+                { id: pr.node_id },
+              );
+              core.info(`Auto-merge enabled for #${pr.number}`);
+            } catch (error) {
+              // GitHub won't enable auto-merge on a PR with nothing left to wait for;
+              // merge it now instead, as gh pr merge --auto does
+              if (!/clean status/i.test(error.message)) throw error;
+              await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'merge' });
+              core.info(`Merged #${pr.number}`);
+            }
