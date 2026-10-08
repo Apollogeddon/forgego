@@ -106,6 +106,23 @@ func TestLibrary(t *testing.T) {
 	}
 }
 
+func TestOnlyABackendsReleaseIsADraftForGoReleaserToPublish(t *testing.T) {
+	backend := fsys.NewMemory(nil)
+	run(t, backend, nil)
+	if !strings.Contains(read(t, backend, ".github/release.json"), `"draft": true`) {
+		t.Error("a backend's release isn't a draft, so GoReleaser can't attach files to it in a repository with immutable releases")
+	}
+	if !strings.Contains(read(t, backend, ".goreleaser.yaml"), "use_existing_draft: true") {
+		t.Error("GoReleaser doesn't publish release-please's draft")
+	}
+
+	library := fsys.NewMemory(nil)
+	run(t, library, func(c *config.Init) { c.Mode = config.Library })
+	if strings.Contains(read(t, library, ".github/release.json"), "draft") {
+		t.Error("a library's release is a draft, but nothing publishes it")
+	}
+}
+
 func TestWebsite(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, func(c *config.Init) { c.Mode = config.Website })

@@ -143,7 +143,7 @@ A library's `build` task runs `go build ./...` as a compile check; a library shi
 
 A backend gets a `.goreleaser.yaml` that builds `./cmd/<name>` with `CGO_ENABLED=0`, `-trimpath` and `-s -w -X main.version={{ .Version }}` for Linux, macOS and Windows on `amd64` and `arm64`. It packages them as `.tar.gz` (`.zip` on Windows) with a `checksums.txt`.
 
-release-please creates each release and writes its notes, so GoReleaser's changelog is disabled and it uses `release.mode: keep-existing`: it only attaches the binaries and checksums to the existing release. Try it locally with `task release:snapshot`, which runs GoReleaser `v2.18.2` with `--snapshot --clean` and publishes nothing. CI runs the latest GoReleaser `v2`.
+release-please creates each release and writes its notes, so GoReleaser's changelog is disabled and it uses `release.mode: keep-existing` with `use_existing_draft: true`. release-please creates a backend's release as a draft; GoReleaser attaches the binaries and checksums to it, then publishes it. Files can't be added to a published release once a repository turns on immutable releases, so the release is only published once it's complete. Try it locally with `task release:snapshot`, which runs GoReleaser `v2.18.2` with `--snapshot --clean` and publishes nothing. CI runs the latest GoReleaser `v2`.
 
 ### release-please — Versioning
 
@@ -154,6 +154,20 @@ release-please creates each release and writes its notes, so GoReleaser's change
   "packages": {
     ".": {
       "release-type": "go"
+    }
+  }
+}
+```
+
+A backend's release CI attaches binaries, so its config makes the release a draft for GoReleaser to publish, and creates the tag straight away, as GitHub doesn't tag a draft until it's published:
+
+```json
+{
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "draft": true,
+      "force-tag-creation": true
     }
   }
 }
