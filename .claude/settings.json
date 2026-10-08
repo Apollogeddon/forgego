@@ -1,0 +1,46 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && go run .claude/hooks/hooks.go reads",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && go run .claude/hooks/hooks.go lint",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(go tool -modfile=.forgego/task.mod task lint*)",
+      "Bash(go tool -modfile=.forgego/task.mod task test*)",
+      "Bash(go tool -modfile=.forgego/task.mod task build*)",
+      "Bash(go tool -modfile=.forgego/task.mod task sync-check*)",
+      "Bash(go test*)",
+      "Bash(go vet*)"
+    ],
+    "deny": [
+      "Read(./go.sum)",
+      "Read(./.forgego/*.sum)",
+      "Read(./tools/*/go.sum)",
+      "Read(./internal/templates/tools/*.sum)",
+      "Read(./docs/go.sum)",
+      "Read(./dist/**)",
+      "Read(./coverage.out)",
+      "Read(./junit-report.xml)"
+    ]
+  }
+}

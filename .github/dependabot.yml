@@ -37,6 +37,20 @@ updates:
     cooldown:
       default-days: 3
 
+  # The documentation site is its own module: its go.mod holds the Hextra theme
+  - package-ecosystem: "gomod"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+    groups:
+      docs:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "docs(deps)"
+    cooldown:
+      default-days: 3
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
