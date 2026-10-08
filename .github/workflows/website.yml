@@ -47,6 +47,16 @@ on:
         required: false
         type: boolean
         default: true
+      run_tests:
+        description: "Run the Go tests; off, as a Hugo site has none"
+        required: false
+        type: boolean
+        default: false
+      auto_patch:
+        description: "On main, upgrade the modules govulncheck finds vulnerable; off, as a Hugo site has none"
+        required: false
+        type: boolean
+        default: false
     outputs:
       new_release_published:
         description: "Whether a new release was published"
@@ -72,8 +82,8 @@ jobs:
       go_version: ${{ inputs.go_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
       lint: false
-      run_tests: false
-      auto_patch: false
+      run_tests: ${{ inputs.run_tests }}
+      auto_patch: ${{ inputs.auto_patch }}
       artifact_name: ${{ inputs.artifact_name }}
       artifact_path: public
       build_command: ${{ inputs.build_command }}
@@ -110,8 +120,8 @@ jobs:
       go_version: ${{ inputs.go_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
       lint: false
-      run_tests: false
-      auto_patch: false
+      run_tests: ${{ inputs.run_tests }}
+      auto_patch: ${{ inputs.auto_patch }}
       artifact_name: ${{ inputs.artifact_name }}
       artifact_path: public
       build_command: ${{ inputs.build_command }}

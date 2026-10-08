@@ -61,3 +61,7 @@ tasks:
     desc: Check a commit message file against Conventional Commits
     cmds:
       - '{{.FORGEGO}} commit-msg {{.CLI_ARGS}}'
+  type:
+    desc: Type-check and vet every package
+    cmds:
+      - go vet ./...

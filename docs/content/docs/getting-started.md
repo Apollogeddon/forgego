@@ -91,6 +91,7 @@ ForgeGo adds these tasks to `Taskfile.yml`. Tools are referenced through Taskfil
 | `lint` | `golangci-lint fmt`, then `golangci-lint run --fix` | linting on, not `--website` |
 | `format` | `golangci-lint fmt` | linting on, not `--website` |
 | `security` | `govulncheck ./...` | not `--website` |
+| `type` | `go vet ./...` | not `--website` |
 | `test` | `gotestsum --junitfile junit-report.xml -- -coverprofile=coverage.out -covermode=atomic ./...` | testing on, not `--website` |
 | `commit-msg` | `forgego commit-msg {{.CLI_ARGS}}` | versioning on |
 | `build` | `go build -trimpath -ldflags "-X main.version={{.VERSION}}" -o dist/<name> ./cmd/<name>` | `--backend` |

@@ -86,7 +86,7 @@ func TestBackend(t *testing.T) {
 		t.Errorf("go.mod = %q", got)
 	}
 	taskfile := read(t, fs, "Taskfile.yml")
-	for _, task := range []string{"lint:", "test:", "build:", "start:", "security:", "sync:", "sync-check:", "hooks:", "commit-msg:", "release:snapshot:"} {
+	for _, task := range []string{"lint:", "type:", "test:", "build:", "start:", "security:", "sync:", "sync-check:", "hooks:", "commit-msg:", "release:snapshot:"} {
 		if !strings.Contains(taskfile, "  "+task+"\n") {
 			t.Errorf("Taskfile.yml has no %s task", task)
 		}
