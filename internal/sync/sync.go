@@ -8,6 +8,7 @@ import (
 	"github.com/apollogeddon/forgego/internal/console"
 	"github.com/apollogeddon/forgego/internal/fsys"
 	"github.com/apollogeddon/forgego/internal/golangci"
+	"github.com/apollogeddon/forgego/internal/gomod"
 	"github.com/apollogeddon/forgego/internal/templates"
 	"github.com/apollogeddon/forgego/internal/version"
 	"github.com/apollogeddon/forgego/internal/yamlx"
@@ -29,6 +30,20 @@ func expected(fs fsys.FS, dir string) ([]managed, error) {
 			files = append(files, managed{tool.ModPath(), tool.ModFile()}, managed{tool.SumPath(), tool.SumFile()})
 		}
 	}
+	var pinned []templates.Tool
+	for _, tool := range templates.Tools {
+		if fs.Exists(filepath.Join(dir, tool.ModPath())) {
+			pinned = append(pinned, tool)
+		}
+	}
+	if gomodContent, err := fs.ReadFile(filepath.Join(dir, "go.mod")); err == nil {
+		updated, _, err := gomod.EnsureToolchain(gomodContent, gomod.ToolsGo(pinned))
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, managed{"go.mod", updated})
+	}
+
 	local, err := fs.ReadFile(filepath.Join(dir, golangci.LocalPath))
 	switch {
 	case err == nil:
@@ -120,7 +135,8 @@ func forgegoVar(fs fsys.FS, dir string) (string, bool, error) {
 	}
 	current := yamlx.Get(vars, TaskfileVar)
 	want := version.RunCommand()
-	if current == nil || current.Value == want {
+	// a project that runs forgego some other way, such as a local build, keeps it
+	if current == nil || current.Value == want || !version.IsPublishedRun(current.Value) {
 		return "", false, nil
 	}
 	current.Value = want

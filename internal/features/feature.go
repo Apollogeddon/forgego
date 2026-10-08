@@ -10,6 +10,7 @@ import (
 	"github.com/apollogeddon/forgego/internal/fsys"
 	"github.com/apollogeddon/forgego/internal/project"
 	"github.com/apollogeddon/forgego/internal/taskfile"
+	"github.com/apollogeddon/forgego/internal/templates"
 )
 
 // Context is what every feature reads and writes during one run.
@@ -18,6 +19,11 @@ type Context struct {
 	FS      fsys.FS
 	Project project.Info
 	Tasks   *taskfile.Builder
+	// Starter is set when the project's source is forgego's starter, untouched, so the
+	// starter test can go next to it without testing code that isn't there.
+	Starter bool
+	// Tools are the tools the features pinned, so go.mod's toolchain can run them all.
+	Tools []templates.Tool
 }
 
 // Feature is one step of the pipeline.
@@ -82,6 +88,13 @@ func CreateIfMissing(ctx *Context, rel, content string) bool {
 	}
 	console.OK("Created %s", rel)
 	return true
+}
+
+// isStarter reports whether rel is missing or still holds content: the starter forgego
+// is about to create, or created on an earlier run.
+func isStarter(ctx *Context, rel, content string) bool {
+	existing, err := ctx.FS.ReadFile(ctx.path(rel))
+	return err != nil || existing == content
 }
 
 // WriteManaged refreshes a file forgego owns under .forgego/, ignoring --force.

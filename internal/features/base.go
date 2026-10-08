@@ -27,9 +27,9 @@ func (Base) Apply(ctx *Context) bool {
 
 	switch {
 	case ctx.Cfg.IsBackend():
-		ok = CreateIfMissing(ctx, "cmd/"+ctx.Project.Name+"/main.go", templates.Render(templates.BackendMain, values)) && ok
+		ok = starter(ctx, "cmd/"+ctx.Project.Name+"/main.go", templates.Render(templates.BackendMain, values)) && ok
 	case ctx.Cfg.IsLibrary():
-		ok = CreateIfMissing(ctx, ctx.Project.Package+".go", templates.Render(templates.LibrarySource, values)) && ok
+		ok = starter(ctx, ctx.Project.Package+".go", templates.Render(templates.LibrarySource, values)) && ok
 	}
 
 	ignore := templates.Gitignore
@@ -51,4 +51,11 @@ func (Base) Apply(ctx *Context) bool {
 		Cmds: []string{"{{." + sync.TaskfileVar + "}} sync --check"},
 	})
 	return ok
+}
+
+// starter creates the starter source when it's missing, and notes whether the project's
+// source is still the starter.
+func starter(ctx *Context, rel, content string) bool {
+	ctx.Starter = isStarter(ctx, rel, content)
+	return CreateIfMissing(ctx, rel, content)
 }

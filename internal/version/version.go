@@ -9,8 +9,12 @@ import (
 // Module is forgego's module path.
 const Module = "github.com/apollogeddon/forgego"
 
-// override lets tests and the integration test pin a version.
+// override lets tests pin a version.
 var override string
+
+// injected is set by release builds:
+// -ldflags "-X github.com/apollogeddon/forgego/internal/version.injected=v1.2.3".
+var injected string
 
 // Set pins the reported version, for tests.
 func Set(v string) { override = v }
@@ -20,6 +24,9 @@ func Set(v string) { override = v }
 func Current() string {
 	if override != "" {
 		return override
+	}
+	if injected != "" {
+		return injected
 	}
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
@@ -32,7 +39,16 @@ func Current() string {
 	return v
 }
 
+// runPrefix starts every command that runs a published forgego.
+const runPrefix = "go run " + Module + "/cmd/forgego@"
+
 // RunCommand runs this forgego version without installing it.
 func RunCommand() string {
-	return "go run " + Module + "/cmd/forgego@" + Current()
+	return runPrefix + Current()
+}
+
+// IsPublishedRun reports whether command runs a published forgego, rather than one the
+// project chose itself, such as a local build.
+func IsPublishedRun(command string) bool {
+	return strings.HasPrefix(command, runPrefix)
 }

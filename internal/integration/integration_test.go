@@ -36,7 +36,9 @@ func scaffold(t *testing.T, args ...string) string {
 	sh(t, dir, "git", "init", "-q")
 	sh(t, dir, "git", "remote", "add", "origin", "https://github.com/acme/demo")
 	sh(t, dir, forgego, append([]string{"init"}, args...)...)
-	sh(t, dir, "go", "mod", "tidy")
+	if args[0] != "--website" {
+		sh(t, dir, "go", "mod", "tidy")
+	}
 	return dir
 }
 
@@ -52,6 +54,8 @@ func sh(t *testing.T, dir, name string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
+	// CI tests with GOFLAGS=-race, which would rebuild every tool with the race detector
+	cmd.Env = append(os.Environ(), "GOFLAGS=")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)

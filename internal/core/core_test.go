@@ -125,10 +125,10 @@ func TestModuleComesFromTheGitRemote(t *testing.T) {
 }
 
 func TestAnExistingGoModNamesTheProject(t *testing.T) {
-	fs := fsys.NewMemory(map[string]string{dir + "/go.mod": "module example.com/tools/v2\n\ngo 1.25\n"})
+	fs := fsys.NewMemory(map[string]string{dir + "/go.mod": "module example.com/tools/v2\n\ngo 1.27.1\n"})
 	run(t, fs, nil)
-	assertFiles(t, fs, "cmd/tools/main.go")
-	if read(t, fs, "go.mod") != "module example.com/tools/v2\n\ngo 1.25\n" {
+	assertFiles(t, fs, "cmd/tools/main.go", "cmd/tools/main_test.go")
+	if read(t, fs, "go.mod") != "module example.com/tools/v2\n\ngo 1.27.1\n" {
 		t.Error("rewrote an existing go.mod")
 	}
 }
@@ -304,5 +304,55 @@ func TestSyncFindsAndFixesDrift(t *testing.T) {
 	}
 	if !strings.Contains(read(t, fs, "Taskfile.yml"), "forgego@v1.3.0") {
 		t.Error("sync didn't move the Taskfile to the new forgego")
+	}
+}
+
+func TestTheStarterTestOnlyGoesNextToTheStarter(t *testing.T) {
+	fs := fsys.NewMemory(map[string]string{dir + "/cmd/billing-api/main.go": "package main\n\nfunc main() {}\n"})
+	run(t, fs, nil)
+	refuteFiles(t, fs, "cmd/billing-api/main_test.go")
+
+	fs = fsys.NewMemory(map[string]string{dir + "/billingapi.go": "package billingapi\n"})
+	run(t, fs, func(c *config.Init) { c.Mode = config.Library })
+	refuteFiles(t, fs, "billingapi_test.go")
+
+	// a re-run keeps adding it next to the untouched starter
+	fs = fsys.NewMemory(nil)
+	run(t, fs, nil)
+	_ = fs.Remove(dir + "/cmd/billing-api/main_test.go")
+	run(t, fs, nil)
+	assertFiles(t, fs, "cmd/billing-api/main_test.go")
+}
+
+func TestSyncLeavesAForgegoTheProjectChoseAlone(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	taskfile := strings.Replace(read(t, fs, "Taskfile.yml"),
+		"go run github.com/apollogeddon/forgego/cmd/forgego@v1.2.3", "go run ./cmd/forgego", 1)
+	_ = fs.WriteFile(dir+"/Taskfile.yml", taskfile)
+	if code := sync.Run(fs, dir, true); code != 0 {
+		t.Errorf("a local forgego counted as drift")
+	}
+}
+
+func TestAnOlderGoGetsAToolchainTheToolsCanRunOn(t *testing.T) {
+	fs := fsys.NewMemory(map[string]string{dir + "/go.mod": "module example.com/api\n\ngo 1.25.0\n"})
+	run(t, fs, func(c *config.Init) { c.DryRun = true })
+	if read(t, fs, "go.mod") != "module example.com/api\n\ngo 1.25.0\n" {
+		t.Error("dry run changed go.mod")
+	}
+
+	run(t, fs, nil)
+	got := read(t, fs, "go.mod")
+	if !strings.Contains(got, "\ngo 1.25.0\n") || !strings.Contains(got, "\ntoolchain go1.2") {
+		t.Errorf("go.mod should keep go 1.25.0 and gain a toolchain:\n%s", got)
+	}
+	if code := sync.Run(fs, dir, true); code != 0 {
+		t.Error("sync --check disagrees with init")
+	}
+
+	_ = fs.WriteFile(dir+"/go.mod", "module example.com/api\n\ngo 1.25.0\n")
+	if code := sync.Run(fs, dir, true); code != 1 {
+		t.Error("sync --check missed the toolchain the tools need")
 	}
 }
