@@ -147,13 +147,13 @@ Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}), plus:
 
 *Orchestrates the full pipeline for website projects and deploys to GitHub Pages.*
 
-1. Calls → `testing.yml` to build the site, with `lint`, `run_tests` and `auto_patch` off — a Hugo site has no Go to lint or test. The build (`build_command`, default `task build`) writes `public/`, uploaded as the `artifact_name` artifact.
+1. Calls → `testing.yml` to build the site, with `lint` off and `run_tests` and `auto_patch` off by default — a Hugo site has no Go to lint, test or patch. The build (`build_command`, default `task build`) writes `public/`, uploaded as the `artifact_name` artifact.
 2. Calls → `merge.yml` to auto-merge Dependabot PRs once testing passes. Disable with `auto_merge: false`. *(Needs: testing)*
 3. Calls → `version.yml` to check if a new release was published. Skip with `enable_versioning: false`. *(Needs: testing)*
 4. Calls → `testing.yml` again as **`release-testing`**, only with `test_on_push: false`. *(Needs: version)*
 5. **`deploy`** — Downloads the build artifact and deploys it to GitHub Pages, in the `github-pages` environment. Runs on the main branch only and, when versioning is enabled, only when a new release is published. Needs `pages: write` and `id-token: write`. *(Needs: testing, version, release-testing)*
 
-Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}) except `run_tests`, `lint` and `auto_patch`, plus:
+Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}) except `lint`, with `run_tests` and `auto_patch` off by default as a Hugo site has no Go to test or patch, plus:
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |

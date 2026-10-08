@@ -18,6 +18,10 @@ func (Build) ShouldRun(config.Init) bool { return true }
 func (Build) Cleanup(*Context)           {}
 
 func (Build) Apply(ctx *Context) bool {
+	if !ctx.Cfg.IsWebsite() {
+		// the compiler type-checks, and go vet catches what compiles but is wrong
+		ctx.Tasks.Add(taskfile.Task{Name: "type", Desc: "Type-check and vet every package", Cmds: []string{"go vet ./..."}})
+	}
 	switch {
 	case ctx.Cfg.IsWebsite():
 		return buildWebsite(ctx)
