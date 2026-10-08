@@ -1,0 +1,26 @@
+name: ForgeGo CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # never cancel a run on main mid-release, or the release is created but never published
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  index:
+    uses: ./.github/workflows/service.yml
+    with:
+      # The self-hosted `xerus` runners; a public repository never uses them.
+      runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      working_directory: '.'
+    permissions:
+      contents: write
+      pull-requests: write
