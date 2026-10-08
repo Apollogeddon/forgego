@@ -119,7 +119,7 @@ jobs:
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 20
     needs: [testing, version, release-testing]
-    if: ${{ !failure() && !cancelled() && inputs.release_binaries && (needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) }}
+    if: ${{ !failure() && !cancelled() && (needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) }}
     permissions:
       contents: write
     defaults:
@@ -128,20 +128,35 @@ jobs:
     steps:
       # GoReleaser reads the release tag from the history
       - uses: actions/checkout@v7
+        if: inputs.release_binaries
         with:
           persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-go@v7
+        if: inputs.release_binaries
         with:
           go-version: ${{ inputs.go_version }}
           go-version-file: ${{ inputs.working_directory }}/go.mod
           # no module cache in a job that publishes
           cache: false
-      # release-please created the release; GoReleaser attaches the binaries, checksums and any .deb
+      # release-please created the release as a draft; GoReleaser attaches the binaries,
+      # checksums and any .deb, then publishes it
       - uses: goreleaser/goreleaser-action@v7
+        if: inputs.release_binaries
         with:
           version: '~> v2'
           args: release --clean
           workdir: ${{ inputs.working_directory }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # with no binaries to attach, publish release-please's draft as it is
+      - name: Publish the draft release
+        if: ${{ !inputs.release_binaries }}
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag_name }}
+        run: |
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true" ]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          fi

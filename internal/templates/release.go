@@ -28,11 +28,13 @@ archives:
 checksum:
   name_template: checksums.txt
 
-# release-please writes the release notes and creates the release
+# release-please writes the release notes and creates the release as a draft; GoReleaser
+# attaches the files and publishes it, as a published release may be immutable
 changelog:
   disable: true
 release:
   mode: keep-existing
+  use_existing_draft: true
 __NFPMS__`
 
 // GoreleaserNfpms adds the .deb package for --debian.

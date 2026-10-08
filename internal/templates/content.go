@@ -161,6 +161,21 @@ const ReleaseConfig = `{
 }
 `
 
+// ServiceReleaseConfig is ReleaseConfig for a backend, whose release CI attaches binaries
+// to. A repository with immutable releases can't add files to a published release, so
+// release-please creates a draft, tagged straight away so it finds the previous release,
+// and GoReleaser publishes it once the binaries are attached.
+const ServiceReleaseConfig = `{
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "draft": true,
+      "force-tag-creation": true
+    }
+  }
+}
+`
+
 // ReleaseManifest starts the version history at 0.0.0: the first release is v0.1.0
 // for a feat, or v0.0.1 if it only has fixes.
 const ReleaseManifest = `{

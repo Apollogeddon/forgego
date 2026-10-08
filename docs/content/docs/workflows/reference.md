@@ -122,7 +122,7 @@ In this mode release-please tags the release before the push's checks run. If th
 2. Calls → `merge.yml` to auto-merge Dependabot PRs once testing passes. *(Needs: testing)*
 3. Calls → `version.yml` to trigger a release on the main branch. Skip with `enable_versioning: false`. It still runs when the checks were skipped, but not when they failed. *(Needs: testing)*
 4. Calls → `testing.yml` again as **`release-testing`**, only with `test_on_push: false` — see [Checking Once per Change](#checking-once-per-change). *(Needs: version)*
-5. **`release`** — On `main`, when a new release was published and the checks passed, runs GoReleaser (latest `v2`, through `goreleaser-action`) with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the release release-please created. Disable with `release_binaries: false`. Needs `contents: write`. *(Needs: testing, version, release-testing)*
+5. **`release`** — On `main`, when a new release was published and the checks passed, runs GoReleaser (latest `v2`, through `goreleaser-action`) with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the draft release release-please created, then publishes it. With `release_binaries: false` it publishes the draft as it is. Needs `contents: write`. *(Needs: testing, version, release-testing)*
 
 Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}), plus:
 
