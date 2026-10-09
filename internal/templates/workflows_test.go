@@ -74,3 +74,49 @@ func TestPipelinesExposeReleaseOutputs(t *testing.T) {
 		}
 	}
 }
+
+// A module in a subdirectory keeps its release-please config in its own .github/, and
+// release-please prefixes its outputs with its path.
+func TestVersionUsesWorkingDirectory(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "version.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Jobs map[string]struct {
+			Outputs map[string]string `yaml:"outputs"`
+			Steps   []struct {
+				Uses string            `yaml:"uses"`
+				With map[string]string `yaml:"with"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &w); err != nil {
+		t.Fatal(err)
+	}
+	job := w.Jobs["release-please"]
+	for _, step := range job.Steps {
+		if !strings.HasPrefix(step.Uses, "googleapis/release-please-action") {
+			continue
+		}
+		for key, file := range map[string]string{"config-file": "release.json", "manifest-file": ".release.json"} {
+			if want := "format('{0}/.github/" + file + "', inputs.working_directory)"; !strings.Contains(step.With[key], want) {
+				t.Errorf("%s = %q, want it to contain %s", key, step.With[key], want)
+			}
+		}
+	}
+	for _, key := range []string{"release_created", "version", "tag_name"} {
+		if want := "format('{0}--" + key + "', inputs.working_directory)"; !strings.Contains(job.Outputs[key], want) {
+			t.Errorf("output %s = %q, want it to contain %s", key, job.Outputs[key], want)
+		}
+	}
+	// releases_created is true when any package is released, not just this one,
+	// so it only counts for the root package
+	_, published, _ := strings.Cut(string(b), "new_release_published:")
+	published, _, _ = strings.Cut(published, "\n      version:")
+	beforeRoot, rootClause, found := strings.Cut(published, "inputs.working_directory == '.' && ")
+	if !found || strings.Contains(beforeRoot, "releases_created") ||
+		!strings.HasPrefix(rootClause, "(jobs.release-please.outputs.releases_created") {
+		t.Errorf("new_release_published counts releases_created beyond the root package: %s", published)
+	}
+}
