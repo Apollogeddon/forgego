@@ -15,7 +15,7 @@ on:
     outputs:
       new_release_published:
         description: "Whether a new release was published"
-        value: ${{ format('{0}', jobs.release-please.outputs.release_created == 'true' || jobs.release-please.outputs.release_created == true) }}
+        value: ${{ format('{0}', jobs.release-please.outputs.release_created == 'true' || jobs.release-please.outputs.release_created == true || (inputs.working_directory == '.' && (jobs.release-please.outputs.releases_created == 'true' || jobs.release-please.outputs.releases_created == true))) }}
       version:
         description: "Released version (e.g. 1.2.3); empty when nothing was released"
         value: ${{ jobs.release-please.outputs.version }}
@@ -34,8 +34,12 @@ jobs:
     # release-please prefixes a package's outputs with its path (`services/api--version`)
     # unless the package is the repository root, so read this package's own: a
     # release of another package in the repository isn't this one's.
+    # releases_created (any package released) only counts for the root package,
+    # where release_created can be unset after a release (website deploys were
+    # skipped without it).
     outputs:
       release_created: ${{ inputs.working_directory != '.' && steps.release.outputs[format('{0}--release_created', inputs.working_directory)] || steps.release.outputs.release_created }}
+      releases_created: ${{ steps.release.outputs.releases_created }}
       version: ${{ inputs.working_directory != '.' && steps.release.outputs[format('{0}--version', inputs.working_directory)] || steps.release.outputs.version }}
       tag_name: ${{ inputs.working_directory != '.' && steps.release.outputs[format('{0}--tag_name', inputs.working_directory)] || steps.release.outputs.tag_name }}
     steps:

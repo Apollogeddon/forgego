@@ -110,8 +110,13 @@ func TestVersionUsesWorkingDirectory(t *testing.T) {
 			t.Errorf("output %s = %q, want it to contain %s", key, job.Outputs[key], want)
 		}
 	}
-	// releases_created is true when any package is released, not just this one
-	if strings.Contains(string(b), "releases_created") {
-		t.Error("version.yml reads releases_created")
+	// releases_created is true when any package is released, not just this one,
+	// so it only counts for the root package
+	_, published, _ := strings.Cut(string(b), "new_release_published:")
+	published, _, _ = strings.Cut(published, "\n      version:")
+	beforeRoot, rootClause, found := strings.Cut(published, "inputs.working_directory == '.' && ")
+	if !found || strings.Contains(beforeRoot, "releases_created") ||
+		!strings.HasPrefix(rootClause, "(jobs.release-please.outputs.releases_created") {
+		t.Errorf("new_release_published counts releases_created beyond the root package: %s", published)
 	}
 }
