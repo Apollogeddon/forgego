@@ -3,16 +3,16 @@ title: Workflows
 weight: 4
 ---
 
-Forge.go ships reusable GitHub Actions workflows that give every project the same quality gates, release process and delivery pipeline. `forgego init` generates a `.github/workflows/index.yml` that calls the right one for your mode.
+Forge.go ships reusable GitHub Actions workflows that give every project the same quality checks, release process and delivery pipeline. `forgego init` generates a `.github/workflows/index.yml` that calls the right one for your mode. This page shows the generated workflow and the inputs and permissions the workflows share; the [Job reference]({{< relref "reference.md" >}}) describes each workflow in detail.
 
-## Available Workflows
+## Available workflows
 
 | Workflow | Purpose |
 | :--- | :--- |
 | `quality.yml` | Secret scanning (Gitleaks), dependency scanning (OSV-Scanner and govulncheck), `forgego sync --check`, `go mod tidy -diff` and golangci-lint |
 | `testing.yml` | Full QA suite: quality, the tests, the build artifact, and vulnerability patching on `main` |
 | `version.yml` | Automated versioning and GitHub releases via release-please |
-| `merge.yml` | Auto-merges Dependabot pull requests once checks pass |
+| `merge.yml` | Auto-merges Dependabot pull requests once checks pass, except GitHub Actions updates |
 | `service.yml` | Orchestrator for backends — testing, auto-merge, version, then the release binaries (and `.deb`) with GoReleaser |
 | `library.yml` | Orchestrator for libraries — testing, auto-merge, version, then publishing the release to the Go module proxy |
 | `website.yml` | Orchestrator for websites — testing, auto-merge, version, then GitHub Pages deployment |
@@ -20,11 +20,11 @@ Forge.go ships reusable GitHub Actions workflows that give every project the sam
 
 There is no separate packaging workflow: a `--debian` project uses `service.yml`, and GoReleaser builds the `.deb` in its release job.
 
-## Setup Guide
+## Setup
 
-Reference the workflows with the `uses` keyword, at `apollogeddon/forgego/.github/workflows/<file>@main`. The `init` command generates a starter `index.yml` appropriate for the selected mode.
+Call the workflows with the `uses` keyword, at `apollogeddon/forgego/.github/workflows/<file>@main`. `forgego init` generates a starter `index.yml` for the selected mode.
 
-### Usage Examples
+### Generated workflows
 
 Every generated `index.yml` starts with the same triggers and concurrency rule: a newer push cancels the pull request run it replaces, and a run on `main` is never cancelled, so a release is never created without being published.
 
@@ -106,7 +106,7 @@ jobs:
 
 `go_version` is the `--go` version. `--no-testing` adds `run_tests: false` and `--no-linting` adds `lint: false` (backends and libraries), and `--no-versioning` adds `enable_versioning: false`.
 
-## Common Inputs
+## Common inputs
 
 `service.yml`, `library.yml` and `website.yml` share these inputs:
 
@@ -114,31 +114,31 @@ jobs:
 | :--- | :--- | :--- |
 | `go_version` | `''` | Go version for every job; empty reads it from `go.mod` |
 | `working_directory` | `'.'` | Directory containing `go.mod` |
-| `runs_on` | `'ubuntu-latest'` | Runner label for every job — see [Choosing Runners]({{< relref "reference.md#choosing-runners" >}}) |
+| `runs_on` | `'ubuntu-latest'` | Runner label for every job — see [Choosing runners]({{< relref "reference.md#choosing-runners" >}}) |
 | `enable_secrets` | `true` | Run the Gitleaks secret scan |
 | `enable_versioning` | `true` | Run release-please — `forgego init --no-versioning` sets it to `false` |
-| `test_on_push` | `true` | Run the checks on pushes too — see [Checking Once per Change]({{< relref "reference.md#checking-once-per-change" >}}) |
+| `test_on_push` | `true` | Run the checks on pushes too — see [Checking once per change]({{< relref "reference.md#checking-once-per-change" >}}) |
 | `test_release_prs` | `true` | Run the checks on release-please's release pull requests |
 | `run_tests` | `true` | Run the tests — `forgego init --no-testing` sets it to `false` (`service.yml`, `library.yml`) |
 | `lint` | `true` | Run golangci-lint and the `go mod tidy` check — `forgego init --no-linting` sets it to `false` (`service.yml`, `library.yml`) |
 | `auto_patch` | `true` | On `main`, upgrade the modules govulncheck finds vulnerable and commit the result (`service.yml`, `library.yml`) |
 
-Each orchestrator has a few inputs of its own, listed in the [Job Reference]({{< relref "reference.md" >}}).
+Each orchestrator has a few inputs of its own, listed in the [Job reference]({{< relref "reference.md" >}}).
 
-## Common Secrets
+## Secrets
 
 No secrets need passing. The workflows only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. A library is published by its Git tag, so it needs no registry credentials either.
 
-## Required Permissions
+## Required permissions
 
 | Permission | Needed for |
 | :--- | :--- |
 | `contents: write` | release-please tags and releases, the release binaries, and the `patch` job's commit |
-| `pull-requests: write` | Release PRs and Dependabot auto-merge |
+| `pull-requests: write` | Release pull requests and Dependabot auto-merge |
 | `pages: write` | GitHub Pages deployment (website) |
 | `id-token: write` | GitHub Pages deployment (website) |
 | `packages: write` | Pushing Docker images to GHCR (the `docker` job) |
 
 GitHub checks a called workflow's permissions against the caller's before running anything, so grant everything your mode needs even if a job would be skipped.
 
-For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions**. For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**.
+For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions**. For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**. Dependabot's GitHub Actions updates are never auto-merged: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge, so merge those pull requests yourself.

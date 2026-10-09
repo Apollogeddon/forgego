@@ -3,9 +3,11 @@ title: Examples
 weight: 3
 ---
 
-## Configuration Patterns
+These recipes cover common changes to a Forge.go project's configuration and to the GitHub Actions workflow that calls Forge.go's reusable workflows.
 
-### Enabling Another Linter
+## Configuration patterns
+
+### Enabling another linter
 
 Add linters to `.golangci.local.yml`. Lists gain items, so these are enabled on top of the base set:
 
@@ -24,7 +26,7 @@ Then regenerate `.golangci.yml`:
 task sync
 ```
 
-### Disabling a Base Linter
+### Disabling a base linter
 
 A list in `.golangci.local.yml` can only add items, so you can't remove a linter from the base `enable` list. Use golangci-lint's own `disable` list instead:
 
@@ -36,7 +38,7 @@ linters:
     - unparam
 ```
 
-### Tuning a Linter's Settings
+### Tuning a linter's settings
 
 Mappings merge key by key, so settings for one linter leave the base settings for the others in place:
 
@@ -50,7 +52,7 @@ linters:
         - G104
 ```
 
-### Excluding Paths
+### Excluding paths
 
 Add paths and extra exclusion rules; both are lists, so the base exclusions still apply:
 
@@ -67,7 +69,7 @@ linters:
           - gosec
 ```
 
-### Adding Your Own Tasks
+### Adding your own tasks
 
 Add tasks alongside the generated ones in `Taskfile.yml`. Forge.go never removes or changes a task it didn't create, and keeps its own tasks as you've edited them unless you run `init --force`, which also removes the tasks of a feature you've switched off:
 
@@ -84,7 +86,7 @@ tasks:
       - task: test
 ```
 
-### Building a Specific Version
+### Building a specific version
 
 A backend's `build` task stamps the `VERSION` var into `main.version`. Override it from the command line:
 
@@ -92,7 +94,7 @@ A backend's `build` task stamps the `VERSION` var into `main.version`. Override 
 task build VERSION=1.4.0
 ```
 
-### Running the Tests With the Race Detector
+### Running the tests with the race detector
 
 CI runs `task test` with `GOFLAGS=-race`. Run it the same way locally — the race detector needs cgo:
 
@@ -100,9 +102,9 @@ CI runs `task test` with `GOFLAGS=-race`. Run it the same way locally — the ra
 GOFLAGS=-race task test
 ```
 
-## Workflow Patterns
+## Workflow patterns
 
-### Monorepo Execution
+### Monorepos
 
 `forgego init -C services/api` scaffolds a subdirectory, using the repository's remote plus the subdirectory as the module path (`github.com/acme/platform/services/api`). GitHub only runs workflows from the repository root's `.github/workflows/`, so move the generated job there and point it at the subdirectory with `working_directory`, given relative to the repository root without a leading `./` or trailing `/`:
 
@@ -140,7 +142,7 @@ jobs:
 
 release-please then only counts commits under `services/api`, and each module in the repository gets its own release PR and tags.
 
-### Testing Across Go Versions
+### Testing across Go versions
 
 Call `testing.yml` from a matrix to run the quality, test and build jobs on several Go versions:
 
@@ -162,7 +164,7 @@ jobs:
 
 The pinned tools need Go 1.27, so on an older `go_version` the `toolchain` line in `go.mod` decides which Go actually runs the tools.
 
-### Custom Build Steps
+### Custom build steps
 
 `testing.yml` runs `task build` by default and uploads `dist/`; pass `build_command` and `artifact_path` to change them:
 
@@ -177,7 +179,7 @@ jobs:
       artifact_path: 'dist'
 ```
 
-### Releasing Without Binaries
+### Releasing without binaries
 
 A service that's only ever deployed from its Docker image doesn't need GoReleaser to attach binaries. Turn the release job off:
 
@@ -195,7 +197,7 @@ jobs:
 
 Don't do this with `--debian`: the `.deb` is built by the same release job.
 
-### Building Docker Images for More Platforms
+### Building Docker images for more platforms
 
 With `--docker`, CI builds `linux/amd64` and `linux/arm64`. Add platforms with the `docker` job's `platforms` input:
 
@@ -215,7 +217,7 @@ jobs:
 
 The backend `Dockerfile` cross-compiles, so extra platforms cost build time but no emulation. A platform must be one the runtime base image publishes: `gcr.io/distroless/static-debian12` for a backend, `nginx:stable-alpine` for a website.
 
-### Self-Hosted Runners
+### Self-hosted runners
 
 Every workflow takes `runs_on`. Set it from a repository variable to switch runners without editing the workflow:
 
