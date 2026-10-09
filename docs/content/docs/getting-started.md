@@ -139,6 +139,8 @@ forgego --version
 | `--go VERSION` | Target Go version, such as `1.27` or `1.27.1` (default: the existing `go.mod`'s, else `1.27`). |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
+`--website` scaffolds a static documentation site built with Hugo and the Hextra theme, which Hugo fetches as a Go module: `hugo.toml`, `content/_index.md` and `content/docs/_index.md`. There is no Go source. `task dev` serves the site locally with live reload, and `task build` writes it to `public/`. In CI, the `website.yml` workflow builds the site and deploys `public/` to GitHub Pages.
+
 Choose at most one mode; passing more than one exits with code `1`. An invalid combination — `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`.
 
 `--go` sets the `go` line of a new `go.mod` (`1.27` becomes `go 1.27.0`), the `go_version` passed to CI, and the `golang` image the `Dockerfile` builds with. Without it, an existing project's `go.mod` decides those, and its `go` line is never changed.
