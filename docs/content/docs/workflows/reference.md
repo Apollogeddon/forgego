@@ -100,7 +100,7 @@ In this mode release-please tags the release before the push's checks run. If th
 
 *Manages the release lifecycle.*
 
-1. **`release-please`** — On the main branch, opens or updates the release PR from Conventional Commits, and creates the tag and GitHub release when it merges. It reads `.github/release.json` and `.github/.release.json`. Needs `contents: write` and `pull-requests: write`.
+1. **`release-please`** — On the main branch, opens or updates the release PR from Conventional Commits, and creates the tag and GitHub release when it merges. It reads `.github/release.json` and `.github/.release.json` under `working_directory`, so each module in a monorepo is released on its own (see [Monorepo Execution]({{< relref "/docs/examples.md#monorepo-execution" >}})). Its outputs are those of the `working_directory` package, not of any other package released in the same run. Needs `contents: write` and `pull-requests: write`.
 
 | Output | Description |
 | :--- | :--- |

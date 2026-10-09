@@ -104,7 +104,7 @@ GOFLAGS=-race task test
 
 ### Monorepo Execution
 
-`forgego init -C services/api` scaffolds a subdirectory, using the repository's remote plus the subdirectory as the module path (`github.com/acme/platform/services/api`). GitHub only runs workflows from the repository root's `.github/workflows/`, so move the generated job there and point it at the subdirectory with `working_directory`:
+`forgego init -C services/api` scaffolds a subdirectory, using the repository's remote plus the subdirectory as the module path (`github.com/acme/platform/services/api`). GitHub only runs workflows from the repository root's `.github/workflows/`, so move the generated job there and point it at the subdirectory with `working_directory`, given relative to the repository root without a leading `./` or trailing `/`:
 
 ```yaml
 jobs:
@@ -117,6 +117,28 @@ jobs:
       working_directory: 'services/api'
       go_version: '1.27'
 ```
+
+`version.yml` reads the module's own `services/api/.github/release.json` and `.release.json`, but release-please keys a package by its path from the repository root, so change the `"."` key in both to the subdirectory. Go also wants a subdirectory module's tags prefixed with its path (`services/api/v1.2.3`), so set that as the package's `component`, with `/` as the separator:
+
+```json
+{
+  "packages": {
+    "services/api": {
+      "release-type": "go",
+      "component": "services/api",
+      "tag-separator": "/"
+    }
+  }
+}
+```
+
+```json
+{
+  "services/api": "0.0.0"
+}
+```
+
+release-please then only counts commits under `services/api`, and each module in the repository gets its own release PR and tags.
 
 ### Testing Across Go Versions
 
