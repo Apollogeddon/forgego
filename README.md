@@ -7,7 +7,7 @@
   <h3 align="center">Forge.go</h3>
 
   <p align="center">
-    Linting, testing, release and CI tooling for Go projects, set up with one command
+    Reusable GitHub Actions workflows and tooling configurations for Go projects
     <br />
     <a href="https://apollogeddon.github.io/forgego/"><strong>Read the docs</strong></a>
     <br />
@@ -22,7 +22,13 @@
 
 <br />
 
-Forge.go (`forgego`) is a command-line tool that scaffolds a standard toolchain into Go projects: golangci-lint, govulncheck, gotestsum, lefthook Git hooks, release-please, GoReleaser and a GitHub Actions workflow that calls Forge.go's reusable workflows. It is for teams that want every Go repository to share the same checks and release process, and keep them up to date from one place.
+Forge.go (`forgego`) is a project-scaffolding CLI for Go. Its `init` command sets up a backend, library or website with a standard toolchain (golangci-lint, govulncheck, gotestsum, lefthook, release-please, GoReleaser) and a GitHub Actions pipeline built from reusable workflows. It keeps your golangci-lint, govulncheck and gotestsum setup in one place: each tool is pinned in its own module, and `forgego sync` brings every project up to the configs and versions of a newer Forge.go.
+
+## Requirements
+
+- [Go](https://go.dev/dl/) 1.26 or later; the pinned tools need Go 1.27, which `go` downloads through the `toolchain` line in `go.mod`
+- Git, for the generated lefthook hooks
+- Docker, only for the `docker:build` and `docker:run` tasks that `--docker` adds
 
 ## Installation
 
@@ -81,7 +87,7 @@ Every generated task runs through a pinned copy of [Task](https://taskfile.dev/)
 | Containers | [Docker Buildx](https://docs.docker.com/build/) | With `--docker`, CI builds the image for `linux/amd64` and `linux/arm64` on every pull request and pushes it to GHCR on release. |
 | Websites | [Hugo](https://gohugo.io/) and [Hextra](https://imfing.github.io/hextra/) | With `--website`, a documentation site whose theme is versioned in `go.mod`. |
 
-## How tool versions are managed
+## Keeping projects up to date
 
 - **One module per tool:** each tool is pinned in its own module file under `.forgego/` and run with `go tool -modfile`, so no two tools' dependencies clash and none of them touch your `go.mod`. A fresh clone needs only Go and Git.
 - **Upgrades through `sync`:** to move a project to the tool versions of a newer Forge.go, run that version's `forgego sync`. `task sync-check` reports drift without writing anything, and runs in the generated pre-commit hook and in CI.
@@ -92,7 +98,7 @@ Every generated task runs through a pinned copy of [Task](https://taskfile.dev/)
 
 The full documentation is at [apollogeddon.github.io/forgego](https://apollogeddon.github.io/forgego/):
 
-- [Getting started](https://apollogeddon.github.io/forgego/docs/getting-started/): requirements, flags and generated tasks.
+- [Getting started](https://apollogeddon.github.io/forgego/docs/getting-started/): requirements, CLI flags and generated tasks.
 - [Configuration](https://apollogeddon.github.io/forgego/docs/configuration/): the files Forge.go writes and how to change them.
 - [Examples](https://apollogeddon.github.io/forgego/docs/examples/): common configuration and workflow recipes.
 - [Workflows](https://apollogeddon.github.io/forgego/docs/workflows/): the reusable GitHub Actions workflows and their inputs.

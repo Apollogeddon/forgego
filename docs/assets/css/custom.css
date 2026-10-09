@@ -126,15 +126,15 @@ pre {
 .fg-hero::before {
   content: "";
   position: absolute;
-  top: -128px;
+  top: -32px;
   left: 50%;
   width: 560px;
   max-width: 100%;
   height: 560px;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: rgba(var(--fg-accent-rgb), 0.2);
-  opacity: 0.3;
+  background: rgba(var(--fg-accent-rgb), 0.4);
+  opacity: 0.5;
   filter: blur(130px);
   pointer-events: none;
   z-index: -1;
