@@ -5,5 +5,6 @@
       "draft": true,
       "force-tag-creation": true
     }
-  }
+  },
+  "last-release-sha": "4a7aa06c403bfaddba88bcf166d3da1109586093"
 }
