@@ -1,0 +1,10 @@
+<div class="fg-footer">
+  <a href="{{ "" | relURL }}" class="fg-footer-brand">
+    <img src="{{ "forgego.svg" | relURL }}" alt="" width="28" height="28" />
+    <span>{{ site.Title }}</span>
+  </a>
+  <p>© {{ now.Year }} Apollogeddon. Released under the MIT License.</p>
+  <a href="https://github.com/apollogeddon/forgego" class="fg-footer-repo" target="_blank" rel="noopener noreferrer">
+    {{- partial "utils/icon.html" (dict "name" "github" "attributes" "height=13") }}apollogeddon/forgego
+  </a>
+</div>

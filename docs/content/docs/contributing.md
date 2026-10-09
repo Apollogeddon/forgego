@@ -1,6 +1,6 @@
 ---
 title: Contributing
-weight: 7
+weight: 4
 ---
 
 This page is for people working on Forge.go itself. The repository uses the same toolchain Forge.go scaffolds into other projects: its `.forgego/`, `Taskfile.yml`, `lefthook.yml`, `.golangci*.yml` and `.goreleaser.yaml` came from `forgego init`.

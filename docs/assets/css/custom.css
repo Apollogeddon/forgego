@@ -292,7 +292,7 @@ pre {
 }
 
 .content.fg-home > h2 {
-  margin-top: 112px;
+  margin-top: 160px;
   padding: 0;
   border: 0;
   text-align: center;
@@ -486,4 +486,49 @@ pre {
 
 .dark .content .fg-more a {
   border-bottom: 0;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+
+.fg-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 48px 16px;
+  text-align: center;
+}
+
+.fg-footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fafafa;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.fg-footer p {
+  color: #52525b;
+  font-size: 14px;
+}
+
+.fg-footer-repo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #71717a;
+  font-size: 12px;
+  transition: color 0.15s;
+}
+
+.fg-footer-repo:hover {
+  color: #d4d4d8;
+}
+
+.dark .hextra-footer {
+  border-top: 1px solid rgba(39, 39, 42, 0.6);
+  background-color: #09090b;
 }

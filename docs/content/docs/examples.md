@@ -1,6 +1,6 @@
 ---
 title: Examples
-weight: 3
+weight: 6
 ---
 
 These recipes cover common changes to a Forge.go project's configuration and to the GitHub Actions workflow that calls Forge.go's reusable workflows.
