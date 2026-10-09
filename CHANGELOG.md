@@ -6,7 +6,6 @@
 ### Bug Fixes
 
 * **ci:** keep counting releases_created for a root package, where release_created can be unset ([68ea434](https://github.com/Apollogeddon/forgego/commit/68ea434b243c14e1b81769475fc1f0acd923f088))
-* **ci:** use working_directory in version.yml ([7976069](https://github.com/Apollogeddon/forgego/commit/79760693b857f2a184b69446ad0cdfaef0b83381))
 * **ci:** use working_directory in version.yml ([99cb192](https://github.com/Apollogeddon/forgego/commit/99cb19261b5969e66ccf36751a97b872b889915f))
 
 ## [1.0.5](https://github.com/Apollogeddon/forgego/compare/v1.0.4...v1.0.5) (2026-10-08)
@@ -14,7 +13,6 @@
 
 ### Bug Fixes
 
-* **ci:** leave Dependabot's GitHub Actions updates for a person to merge ([bc1073a](https://github.com/Apollogeddon/forgego/commit/bc1073a027b8c3013782654ab65f06ab9f77e264))
 * **ci:** leave Dependabot's GitHub Actions updates for a person to merge ([e1ac352](https://github.com/Apollogeddon/forgego/commit/e1ac352bc01943019d1e413f88cf51e2b0ceb33f))
 
 ## [1.0.4](https://github.com/Apollogeddon/forgego/compare/v1.0.3...v1.0.4) (2026-10-08)
@@ -22,7 +20,6 @@
 
 ### Bug Fixes
 
-* **deps:** upgrade gotestsum's x/mod and x/text past known vulnerabilities ([95f7d4a](https://github.com/Apollogeddon/forgego/commit/95f7d4aecef90b72c90216d5db0bbec5cedda5c0))
 * **deps:** upgrade gotestsum's x/mod and x/text past known vulnerabilities ([da702eb](https://github.com/Apollogeddon/forgego/commit/da702eb765990ae33fcd6cca1f2814a4281f8c19))
 
 ## [1.0.3](https://github.com/Apollogeddon/forgego/compare/v1.0.2...v1.0.3) (2026-10-08)
@@ -30,7 +27,6 @@
 
 ### Bug Fixes
 
-* auto-merge a Dependabot PR that only waits on checks nobody requires ([29242a4](https://github.com/Apollogeddon/forgego/commit/29242a460c8233cfc794fc5a14a52ae0880f794a))
 * auto-merge a Dependabot PR that only waits on checks nobody requires ([4fc82b3](https://github.com/Apollogeddon/forgego/commit/4fc82b34f63ec7dcbb186403b09d9f30e5f60743))
 
 ## [1.0.2](https://github.com/Apollogeddon/forgego/compare/v1.0.1...v1.0.2) (2026-10-08)
@@ -38,7 +34,6 @@
 
 ### Bug Fixes
 
-* auto-merge Dependabot PRs through the API, so a runner needs no gh CLI ([e860f43](https://github.com/Apollogeddon/forgego/commit/e860f43eefcfd86c0fe444f1e99586ad72b86881))
 * auto-merge Dependabot PRs through the API, so a runner needs no gh CLI ([d68b82b](https://github.com/Apollogeddon/forgego/commit/d68b82b975a632cdf21115274163dd045680f58c))
 
 ## [1.0.1](https://github.com/Apollogeddon/forgego/compare/v1.0.0...v1.0.1) (2026-10-08)
@@ -46,7 +41,6 @@
 
 ### Bug Fixes
 
-* release a backend as a draft, so GoReleaser can attach its binaries ([9adffad](https://github.com/Apollogeddon/forgego/commit/9adffade9968157dbff4e8c0c88c1c6e5eff78b4))
 * release a backend as a draft, so GoReleaser can attach its binaries ([862a0fd](https://github.com/Apollogeddon/forgego/commit/862a0fd202f74ed89e2dc87054c7ed5e4d81fb7e))
 
 ## 1.0.0 (2026-10-08)

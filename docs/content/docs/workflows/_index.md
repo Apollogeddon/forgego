@@ -141,4 +141,4 @@ No secrets need passing. The workflows only use the `GITHUB_TOKEN` that every ca
 
 GitHub checks a called workflow's permissions against the caller's before running anything, so grant everything your mode needs even if a job would be skipped.
 
-For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions**. For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**. Dependabot's GitHub Actions updates are never auto-merged: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge, so merge those pull requests yourself.
+For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions**. For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**. Auto-merge squash-merges, so release-please lists each update once: a merge commit repeats the pull request's title, and release-please reads that as a second change. Merge your own pull requests the same way, with **Squash and merge**. Dependabot's GitHub Actions updates are never auto-merged: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge, so merge those pull requests yourself.
