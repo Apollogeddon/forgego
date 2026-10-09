@@ -1,13 +1,27 @@
-/* Forge.go: a darker blue on the zinc-950 base forgejs and forgepy share */
+/* Forge.go: Tailwind's blue scale on the zinc-950 base forgejs and forgepy share */
 :root,
 .dark {
-  --primary-hue: 214deg;
-  --primary-saturation: 80%;
+  /* blue-500, hsl(217, 91%, 60%): Hextra derives its primary-* shades from this */
+  --primary-hue: 217deg;
+  --primary-saturation: 91%;
   --primary-lightness: 60%;
+  /* ...but pin each shade to the blue scale exactly, so light-mode links
+     (primary-600) are blue-600 rather than Hextra's derived approximation */
+  --hx-color-primary-50: #eff6ff;
+  --hx-color-primary-100: #dbeafe;
+  --hx-color-primary-200: #bfdbfe;
+  --hx-color-primary-300: #93c5fd;
+  --hx-color-primary-400: #60a5fa;
+  --hx-color-primary-500: #3b82f6;
+  --hx-color-primary-600: #2563eb;
+  --hx-color-primary-700: #1d4ed8;
+  --hx-color-primary-800: #1e40af;
+  --hx-color-primary-900: #1e3a8a;
+  --hx-color-primary-950: #172554;
   --fg-blue-300: #93c5fd;
   --fg-blue-400: #60a5fa;
-  --fg-blue-600: #1f5fa8;
-  --fg-blue-700: #174a85;
+  --fg-blue-600: #2563eb;
+  --fg-blue-700: #1d4ed8;
 }
 
 html,
@@ -87,7 +101,7 @@ pre {
   height: 35rem;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: rgba(31, 95, 168, 0.35);
+  background: rgba(37, 99, 235, 0.35);
   opacity: 0.35;
   filter: blur(130px);
   pointer-events: none;
