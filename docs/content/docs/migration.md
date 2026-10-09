@@ -1,5 +1,5 @@
 ---
-title: Migrating an Existing Project
+title: Migrating an existing project
 linkTitle: Migration
 weight: 5
 ---

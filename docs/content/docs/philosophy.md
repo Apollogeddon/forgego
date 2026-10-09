@@ -1,5 +1,5 @@
 ---
-title: Philosophy & Stack
+title: Philosophy and stack
 weight: 6
 ---
 

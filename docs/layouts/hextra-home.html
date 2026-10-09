@@ -8,9 +8,30 @@
           <h1>{{ .title | safeHTML }}</h1>
           <p>{{ .subtitle }}</p>
           <div class="fg-buttons">
-            <a class="fg-button fg-button--primary" href="{{ relURL .start }}">Get Started →</a>
-            <a class="fg-button" href="{{ .github }}">View on GitHub</a>
+            <a class="fg-button fg-button--primary" href="{{ relURL .start }}">
+              Get started{{ partial "utils/icon.html" (dict "name" "arrow-right" "attributes" "height=15") }}
+            </a>
+            <a class="fg-button" href="{{ .github }}" target="_blank" rel="noopener noreferrer">
+              {{ partial "utils/icon.html" (dict "name" "github" "attributes" "height=15") }}GitHub
+            </a>
           </div>
+          {{ with .terminal }}
+            <div class="fg-terminal">
+              <div class="fg-terminal-bar"><span></span><span></span><span></span>bash</div>
+              <pre><code>
+                {{- range $i, $line := . -}}
+                  {{- if $i }}{{ "\n" }}{{ end -}}
+                  {{- if hasPrefix $line "$ " -}}
+                    <span class="fg-prompt">$ </span>{{ strings.TrimPrefix "$ " $line }}
+                  {{- else if hasPrefix $line "✓" -}}
+                    <span class="fg-ok">{{ $line }}</span>
+                  {{- else -}}
+                    <span class="fg-next">{{ $line }}</span>
+                  {{- end -}}
+                {{- end -}}
+              </code></pre>
+            </div>
+          {{ end }}
         </section>
       {{ end }}
       <div class="content fg-home">{{ .Content }}</div>

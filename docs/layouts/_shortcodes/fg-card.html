@@ -1,7 +1,5 @@
 <div class="fg-card">
-  <h3>
-    {{- with .Get "icon" }}<span class="fg-icon">{{ partial "utils/icon.html" (dict "name" . "attributes" "height=1.25rem") }}</span>{{ end -}}
-    {{ .Get "title" }}
-  </h3>
+  {{- with .Get "icon" }}<span class="fg-icon">{{ partial "utils/icon.html" (dict "name" . "attributes" "height=20") }}</span>{{ end }}
+  <h3>{{ .Get "title" }}</h3>
   {{ with .Inner }}{{ $.Page.RenderString (dict "display" "block") (trim . "\n") }}{{ end }}
 </div>

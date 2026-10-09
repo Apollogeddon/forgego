@@ -1,0 +1,4 @@
+<div class="fg-card fg-tool">
+  <h3>{{ .Get "name" }}<span class="fg-chip fg-chip--{{ .Get "lang" | lower }}">{{ .Get "lang" }}</span></h3>
+  <p>{{ trim .Inner "\n" }}</p>
+</div>
