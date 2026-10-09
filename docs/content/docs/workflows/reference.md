@@ -75,6 +75,7 @@ In this mode release-please tags the release before the push's checks run. If th
 | `go_version` | `''` | Go version; empty reads it from `go.mod` |
 | `enable_secrets` | `true` | Run the Gitleaks scan |
 | `lint` | `true` | Run the `go.mod` tidy check and golangci-lint; a website has no Go to lint |
+| `system_packages` | `''` | apt packages each job installs before compiling, such as a cgo dependency's C libraries |
 
 ## testing.yml
 
@@ -92,6 +93,7 @@ In this mode release-please tags the release before the push's checks run. If th
 | `go_version` | `''` | Go version; empty reads it from `go.mod` |
 | `enable_secrets` | `true` | Run the Gitleaks scan |
 | `lint` | `true` | Run golangci-lint |
+| `system_packages` | `''` | apt packages each job installs before compiling, passed on to `quality.yml` |
 | `run_tests` | `true` | Run the tests |
 | `auto_patch` | `true` | Run the `patch` job on `main` |
 | `artifact_name` | `'dist'` | Name of the build artifact |

@@ -123,6 +123,7 @@ jobs:
 | `run_tests` | `true` | Run the tests — `forgego init --no-testing` sets it to `false` (`service.yml`, `library.yml`) |
 | `lint` | `true` | Run golangci-lint and the `go mod tidy` check — `forgego init --no-linting` sets it to `false` (`service.yml`, `library.yml`) |
 | `auto_patch` | `true` | On `main`, upgrade the modules govulncheck finds vulnerable and commit the result (`service.yml`, `library.yml`) |
+| `system_packages` | `''` | apt packages to install before anything compiles, space-separated: the C libraries a cgo dependency needs, such as `libfuse-dev` (`service.yml`, `library.yml`). Ubuntu runners only |
 
 Each orchestrator has a few inputs of its own, listed in the [Job reference]({{< relref "reference.md" >}}).
 
