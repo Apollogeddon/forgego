@@ -29,7 +29,7 @@ jobs:
             try {
               await github.graphql(
                 `mutation ($id: ID!) {
-                  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: MERGE }) { clientMutationId }
+                  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) { clientMutationId }
                 }`,
                 { id: pr.node_id },
               );
@@ -39,6 +39,6 @@ jobs:
               // passed (clean) or that only waits on checks it doesn't require (unstable).
               // Merge it now instead, as gh pr merge --auto does
               if (!/is in (clean|unstable|has[ _]hooks) status/i.test(error.message)) throw error;
-              await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'merge' });
+              await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'squash' });
               core.info(`Merged #${pr.number}`);
             }
