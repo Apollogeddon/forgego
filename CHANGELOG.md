@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.6](https://github.com/Apollogeddon/forgego/compare/v1.0.5...v1.0.6) (2026-10-09)
+
+
+### Bug Fixes
+
+* **ci:** keep counting releases_created for a root package, where release_created can be unset ([75f8124](https://github.com/Apollogeddon/forgego/commit/75f812492db1f1e14b8cf17667805ea7ec265e24))
+* **ci:** use working_directory in version.yml ([ceb1efa](https://github.com/Apollogeddon/forgego/commit/ceb1efaea87f40cf12bcaf91ccdad834b9f05cec))
+* **ci:** use working_directory in version.yml ([8c6e008](https://github.com/Apollogeddon/forgego/commit/8c6e008c1889f1eba5916bfbd875c4baeeffcc36))
+
 ## [1.0.5](https://github.com/Apollogeddon/forgego/compare/v1.0.4...v1.0.5) (2026-10-08)
 
 
