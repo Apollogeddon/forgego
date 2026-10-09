@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/Apollogeddon/forgego/compare/v1.0.6...v1.1.0) (2026-10-09)
+
+
+### Features
+
+* **ci:** add a system_packages input for cgo projects ([7aae37e](https://github.com/Apollogeddon/forgego/commit/7aae37e2d0a52c056a2e3cb3eddc702c7a950eb2))
+* **ci:** add a system_packages input for cgo projects ([2e0ca19](https://github.com/Apollogeddon/forgego/commit/2e0ca19d5489e67b854916da623a5ee94e55ce14))
+
 ## [1.0.6](https://github.com/Apollogeddon/forgego/compare/v1.0.5...v1.0.6) (2026-10-09)
 
 
