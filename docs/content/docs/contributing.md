@@ -3,9 +3,9 @@ title: Contributing
 weight: 7
 ---
 
-This repository uses a strict set of tools to ensure code quality and a standard development experience — the same toolchain Forge.go scaffolds into other projects. Its `.forgego/`, `Taskfile.yml`, `lefthook.yml`, `.golangci*.yml` and `.goreleaser.yaml` came from `forgego init`.
+This page is for people working on Forge.go itself. The repository uses the same toolchain Forge.go scaffolds into other projects: its `.forgego/`, `Taskfile.yml`, `lefthook.yml`, `.golangci*.yml` and `.goreleaser.yaml` came from `forgego init`.
 
-## Development Setup
+## Development setup
 
 ```bash
 git clone https://github.com/apollogeddon/forgego
@@ -17,7 +17,7 @@ As in any Forge.go project, every task runs as `go tool -modfile=.forgego/task/g
 
 In this repository the `FORGEGO` Taskfile var is `go run ./cmd/forgego`, so `task sync`, `task sync-check` and the commit message hook run the Forge.go in your working tree rather than a published release.
 
-## Quality Control Tools
+## Quality checks
 
 | Task | What it runs |
 | :--- | :--- |
@@ -32,9 +32,9 @@ In this repository the `FORGEGO` Taskfile var is `go run ./cmd/forgego`, so `tas
 Run `lint`, `test` and `sync-check` before opening a pull request.
 
 > [!NOTE]
-> The integration test builds Forge.go, scaffolds a real project in each mode, and runs its generated tasks and git hooks, downloading every pinned tool. It is the only test that catches a tool pin, task or hook that doesn't work, so run the full `task test` for changes to templates, tool pins, the Taskfile or hooks. The website test needs network access for the theme's search script; set `FORGEGO_OFFLINE=1` to skip it.
+> The integration test builds Forge.go, scaffolds a real project in each mode, and runs its generated tasks and Git hooks, downloading every pinned tool. It is the only test that catches a tool pin, task or hook that doesn't work, so run the full `task test` for changes to templates, tool pins, the Taskfile or hooks. The website test needs network access for the theme's search script; set `FORGEGO_OFFLINE=1` to skip it.
 
-## Tool Versions
+## Tool versions
 
 Each tool a generated project pins comes from its own module under `tools/<tool>/`, which Forge.go embeds. After changing a version there, run:
 
@@ -53,13 +53,13 @@ cd docs
 go tool -modfile=.forgego/task/go.mod task dev    # live preview
 ```
 
-`task build` builds it into `docs/public/`.
+`task build` builds it into `docs/public/`. Hextra fetches its search script from a CDN during the build, so building the site needs network access.
 
 ## Conventional Commits
 
-The project follows the [Conventional Commits](https://www.conventionalcommits.org/) specification, enforced by `forgego commit-msg` in the commit-msg hook. This format is required for the automated release pipeline to work.
+Commit messages follow the [Conventional Commits](https://www.conventionalcommits.org/) specification, checked by `forgego commit-msg` in the commit-msg hook. release-please reads them to decide the next version and write the changelog.
 
-### Commit Types
+### Commit types
 
 1. **Features** (`feat`) — Triggers a **minor** release.
    Example: `feat: add a systemd unit for --debian packages`
@@ -68,7 +68,7 @@ The project follows the [Conventional Commits](https://www.conventionalcommits.o
    Example: `fix: keep the theme in a website's go.mod`
 
 3. **Maintenance** (`chore`) — Does **not** trigger a release.
-   Example: `chore: update readme`
+   Example: `chore: tidy the Taskfile`
 
 The hook also accepts `build`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style` and `test`.
 
