@@ -1,6 +1,6 @@
 ---
-title: Philosophy & Stack
-weight: 6
+title: Philosophy and stack
+weight: 3
 ---
 
 This page explains the choices behind Forge.go's toolchain. Forge.go is opinionated: it favours reproducible builds and a small amount of configuration per project.

@@ -13,12 +13,8 @@ enableGitInfo = false
 [menu]
   [[menu.main]]
     name = "Docs"
-    pageRef = "/docs"
+    pageRef = "/docs/getting-started"
     weight = 1
-  [[menu.main]]
-    name = "Workflows"
-    pageRef = "/docs/workflows"
-    weight = 2
   [[menu.main]]
     name = "Search"
     weight = 3
@@ -30,6 +26,10 @@ enableGitInfo = false
     weight = 4
     [menu.main.params]
       icon = "github"
+
+[params]
+  tagline = "Quality tooling, zero configuration drift"
+  description = "DevOps support and quality control for modern Go projects."
 
 [params.navbar]
   displayTitle = true

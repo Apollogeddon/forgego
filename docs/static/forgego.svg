@@ -2,12 +2,12 @@
   <title>Forge.go</title>
   <defs>
     <linearGradient id="ag" x1="256" y1="115" x2="256" y2="444" gradientUnits="userSpaceOnUse">
-      <stop offset="0%"   stop-color="#4A86C8"/>
-      <stop offset="55%"  stop-color="#1F5FA8"/>
-      <stop offset="100%" stop-color="#0E3A70"/>
+      <stop offset="0%"   stop-color="#3B82F6"/>
+      <stop offset="55%"  stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#1E3A8A"/>
     </linearGradient>
     <linearGradient id="fg" x1="271" y1="115" x2="271" y2="263" gradientUnits="userSpaceOnUse">
-      <stop offset="0%"   stop-color="#E0F2FE"/>
+      <stop offset="0%"   stop-color="#DBEAFE"/>
       <stop offset="100%" stop-color="#93C5FD"/>
     </linearGradient>
     <clipPath id="tableClip">

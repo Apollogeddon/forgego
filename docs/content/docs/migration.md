@@ -1,5 +1,5 @@
 ---
-title: Migrating an Existing Project
+title: Migrating to Forge.go
 linkTitle: Migration
 weight: 5
 ---

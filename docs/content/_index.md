@@ -4,64 +4,81 @@ layout: hextra-home
 hero:
   badge: Go 1.27 · go tool · forgego
   title: Quality tooling,<br>zero configuration drift.
-  subtitle: Reusable GitHub Actions workflows and tooling configurations for Go projects. Keep your golangci-lint, test and release setup in one place, and scaffold projects with one command.
+  subtitle: Reusable GitHub Actions workflows and tooling configurations for Go projects. Keep your golangci-lint, govulncheck and gotestsum setup in one place, and scaffold projects with one command.
   start: docs/getting-started
   github: https://github.com/apollogeddon/forgego
+  terminal:
+    - $ go install github.com/apollogeddon/forgego/cmd/forgego@latest
+    - $ forgego init
+    - ✓ Configuration files created
+    - ✓ Taskfile tasks added
+    - "  Forge.go ready."
 ---
 
 ## Why Forge.go
 
+{{< fg-section >}}The tooling and CI/CD a Go project needs, in one tool.{{< /fg-section >}}
+
 {{< fg-cards cols="2" >}}
-{{< fg-card title="Standardised tooling" icon="adjustments" >}}
-A shared golangci-lint config, govulncheck, gotestsum and lefthook Git hooks give every project the same checks from day one.
+{{< fg-card title="Standardised tooling" icon="lucide-settings" >}}
+A shared golangci-lint config gives every project the same checks from day one, and `forgego sync` keeps it current.
 {{< /fg-card >}}
-{{< fg-card title="Pinned, Go-native tools" icon="cube" >}}
-Each tool is pinned in its own module under `.forgego/` and run with `go tool`. Nothing to install globally, and nothing added to your `go.mod`.
+{{< fg-card title="Reusable workflows" icon="lucide-workflow" >}}
+GitHub Actions workflows for testing, building, releasing and deploying. `init` writes the workflow that calls them.
 {{< /fg-card >}}
-{{< fg-card title="Reusable workflows" icon="refresh" >}}
-Reusable GitHub Actions workflows for testing, releasing, publishing and deploying. `init` writes the workflow that calls them.
+{{< fg-card title="Project scaffolding" icon="lucide-rocket" >}}
+`init` sets up a backend, library or website, with optional Docker and Debian packaging and no boilerplate to copy.
 {{< /fg-card >}}
-{{< fg-card title="Automated releases" icon="tag" >}}
-release-please versions and tags releases from Conventional Commits; GoReleaser attaches the binaries and any `.deb` package.
+{{< fg-card title="Automated releases" icon="lucide-tag" >}}
+release-please derives versions and changelogs from Conventional Commits, and GoReleaser publishes each release.
 {{< /fg-card >}}
 {{< /fg-cards >}}
 
 ## Quick start
 
-{{< fg-cards cols="3" >}}
-{{< fg-card title="01 · Initialise" >}}
-Run `init` in an existing Go project, or in an empty directory to start a new one.
+{{< fg-section >}}From empty repo to a standardised toolchain in three steps.{{< /fg-section >}}
+
+{{< fg-steps >}}
+{{< fg-step n="01" title="Install" >}}
+Install Forge.go from GitHub with `go install`.
 
 ```bash
-go run github.com/apollogeddon/forgego/cmd/forgego@latest init
+go install github.com/apollogeddon/forgego/cmd/forgego@latest
 ```
-{{< /fg-card >}}
-{{< fg-card title="02 · Install" >}}
-Tidy the module and install the Git hooks.
+{{< /fg-step >}}
+{{< fg-step n="02" title="Initialise" >}}
+Run the CLI to scaffold configs, tasks and the CI workflow.
 
 ```bash
-go mod tidy
-go tool -modfile=.forgego/task/go.mod task hooks
+forgego init
 ```
-{{< /fg-card >}}
-{{< fg-card title="03 · Extend" >}}
-Put your lint changes in `.golangci.local.yml`, then regenerate `.golangci.yml`.
+{{< /fg-step >}}
+{{< fg-step n="03" title="Extend" >}}
+The generated config merges with the shared one. Add project-specific settings alongside.
 
-```bash
-go tool -modfile=.forgego/task/go.mod task sync
+```yaml
+# .golangci.local.yml
+version: "2"
+linters:
+  enable:
+    - goconst
 ```
-{{< /fg-card >}}
-{{< /fg-cards >}}
+{{< /fg-step >}}
+{{< /fg-steps >}}
+
+{{< fg-more href="docs/getting-started" label="Full documentation" >}}
 
 ## The toolchain
 
+{{< fg-section >}}Fast tools, pinned by Forge.go and run through Task.{{< /fg-section >}}
+
 {{< fg-cards cols="4" >}}
-{{< fg-card title="Task" >}}Replaces Makefiles and ad-hoc scripts{{< /fg-card >}}
-{{< fg-card title="golangci-lint" >}}Replaces running gofmt, go vet and staticcheck separately{{< /fg-card >}}
-{{< fg-card title="govulncheck" >}}Replaces manual dependency audits{{< /fg-card >}}
-{{< fg-card title="gotestsum" >}}Replaces plain go test plus a JUnit converter{{< /fg-card >}}
-{{< fg-card title="lefthook" >}}Replaces hand-written Git hooks{{< /fg-card >}}
-{{< fg-card title="release-please" >}}Replaces manual tagging and changelogs{{< /fg-card >}}
-{{< fg-card title="GoReleaser" >}}Replaces hand-rolled release build scripts{{< /fg-card >}}
-{{< fg-card title="Hugo" >}}Replaces hand-maintained documentation sites{{< /fg-card >}}
+{{< fg-tool name="golangci-lint" lang="Go" >}}Replaces gofmt, go vet, staticcheck{{< /fg-tool >}}
+{{< fg-tool name="gotestsum" lang="Go" >}}Replaces go test, go-junit-report{{< /fg-tool >}}
+{{< fg-tool name="govulncheck" lang="Go" >}}Replaces manual dependency audits{{< /fg-tool >}}
+{{< fg-tool name="lefthook" lang="Go" >}}Replaces hand-written Git hooks{{< /fg-tool >}}
+{{< fg-tool name="release-please" lang="JS" >}}Replaces manual tagging{{< /fg-tool >}}
+{{< fg-tool name="GoReleaser" lang="Go" >}}Replaces release build scripts{{< /fg-tool >}}
+{{< fg-tool name="Task" lang="Go" >}}Replaces Makefiles{{< /fg-tool >}}
+{{< fg-tool name="Hugo" lang="Go" >}}Replaces hand-built docs sites{{< /fg-tool >}}
 {{< /fg-cards >}}

@@ -1,0 +1,7 @@
+<div class="fg-step">
+  <span class="fg-step-n">{{ .Get "n" }}</span>
+  <div>
+    <h3>{{ .Get "title" }}</h3>
+    {{ with .Inner }}{{ $.Page.RenderString (dict "display" "block") (trim . "\n") }}{{ end }}
+  </div>
+</div>

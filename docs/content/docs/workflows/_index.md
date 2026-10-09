@@ -1,6 +1,7 @@
 ---
-title: Workflows
-weight: 4
+title: Workflows overview
+linkTitle: Workflows
+weight: 7
 ---
 
 Forge.go ships reusable GitHub Actions workflows that give every project the same quality checks, release process and delivery pipeline. `forgego init` generates a `.github/workflows/index.yml` that calls the right one for your mode. This page shows the generated workflow and the inputs and permissions the workflows share; the [Job reference]({{< relref "reference.md" >}}) describes each workflow in detail.
