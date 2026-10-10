@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/Apollogeddon/forgego/compare/v1.2.0...v1.3.0) (2026-10-10)
+
+
+### Features
+
+* **ci:** request a review on Dependabot's and release-please's pull requests ([9ea4986](https://github.com/Apollogeddon/forgego/commit/9ea498640b316b0beadbc3f657511c92edcb9c2a))
+* **ci:** request a review on Dependabot's and release-please's pull requests ([ceda08b](https://github.com/Apollogeddon/forgego/commit/ceda08bcddf0d433c80d770fb95c5111a316cb61))
+
 ## [1.2.0](https://github.com/Apollogeddon/forgego/compare/v1.1.1...v1.2.0) (2026-10-10)
 
 
