@@ -151,7 +151,7 @@ Choose at most one mode; passing more than one exits with code `1`. An invalid c
 
 `forgego sync` refreshes the files Forge.go manages; `forgego sync --check` reports drift and exits `1` without writing anything. Both also accept `-C DIR`. See [Configuration]({{< relref "configuration.md#managed-files" >}}).
 
-The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -modfile=.forgego/forgego/go.mod forgego`, from a pin in `.forgego/forgego/go.mod` set to the version that scaffolded the project. Dependabot proposes each new Forge.go release there daily, and the pull request auto-merges once CI passes:
+The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -modfile=.forgego/forgego/go.mod forgego`, from a pin in `.forgego/forgego/go.mod` set to the version that scaffolded the project. Dependabot proposes each new Forge.go release there, like any other module update, and the pull request auto-merges once CI passes:
 
 - a new release usually changes the files Forge.go manages, so on Dependabot's pull requests the CI linting job runs `task sync` instead of `task sync-check`, and checks the refreshed files;
 - once the update merges, the testing workflow's `patch` job runs `task sync` on `main` and commits the refreshed files.
@@ -201,7 +201,7 @@ A default `forgego init` (backend) in a project named `billing-api`, with a `git
 ├── .github/
 │   ├── .release.json           # release-please manifest
 │   ├── CODEOWNERS              # requests your review on others' pull requests
-│   ├── dependabot.yml          # weekly updates with a 3-day cooldown; our own modules daily
+│   ├── dependabot.yml          # weekly updates with a 3-day cooldown
 │   ├── release.json            # release-please config
 │   └── workflows/index.yml     # CI/CD calling the reusable workflows
 ├── cmd/billing-api/

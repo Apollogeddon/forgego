@@ -604,7 +604,7 @@ func TestABuildThatIsntAReleaseRunsForgegoWithGoRun(t *testing.T) {
 	refuteFiles(t, fs, ".forgego/forgego/go.mod")
 }
 
-func TestDependabotProposesForgegosPinDaily(t *testing.T) {
+func TestDependabotProposesForgegosPin(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, nil)
 	var cfg struct {
@@ -612,27 +612,28 @@ func TestDependabotProposesForgegosPinDaily(t *testing.T) {
 			Ecosystem string `yaml:"package-ecosystem"`
 			Directory string
 			Schedule  struct{ Interval string }
-			Groups    map[string]struct{ Patterns []string }
-			Cooldown  struct {
-				Exclude []string
+			Allow     []struct {
+				Name string `yaml:"dependency-name"`
+				Type string `yaml:"dependency-type"`
+			}
+			Cooldown struct {
+				Days int `yaml:"default-days"`
 			}
 		}
 	}
 	if err := yaml.Unmarshal([]byte(read(t, fs, ".github/dependabot.yml")), &cfg); err != nil {
 		t.Fatal(err)
 	}
-	var pin bool
 	for _, u := range cfg.Updates {
-		if u.Ecosystem != "gomod" {
+		if u.Directory != "/.forgego/forgego" {
 			continue
 		}
-		if u.Schedule.Interval != "daily" || !slices.Contains(u.Cooldown.Exclude, templates.OwnModules) ||
-			!slices.Contains(u.Groups["apollogeddon"].Patterns, templates.OwnModules) {
-			t.Errorf("%s doesn't take our own modules daily: %+v", u.Directory, u)
+		// the same schedule and cooldown as every other update; only forgego is proposed
+		if u.Ecosystem != "gomod" || u.Schedule.Interval != "weekly" || u.Cooldown.Days != 3 ||
+			len(u.Allow) != 1 || u.Allow[0].Name != "github.com/apollogeddon/forgego" || u.Allow[0].Type != "all" {
+			t.Errorf("forgego's pin entry = %+v", u)
 		}
-		pin = pin || u.Directory == "/.forgego/forgego"
+		return
 	}
-	if !pin {
-		t.Error("Dependabot doesn't watch forgego's pin")
-	}
+	t.Error("Dependabot doesn't watch forgego's pin")
 }
