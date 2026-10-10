@@ -120,3 +120,53 @@ func TestVersionUsesWorkingDirectory(t *testing.T) {
 		t.Errorf("new_release_published counts releases_created beyond the root package: %s", published)
 	}
 }
+
+type reviewJob struct {
+	If    string         `yaml:"if"`
+	Uses  string         `yaml:"uses"`
+	Needs []string       `yaml:"needs"`
+	With  map[string]any `yaml:"with"`
+}
+
+func readJobs(t *testing.T, name string) map[string]reviewJob {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Jobs map[string]reviewJob `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &w); err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return w.Jobs
+}
+
+// CODEOWNERS requests nothing in a private repository on a free plan, so each pipeline asks
+// itself, and before the checks, so a failing update reaches the reviewer too.
+func TestBotPullRequestsRequestAReview(t *testing.T) {
+	for _, name := range []string{"library.yml", "service.yml", "website.yml"} {
+		jobs := readJobs(t, name)
+		review := jobs["review"]
+		if review.Uses != "./.github/workflows/review.yml" || len(review.Needs) != 0 ||
+			!strings.Contains(review.If, "github.event.pull_request.user.login == 'dependabot[bot]'") {
+			t.Errorf("%s: review = %+v", name, review)
+		}
+		if review.With["reviewers"] != "${{ inputs.reviewers }}" || jobs["version"].With["reviewers"] != "${{ inputs.reviewers }}" {
+			t.Errorf("%s: reviewers aren't passed on", name)
+		}
+	}
+	review := readJobs(t, "version.yml")["review"]
+	if len(review.Needs) != 1 || review.Needs[0] != "release-please" ||
+		review.With["pull_request"] != "${{ needs.release-please.outputs.pr_number }}" {
+		t.Errorf("version.yml: review = %+v", review)
+	}
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "review.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "catch (error)") || !strings.Contains(string(b), "core.warning") {
+		t.Error("review.yml can fail the pipeline")
+	}
+}
