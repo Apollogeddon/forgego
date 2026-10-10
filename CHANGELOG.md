@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/Apollogeddon/forgego/compare/v1.1.1...v1.2.0) (2026-10-10)
+
+
+### Features
+
+* write repo files on init, and merge Dependabot PRs where auto-merge isn't offered ([#29](https://github.com/Apollogeddon/forgego/issues/29)) ([fd8f756](https://github.com/Apollogeddon/forgego/commit/fd8f756f1b422687508cddac301c76c192707aa5))
+
 ## [1.1.1](https://github.com/Apollogeddon/forgego/compare/v1.1.0...v1.1.1) (2026-10-10)
 
 
