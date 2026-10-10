@@ -5,7 +5,6 @@ import (
 	"github.com/apollogeddon/forgego/internal/sync"
 	"github.com/apollogeddon/forgego/internal/taskfile"
 	"github.com/apollogeddon/forgego/internal/templates"
-	"github.com/apollogeddon/forgego/internal/version"
 )
 
 // Base creates go.mod and the starter source, and pins Task, which runs everything else.
@@ -45,7 +44,8 @@ func (Base) Apply(ctx *Context) bool {
 		ok = useTool(ctx, templates.Govulncheck) && ok
 		ctx.Tasks.Add(taskfile.Task{Name: "security", Desc: "Report known vulnerabilities the code calls", Cmds: []string{ref(templates.Govulncheck) + " ./..."}})
 	}
-	ctx.Tasks.Var(sync.TaskfileVar, version.RunCommand())
+	ctx.Tasks.Var(sync.TaskfileVar, sync.RunCommand())
+	ok = sync.PinSelf(ctx.FS, ctx.Cfg.Target, ctx.Cfg.DryRun) && ok
 	ctx.Tasks.Add(taskfile.Task{
 		Name: "sync",
 		Desc: "Refresh the files forgego manages in .forgego/ and .golangci.yml",

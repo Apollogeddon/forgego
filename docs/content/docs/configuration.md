@@ -34,7 +34,7 @@ task sync
 - each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use;
 - `.forgego/golangci.yml` and `.golangci.yml`, when the project has `.forgego/golangci.yml` (linting on, not a website), using `.golangci.local.yml` if it exists;
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
-- the `FORGEGO` var in `Taskfile.yml`, when it runs a published Forge.go, so it runs the version doing the sync;
+- the `FORGEGO` var in `Taskfile.yml`, when it runs a published Forge.go with `go run`: it moves to `go tool -modfile=.forgego/forgego/go.mod forgego`, and `.forgego/forgego/go.mod` pins the version doing the sync. `sync` writes that pin only when it's missing, as Dependabot proposes the next version from then on, and writes its `go.sum` with `go mod tidy`;
 - tools pinned by an earlier Forge.go as `.forgego/<tool>.mod` and `.sum`, which it moves to `.forgego/<tool>/` and repoints `Taskfile.yml` and `lefthook.yml` at. Run `task hooks` afterwards, as the installed Git hooks still name the old path.
 
 `task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It runs in the lefthook pre-commit hook and in the CI linting job, so a stale file fails the checks.
@@ -221,7 +221,7 @@ Update `maintainer`, `description` and `license` in the `nfpms` section; Forge.g
 | File | What it does |
 | :--- | :--- |
 | `.editorconfig` | LF line endings, UTF-8 and 120 columns; tabs in Go files, `go.mod` and `go.sum`, two spaces elsewhere |
-| `.github/dependabot.yml` | Weekly Go module and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The workflow's auto-merge job merges them once CI passes. The tools in `.forgego/` aren't included: `forgego sync` keeps them in step with Forge.go. |
+| `.github/dependabot.yml` | Weekly Go module and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. Forge.go itself is proposed the same way, through its pin in `.forgego/forgego/go.mod`. The workflow's auto-merge job merges them once CI passes. The other tools in `.forgego/` aren't included: `forgego sync` keeps them in step with Forge.go. |
 | `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
 
 The `CODEOWNERS` owner is the account in a `github.com/<owner>/...` [module path]({{< relref "getting-started.md#module-path" >}}). A project whose module path isn't on GitHub gets no `CODEOWNERS`; run `init` again once it has a GitHub remote.

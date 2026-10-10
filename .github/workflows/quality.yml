@@ -130,8 +130,13 @@ jobs:
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
       - name: Check forgego's files are current
-        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.actor != 'dependabot[bot]'
         run: go tool -modfile=.forgego/task/go.mod task sync-check
+      # a Dependabot bump of forgego changes the files it manages: lint against them
+      # refreshed, and the testing workflow's patch job commits them once the bump merges
+      - name: Refresh forgego's files
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.actor == 'dependabot[bot]'
+        run: go tool -modfile=.forgego/task/go.mod task sync
       # a Hugo site's go.mod holds its theme, which no Go code imports, so tidy would drop it
       - name: Check go.mod is tidy
         if: inputs.lint

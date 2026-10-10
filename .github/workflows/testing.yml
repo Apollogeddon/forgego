@@ -206,6 +206,17 @@ jobs:
           go-version-file: ${{ steps.go.outputs.file }}
           # no module cache in a job that pushes to main
           cache: false
+      # a Dependabot bump of forgego leaves the files it manages for this job to refresh
+      - name: Refresh forgego's files
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
+        run: go tool -modfile=.forgego/task/go.mod task sync
+      # sync is the only change in this checkout so far, and which files it touches varies
+      - name: Commit forgego's files
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "chore(deps): refresh the files forgego manages"
+          repository: ${{ inputs.working_directory }}
       # govulncheck names the fixed version of each vulnerable module, so this upgrades
       # just those. The standard library is fixed by a newer Go, not by go get.
       - name: Upgrade vulnerable modules

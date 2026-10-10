@@ -52,3 +52,6 @@ func RunCommand() string {
 func IsPublishedRun(command string) bool {
 	return strings.HasPrefix(command, runPrefix)
 }
+
+// Released reports whether this forgego is a published version a project can pin.
+func Released() bool { return Current() != "latest" }

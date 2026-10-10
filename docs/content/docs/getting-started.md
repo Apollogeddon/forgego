@@ -151,13 +151,18 @@ Choose at most one mode; passing more than one exits with code `1`. An invalid c
 
 `forgego sync` refreshes the files Forge.go manages; `forgego sync --check` reports drift and exits `1` without writing anything. Both also accept `-C DIR`. See [Configuration]({{< relref "configuration.md#managed-files" >}}).
 
-The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go run github.com/apollogeddon/forgego/cmd/forgego@<version>`, pinned to the version that scaffolded the project. To upgrade, run the newer version's `sync` once:
+The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -modfile=.forgego/forgego/go.mod forgego`, from a pin in `.forgego/forgego/go.mod` set to the version that scaffolded the project. Dependabot proposes each new Forge.go release there, like any other module update, and the pull request auto-merges once CI passes:
+
+- a new release usually changes the files Forge.go manages, so on Dependabot's pull requests the CI linting job runs `task sync` instead of `task sync-check`, and checks the refreshed files;
+- once the update merges, the testing workflow's `patch` job runs `task sync` on `main` and commits the refreshed files.
+
+A project scaffolded by an earlier Forge.go runs it with `go run …/forgego@<version>`. Run a newer version's `sync` once to move it to the pin:
 
 ```bash
 go run github.com/apollogeddon/forgego/cmd/forgego@latest sync
 ```
 
-That refreshes the managed files and moves the `FORGEGO` var to the new version. A `FORGEGO` var that runs Forge.go some other way, such as a local build, is left alone.
+A `FORGEGO` var that runs Forge.go some other way, such as a local build, is left alone.
 
 ### Commit message checks
 
@@ -187,6 +192,7 @@ A default `forgego init` (backend) in a project named `billing-api`, with a `git
 .
 ├── .forgego/
 │   ├── golangci.yml            # managed base config — refreshed by `forgego sync`
+│   ├── forgego/                # Forge.go's own pin, which Dependabot updates
 │   ├── golangci-lint/          # pinned tools (go.mod, go.sum) — refreshed by `forgego sync`
 │   ├── gotestsum/
 │   ├── govulncheck/
