@@ -95,16 +95,21 @@ func Run(fs fsys.FS, dir string, check bool) int {
 	}
 
 	if check {
+		missingPin := 0
 		for _, f := range drifted {
 			console.Warn("%s is out of date", f.rel)
 		}
 		if taskfileDrift {
 			console.Warn("Taskfile.yml is out of date: its tool or %s vars don't match forgego %s", TaskfileVar, version.Current())
 		}
+		if selfPinned(fs, dir) && !fs.Exists(filepath.Join(dir, templates.SelfModPath)) {
+			console.Warn("%s is missing", templates.SelfModPath)
+			missingPin = 1
+		}
 		for _, rel := range legacy {
 			console.Warn("%s has moved under .forgego/<tool>/", rel)
 		}
-		if n := len(drifted) + boolInt(taskfileDrift) + len(legacy); n > 0 {
+		if n := len(drifted) + boolInt(taskfileDrift) + len(legacy) + missingPin; n > 0 {
 			console.Err("%d managed file(s) out of date - run `task sync` to refresh", n)
 			return 1
 		}
@@ -112,6 +117,12 @@ func Run(fs fsys.FS, dir string, check bool) int {
 		return 0
 	}
 
+	// a Taskfile moving to the pin, or one already on it, needs the pin to exist
+	if (taskfileDrift && strings.Contains(taskfile, templates.SelfCommand)) || selfPinned(fs, dir) {
+		if !PinSelf(fs, dir, false) {
+			return 1
+		}
+	}
 	if len(drifted) == 0 && !taskfileDrift && len(legacy) == 0 {
 		console.Info("All managed files already up to date")
 		return 0
@@ -153,6 +164,55 @@ func movePins(content string) string {
 	return content
 }
 
+// RunCommand is how the Taskfile runs forgego: from its pin in .forgego/forgego/ for a
+// release, else with go run, as a build that isn't one has no version to pin.
+func RunCommand() string {
+	if version.Released() {
+		return templates.SelfCommand
+	}
+	return version.RunCommand()
+}
+
+// PinSelf pins this forgego in dir when nothing pins it yet, then writes the pin's go.sum
+// if it's missing. Dependabot owns the pinned version from then on, so an existing pin
+// is never rewritten.
+func PinSelf(fs fsys.FS, dir string, dryRun bool) bool {
+	if !version.Released() {
+		return true
+	}
+	mod := filepath.Join(dir, templates.SelfModPath)
+	if !fs.Exists(mod) {
+		if dryRun {
+			console.Dry("Would pin forgego %s in %s", version.Current(), templates.SelfModPath)
+			return true
+		}
+		if err := fs.WriteFile(mod, templates.SelfModFile(version.Current())); err != nil {
+			console.Err("Failed to write %s: %v", templates.SelfModPath, err)
+			return false
+		}
+		console.OK("Pinned forgego %s in %s", version.Current(), templates.SelfModPath)
+	}
+	if fs.Exists(filepath.Join(dir, templates.SelfSumPath)) {
+		return true
+	}
+	if dryRun {
+		console.Dry("Would run go mod tidy -modfile=%s", templates.SelfModPath)
+		return true
+	}
+	if err := gomod.Tidy(dir, templates.SelfModPath); err != nil {
+		console.Err("Failed to write %s: %v", templates.SelfSumPath, err)
+		return false
+	}
+	console.OK("Wrote %s", templates.SelfSumPath)
+	return true
+}
+
+// selfPinned reports whether the Taskfile runs forgego from its pin.
+func selfPinned(fs fsys.FS, dir string) bool {
+	content, err := fs.ReadFile(filepath.Join(dir, "Taskfile.yml"))
+	return err == nil && strings.Contains(content, templates.SelfCommand)
+}
+
 // updateTaskfile returns the Taskfile with its tool vars on the current pin paths and its
 // FORGEGO var pointing at this forgego, and whether that differs from the file on disk.
 // A project that runs forgego some other way, such as a local build, keeps it.
@@ -171,7 +231,7 @@ func updateTaskfile(fs fsys.FS, dir string) (string, bool, error) {
 	}
 	if vars := yamlx.Get(root, "vars"); vars != nil {
 		current := yamlx.Get(vars, TaskfileVar)
-		want := version.RunCommand()
+		want := RunCommand()
 		if current != nil && current.Value != want && version.IsPublishedRun(current.Value) {
 			current.Value = want
 			if content, err = yamlx.Encode(root); err != nil {

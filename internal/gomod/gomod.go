@@ -2,7 +2,10 @@
 package gomod
 
 import (
+	"fmt"
 	"go/version"
+	"os/exec"
+	"strings"
 
 	"golang.org/x/mod/modfile"
 
@@ -51,4 +54,15 @@ func EnsureToolchain(content, need string) (string, bool, error) {
 		return "", false, err
 	}
 	return string(out), true, nil
+}
+
+// Tidy runs `go mod tidy` on the module file at rel inside dir, which writes its go.sum.
+// It's a variable so tests, whose files live in memory, can stand in for it.
+var Tidy = func(dir, rel string) error {
+	cmd := exec.Command("go", "mod", "tidy", "-modfile="+rel) //nolint:gosec // rel is forgego's own pin path
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }

@@ -64,6 +64,21 @@ func mustRead(name string) string {
 	return string(b)
 }
 
+// forgego itself is pinned in the project like a tool, so Dependabot can propose the next
+// release. Its go.sum can't ship inside forgego, as a release can't hold its own
+// checksum, so gomod.Tidy writes it when the pin is made.
+const (
+	SelfModPath = ".forgego/forgego/go.mod"
+	SelfSumPath = ".forgego/forgego/go.sum"
+	SelfCommand = "go tool -modfile=" + SelfModPath + " forgego"
+)
+
+// SelfModFile is the module that pins forgego at version, such as v1.5.0.
+func SelfModFile(version string) string {
+	return "module github.com/apollogeddon/forgego/tools/forgego\n\ngo " + Task.GoVersion() +
+		"\n\ntool github.com/apollogeddon/forgego/cmd/forgego\n\nrequire github.com/apollogeddon/forgego " + version + "\n"
+}
+
 // Config returns one of forgego's embedded base configs, such as golangci.yml.
 func Config(name string) string { return mustRead("configs/" + name) }
 

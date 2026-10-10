@@ -11,15 +11,25 @@ import (
 	"github.com/apollogeddon/forgego/internal/config"
 	"github.com/apollogeddon/forgego/internal/console"
 	"github.com/apollogeddon/forgego/internal/fsys"
+	"github.com/apollogeddon/forgego/internal/gomod"
 	"github.com/apollogeddon/forgego/internal/sync"
+	"github.com/apollogeddon/forgego/internal/templates"
 	"github.com/apollogeddon/forgego/internal/version"
 )
 
 const dir = "/work/billing-api"
 
+// tidied records each module gomod.Tidy was asked to write the go.sum of.
+var tidied []string
+
 func TestMain(m *testing.M) {
 	console.SetOutput(io.Discard, io.Discard)
 	version.Set("v1.2.3")
+	// the files are in memory, where go mod tidy can't run
+	gomod.Tidy = func(dir, rel string) error {
+		tidied = append(tidied, dir+"/"+rel)
+		return nil
+	}
 	m.Run()
 }
 
@@ -91,8 +101,15 @@ func TestBackend(t *testing.T) {
 			t.Errorf("Taskfile.yml has no %s task", task)
 		}
 	}
-	if !strings.Contains(taskfile, "FORGEGO: go run github.com/apollogeddon/forgego/cmd/forgego@v1.2.3") {
-		t.Errorf("Taskfile.yml doesn't run this forgego:\n%s", taskfile)
+	if !strings.Contains(taskfile, "FORGEGO: "+templates.SelfCommand) {
+		t.Errorf("Taskfile.yml doesn't run forgego from its pin:\n%s", taskfile)
+	}
+	if pin := read(t, fs, ".forgego/forgego/go.mod"); !strings.Contains(pin, "\nrequire github.com/apollogeddon/forgego v1.2.3\n") ||
+		!strings.Contains(pin, "\ntool github.com/apollogeddon/forgego/cmd/forgego\n") {
+		t.Errorf("the pin isn't this forgego:\n%s", pin)
+	}
+	if !slices.Contains(tidied, dir+"/.forgego/forgego/go.mod") {
+		t.Errorf("init didn't write the pin's go.sum: %v", tidied)
 	}
 }
 
@@ -322,8 +339,9 @@ func TestSyncFindsAndFixesDrift(t *testing.T) {
 	if !strings.Contains(read(t, fs, ".golangci.yml"), "wsl_v5") {
 		t.Error(".golangci.yml didn't pick up the local change")
 	}
-	if !strings.Contains(read(t, fs, "Taskfile.yml"), "forgego@v1.3.0") {
-		t.Error("sync didn't move the Taskfile to the new forgego")
+	// Dependabot owns the pinned version, so sync leaves it
+	if !strings.Contains(read(t, fs, ".forgego/forgego/go.mod"), "forgego v1.2.3\n") {
+		t.Error("sync rewrote the pinned forgego")
 	}
 }
 
@@ -384,7 +402,8 @@ func TestSyncLeavesAForgegoTheProjectChoseAlone(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, nil)
 	taskfile := strings.Replace(read(t, fs, "Taskfile.yml"),
-		"go run github.com/apollogeddon/forgego/cmd/forgego@v1.2.3", "go run ./cmd/forgego", 1)
+		templates.SelfCommand, "go run ./cmd/forgego", 1)
+	_ = fs.Remove(dir + "/.forgego/forgego/go.mod")
 	_ = fs.WriteFile(dir+"/Taskfile.yml", taskfile)
 	if code := sync.Run(fs, dir, true); code != 0 {
 		t.Errorf("a local forgego counted as drift")
@@ -504,8 +523,8 @@ func TestRepositoryFiles(t *testing.T) {
 			t.Errorf("dependabot.yml has no %s:\n%s", want, dependabot)
 		}
 	}
-	if got := strings.Count(dependabot, "default-days: 3"); got != 2 {
-		t.Errorf("%d of 2 ecosystems have the cooldown", got)
+	if got := strings.Count(dependabot, "default-days: 3"); got != 3 {
+		t.Errorf("%d of 3 updates have the cooldown", got)
 	}
 	if strings.Contains(dependabot, "docker") {
 		t.Error("dependabot.yml updates Docker without --docker")
@@ -527,5 +546,93 @@ func TestCodeownersNamesTheGitHubOwner(t *testing.T) {
 	run(t, fs, nil)
 	if got := read(t, fs, ".github/CODEOWNERS"); !strings.Contains(got, "* @acme\n") {
 		t.Errorf("CODEOWNERS = %q", got)
+	}
+}
+
+func TestSyncMovesAGoRunForgegoToThePin(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	// an earlier forgego ran itself with go run, at the version in the Taskfile
+	_ = fs.WriteFile(dir+"/Taskfile.yml", strings.Replace(read(t, fs, "Taskfile.yml"),
+		templates.SelfCommand, "go run github.com/apollogeddon/forgego/cmd/forgego@v1.2.0", 1))
+	_ = fs.Remove(dir + "/.forgego/forgego/go.mod")
+	if code := sync.Run(fs, dir, true); code != 1 {
+		t.Fatal("sync --check didn't report the go run forgego")
+	}
+	if fs.Exists(dir + "/.forgego/forgego/go.mod") {
+		t.Error("sync --check pinned forgego")
+	}
+
+	version.Set("v1.3.0")
+	defer version.Set("v1.2.3")
+	if code := sync.Run(fs, dir, false); code != 0 {
+		t.Fatalf("sync returned %d", code)
+	}
+	if !strings.Contains(read(t, fs, "Taskfile.yml"), "FORGEGO: "+templates.SelfCommand) {
+		t.Error("the Taskfile still runs forgego with go run")
+	}
+	// the forgego doing the sync is the one the project moved to
+	if !strings.Contains(read(t, fs, ".forgego/forgego/go.mod"), "forgego v1.3.0\n") {
+		t.Error("sync didn't pin the forgego it is")
+	}
+	if code := sync.Run(fs, dir, true); code != 0 {
+		t.Error("drift remains after sync")
+	}
+}
+
+func TestAMissingPinIsDrift(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	_ = fs.Remove(dir + "/.forgego/forgego/go.mod")
+	if code := sync.Run(fs, dir, true); code != 1 {
+		t.Fatal("sync --check missed the missing pin")
+	}
+	if code := sync.Run(fs, dir, false); code != 0 {
+		t.Fatalf("sync returned %d", code)
+	}
+	assertFiles(t, fs, ".forgego/forgego/go.mod")
+}
+
+func TestABuildThatIsntAReleaseRunsForgegoWithGoRun(t *testing.T) {
+	version.Set("latest")
+	defer version.Set("v1.2.3")
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	if !strings.Contains(read(t, fs, "Taskfile.yml"), "FORGEGO: go run github.com/apollogeddon/forgego/cmd/forgego@latest") {
+		t.Error("a development build should run forgego with go run")
+	}
+	refuteFiles(t, fs, ".forgego/forgego/go.mod")
+}
+
+func TestDependabotProposesForgegosPinDaily(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	var cfg struct {
+		Updates []struct {
+			Ecosystem string `yaml:"package-ecosystem"`
+			Directory string
+			Schedule  struct{ Interval string }
+			Groups    map[string]struct{ Patterns []string }
+			Cooldown  struct {
+				Exclude []string
+			}
+		}
+	}
+	if err := yaml.Unmarshal([]byte(read(t, fs, ".github/dependabot.yml")), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	var pin bool
+	for _, u := range cfg.Updates {
+		if u.Ecosystem != "gomod" {
+			continue
+		}
+		if u.Schedule.Interval != "daily" || !slices.Contains(u.Cooldown.Exclude, templates.OwnModules) ||
+			!slices.Contains(u.Groups["apollogeddon"].Patterns, templates.OwnModules) {
+			t.Errorf("%s doesn't take our own modules daily: %+v", u.Directory, u)
+		}
+		pin = pin || u.Directory == "/.forgego/forgego"
+	}
+	if !pin {
+		t.Error("Dependabot doesn't watch forgego's pin")
 	}
 }

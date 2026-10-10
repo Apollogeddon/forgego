@@ -66,7 +66,7 @@ In this mode release-please tags the release before the push's checks run. If th
 *Security and static analysis.*
 
 1. **`secure`** — Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner scan of the source tree, which reports without failing. When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls and warns rather than fails: the `patch` job upgrades them on `main`.
-2. **`linting`** — `task sync-check` (when the project pins Task), then, with `lint` on, `go mod tidy -diff`, `golangci-lint fmt --diff` and `golangci-lint run`.
+2. **`linting`** — `task sync-check` (when the project pins Task), or `task sync` on Dependabot's pull requests, as a Forge.go update changes the files it manages; then, with `lint` on, `go mod tidy -diff`, `golangci-lint fmt --diff` and `golangci-lint run`.
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
@@ -84,7 +84,7 @@ In this mode release-please tags the release before the push's checks run. If th
 1. Calls → `quality.yml`.
 2. **`testing`** — Runs `task test` with `GOFLAGS=-race` (skip with `run_tests: false`) and uploads `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: quality)*
 3. **`build`** — Runs `build_command` (default `task build`) and uploads `artifact_path` as the `artifact_name` artifact. *(Needs: quality; runs alongside testing)*
-4. **`patch`** — On `main` with `auto_patch` enabled, runs govulncheck, `go get`s the fixed version of each vulnerable module it reports, runs `go mod tidy`, and commits `go.mod` and `go.sum` as `fix(deps): upgrade modules with known vulnerabilities via govulncheck`. Vulnerabilities in the standard library are fixed by a newer Go, not by `go get`, so they're left to you. Needs `contents: write`. *(Needs: quality, testing, build)*
+4. **`patch`** — On `main` with `auto_patch` enabled, first runs `task sync` and commits whatever it refreshes as `chore(deps): refresh the files forgego manages`, which catches up after a Dependabot update of Forge.go merges. It then runs govulncheck, `go get`s the fixed version of each vulnerable module it reports, runs `go mod tidy`, and commits `go.mod` and `go.sum` as `fix(deps): upgrade modules with known vulnerabilities via govulncheck`. Vulnerabilities in the standard library are fixed by a newer Go, not by `go get`, so they're left to you. Needs `contents: write`. *(Needs: quality, testing, build)*
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
