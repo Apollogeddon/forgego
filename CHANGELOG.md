@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1](https://github.com/Apollogeddon/forgego/compare/v1.1.0...v1.1.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **ci:** merge Dependabot PRs to branches without protection rules ([53b1183](https://github.com/Apollogeddon/forgego/commit/53b11835ec4b15a7b0666b617d04a1f57dfe2020))
+* **ci:** merge Dependabot PRs to branches without protection rules ([840fe2e](https://github.com/Apollogeddon/forgego/commit/840fe2ee63a754376dcb03c8fa9042783b452680))
+
 ## [1.1.0](https://github.com/Apollogeddon/forgego/compare/v1.0.6...v1.1.0) (2026-10-09)
 
 
