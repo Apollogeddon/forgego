@@ -36,9 +36,12 @@ jobs:
               core.info(`Auto-merge enabled for #${pr.number}`);
             } catch (error) {
               // GitHub won't enable auto-merge on a PR it could merge now: one whose checks all
-              // passed (clean) or that only waits on checks it doesn't require (unstable).
-              // Merge it now instead, as gh pr merge --auto does
-              if (!/is in (clean|unstable|has[ _]hooks) status/i.test(error.message)) throw error;
+              // passed (clean) or that only waits on checks it doesn't require (unstable), or on
+              // any PR to a branch with no protection rules, as nothing would hold it back.
+              // Merge it now instead, as gh pr merge --auto does; this job runs after testing
+              // passed, so no check is skipped
+              const mergeable = /is in (clean|unstable|has[ _]hooks) status|protected branch rules not configured/i;
+              if (!mergeable.test(error.message)) throw error;
               await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'squash' });
               core.info(`Merged #${pr.number}`);
             }
