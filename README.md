@@ -104,6 +104,10 @@ The full documentation is at [apollogeddon.github.io/forgego](https://apollogedd
 - [Workflows](https://apollogeddon.github.io/forgego/docs/workflows/): the reusable GitHub Actions workflows and their inputs.
 - [Migration](https://apollogeddon.github.io/forgego/docs/migration/): adopting Forge.go in a project that already has tooling.
 
+## Contributing
+
+Pull requests are welcome. The [contributing guide](https://apollogeddon.github.io/forgego/docs/contributing/) covers setting up the repository, the checks to run before opening a pull request, and the commit message format releases are generated from.
+
 ## License
 
 Forge.go is released under the [MIT License](LICENSE).
