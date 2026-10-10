@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/Apollogeddon/forgego/compare/v1.3.0...v1.4.0) (2026-10-10)
+
+
+### Features
+
+* **ci:** fall back to Go 1.27 without a go.mod, and leave the version to go.mod ([28f830e](https://github.com/Apollogeddon/forgego/commit/28f830e5a6b9f6033deb3417484face998d29261))
+* **ci:** fall back to Go 1.27 without a go.mod, and leave the version to go.mod ([4477ef9](https://github.com/Apollogeddon/forgego/commit/4477ef992e29e52578bbc984d7ba28e1d1ecf3eb))
+
 ## [1.3.0](https://github.com/Apollogeddon/forgego/compare/v1.2.0...v1.3.0) (2026-10-10)
 
 
