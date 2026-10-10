@@ -43,7 +43,7 @@ func TestGeneratedWorkflowsOnlyPassDeclaredInputs(t *testing.T) {
 			if docker && mode == "library" {
 				continue
 			}
-			out := RenderWorkflow(WorkflowOptions{Mode: mode, Go: "1.27", Docker: docker})
+			out := RenderWorkflow(WorkflowOptions{Mode: mode, Docker: docker})
 			var w struct {
 				Jobs map[string]callerJob `yaml:"jobs"`
 			}

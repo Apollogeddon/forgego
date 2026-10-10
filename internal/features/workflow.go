@@ -22,7 +22,6 @@ func (Workflow) Apply(ctx *Context) bool {
 	}
 	return CreateFile(ctx, ".github/workflows/index.yml", templates.RenderWorkflow(templates.WorkflowOptions{
 		Mode:       string(ctx.Cfg.Mode),
-		Go:         ctx.Cfg.Go,
 		Docker:     ctx.Cfg.Docker,
 		Testing:    ctx.Cfg.Testing,
 		Linting:    ctx.Cfg.Linting,

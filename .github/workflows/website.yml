@@ -23,7 +23,7 @@ on:
         type: boolean
         default: true
       go_version:
-        description: "Go version; empty reads it from go.mod"
+        description: "Go version; empty reads the project's go.mod, else Go 1.27"
         required: false
         type: string
         default: ''

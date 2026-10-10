@@ -13,7 +13,7 @@ on:
         type: string
         default: '.'
       go_version:
-        description: "Go version; empty reads it from go.mod"
+        description: "Go version; empty reads the project's go.mod, else Go 1.27"
         required: false
         type: string
         default: ''
@@ -63,11 +63,24 @@ jobs:
           sudo apt-get update
           # shellcheck disable=SC2086 # one word per package
           sudo apt-get install -y --no-install-recommends $PACKAGES
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-go@v7
         if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         with:
-          go-version: ${{ inputs.go_version }}
-          go-version-file: ${{ inputs.working_directory }}/go.mod
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
@@ -97,10 +110,22 @@ jobs:
           sudo apt-get update
           # shellcheck disable=SC2086 # one word per package
           sudo apt-get install -y --no-install-recommends $PACKAGES
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-go@v7
         with:
-          go-version: ${{ inputs.go_version }}
-          go-version-file: ${{ inputs.working_directory }}/go.mod
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
