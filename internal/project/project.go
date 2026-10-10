@@ -110,6 +110,17 @@ func remoteModule(content string) string {
 	return strings.ToLower(url)
 }
 
+// GitHubOwner is the account the module lives under on GitHub, or "" when it isn't
+// a github.com module path.
+func (i Info) GitHubOwner() string {
+	rest, ok := strings.CutPrefix(i.Module, "github.com/")
+	if !ok {
+		return ""
+	}
+	owner, _, _ := strings.Cut(rest, "/")
+	return owner
+}
+
 // PackageName makes a valid Go package name from a project name: billing-api gives
 // billingapi, and a name starting with a digit gets an app prefix.
 func PackageName(name string) string {

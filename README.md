@@ -65,7 +65,7 @@ go tool -modfile=.forgego/task/go.mod task hooks
 
 `init` does the following:
 
-- **Writes the configuration:** `.golangci.yml`, `lefthook.yml`, the release-please config, `.github/workflows/index.yml` and, depending on the mode and flags, `.goreleaser.yaml`, a `Dockerfile`, Debian packaging files or `hugo.toml`.
+- **Writes the configuration:** `.golangci.yml`, `lefthook.yml`, the release-please config, `.github/workflows/index.yml`, the repository files `.editorconfig`, `.github/dependabot.yml` and `.github/CODEOWNERS`, and, depending on the mode and flags, `.goreleaser.yaml`, a `Dockerfile`, Debian packaging files or `hugo.toml`.
 - **Adds tasks** such as `lint`, `test`, `build` and `security` to `Taskfile.yml`, keeping any task the project already has.
 - **Starts a new project** with a `go.mod` and a starter command or package, so the generated tooling works straight away. In an existing project it leaves your code alone.
 

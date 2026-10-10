@@ -490,3 +490,41 @@ func TestDryRunOnlyReportsRealChanges(t *testing.T) {
 		t.Errorf("an up-to-date project still reports refreshes:\n%s", out.String())
 	}
 }
+
+func TestRepositoryFiles(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	if !strings.Contains(read(t, fs, ".editorconfig"), "[{*.go,go.mod,go.sum,Makefile}]\nindent_style = tab") {
+		t.Error(".editorconfig doesn't indent Go with tabs")
+	}
+	dependabot := read(t, fs, ".github/dependabot.yml")
+	for _, want := range []string{`package-ecosystem: "gomod"`, `package-ecosystem: "github-actions"`, `dependency-name: "apollogeddon/forgego"`} {
+		if !strings.Contains(dependabot, want) {
+			t.Errorf("dependabot.yml has no %s:\n%s", want, dependabot)
+		}
+	}
+	if got := strings.Count(dependabot, "default-days: 3"); got != 2 {
+		t.Errorf("%d of 2 ecosystems have the cooldown", got)
+	}
+	if strings.Contains(dependabot, "docker") {
+		t.Error("dependabot.yml updates Docker without --docker")
+	}
+	// a module path off github.com names no owner
+	refuteFiles(t, fs, ".github/CODEOWNERS")
+
+	docker := fsys.NewMemory(nil)
+	run(t, docker, func(c *config.Init) { c.Docker = true })
+	if !strings.Contains(read(t, docker, ".github/dependabot.yml"), `package-ecosystem: "docker"`) {
+		t.Error("dependabot.yml doesn't update Docker with --docker")
+	}
+}
+
+func TestCodeownersNamesTheGitHubOwner(t *testing.T) {
+	fs := fsys.NewMemory(map[string]string{
+		dir + "/.git/config": "[remote \"origin\"]\n\turl = git@github.com:Acme/Billing-API.git\n",
+	})
+	run(t, fs, nil)
+	if got := read(t, fs, ".github/CODEOWNERS"); !strings.Contains(got, "* @acme\n") {
+		t.Errorf("CODEOWNERS = %q", got)
+	}
+}

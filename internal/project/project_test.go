@@ -39,3 +39,16 @@ func TestDetectMakesNamesSafe(t *testing.T) {
 		t.Errorf("info = %+v", info)
 	}
 }
+
+func TestGitHubOwner(t *testing.T) {
+	for module, want := range map[string]string{
+		"github.com/acme/api":                  "acme",
+		"github.com/acme/api/services/billing": "acme",
+		"gitlab.com/acme/api":                  "",
+		"billing-api":                          "",
+	} {
+		if got := (Info{Module: module}).GitHubOwner(); got != want {
+			t.Errorf("GitHubOwner(%q) = %q, want %q", module, got, want)
+		}
+	}
+}
