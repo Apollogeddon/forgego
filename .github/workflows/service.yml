@@ -27,7 +27,7 @@ on:
         required: false
         type: string
         default: ''
-      system_packages:
+      apt_packages:
         description: "apt packages to install before compiling, space-separated, e.g. the C libraries a cgo dependency needs; Ubuntu runners only"
         required: false
         type: string
@@ -85,7 +85,7 @@ jobs:
       auto_patch: ${{ inputs.auto_patch }}
       run_tests: ${{ inputs.run_tests }}
       lint: ${{ inputs.lint }}
-      system_packages: ${{ inputs.system_packages }}
+      apt_packages: ${{ inputs.apt_packages }}
 
   auto-merge:
     uses: ./.github/workflows/merge.yml
@@ -120,7 +120,7 @@ jobs:
       auto_patch: ${{ inputs.auto_patch }}
       run_tests: ${{ inputs.run_tests }}
       lint: ${{ inputs.lint }}
-      system_packages: ${{ inputs.system_packages }}
+      apt_packages: ${{ inputs.apt_packages }}
 
   release:
     runs-on: ${{ inputs.runs_on }}
