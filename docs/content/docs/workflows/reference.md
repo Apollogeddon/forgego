@@ -72,7 +72,7 @@ In this mode release-please tags the release before the push's checks run. If th
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label |
 | `working_directory` | `'.'` | Directory containing `go.mod` |
-| `go_version` | `''` | Go version; empty reads it from `go.mod` |
+| `go_version` | `''` | Go version; empty reads the project's `go.mod`, else Go 1.27 |
 | `enable_secrets` | `true` | Run the Gitleaks scan |
 | `lint` | `true` | Run the `go.mod` tidy check and golangci-lint; a website has no Go to lint |
 | `apt_packages` | `''` | apt packages each job installs before compiling, such as a cgo dependency's C libraries |
@@ -90,7 +90,7 @@ In this mode release-please tags the release before the push's checks run. If th
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label |
 | `working_directory` | `'.'` | Directory containing `go.mod` |
-| `go_version` | `''` | Go version; empty reads it from `go.mod` |
+| `go_version` | `''` | Go version; empty reads the project's `go.mod`, else Go 1.27 |
 | `enable_secrets` | `true` | Run the Gitleaks scan |
 | `lint` | `true` | Run golangci-lint |
 | `apt_packages` | `''` | apt packages each job installs before compiling, passed on to `quality.yml` |

@@ -23,7 +23,7 @@ on:
         type: boolean
         default: true
       go_version:
-        description: "Go version; empty reads it from go.mod"
+        description: "Go version; empty reads the project's go.mod, else Go 1.27"
         required: false
         type: string
         default: ''
@@ -153,10 +153,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-go@v7
         with:
-          go-version: ${{ inputs.go_version }}
-          go-version-file: ${{ inputs.working_directory }}/go.mod
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
           cache: false
       # A Go module is published by its tag; fetching it through the proxy makes the
       # proxy and pkg.go.dev pick the release up now rather than on first use.

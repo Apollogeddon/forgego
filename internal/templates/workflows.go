@@ -8,7 +8,6 @@ const WorkflowRepo = "apollogeddon/forgego/.github/workflows/"
 // WorkflowOptions is what decides a project's generated CI.
 type WorkflowOptions struct {
 	Mode       string // backend, library or website
-	Go         string
 	Docker     bool
 	Testing    bool
 	Linting    bool
@@ -65,7 +64,6 @@ func RenderWorkflow(o WorkflowOptions) string {
 		b.WriteString("      " + p + "\n")
 	}
 	b.WriteString("    with:\n")
-	b.WriteString("      go_version: '" + o.Go + "'\n")
 	// Disabled standard features become pipeline inputs, so CI doesn't run what the project doesn't have.
 	if !o.Testing && o.Mode != "website" {
 		b.WriteString("      run_tests: false\n")

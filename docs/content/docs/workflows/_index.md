@@ -54,7 +54,6 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      go_version: '1.27'
       auto_patch: true
 ```
 
@@ -68,7 +67,6 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      go_version: '1.27'
       auto_patch: true
 ```
 
@@ -84,7 +82,6 @@ jobs:
       id-token: write
       pull-requests: write
     with:
-      go_version: '1.27'
 ```
 
 **Debian** — `forgego init --debian` generates the backend job unchanged: `service.yml`'s release job builds the `.deb` from the `nfpms` section of `.goreleaser.yaml`.
@@ -106,7 +103,7 @@ jobs:
       version: ${{ needs.service.outputs.version }}
 ```
 
-`go_version` is the `--go` version. `--no-testing` adds `run_tests: false` and `--no-linting` adds `lint: false` (backends and libraries), and `--no-versioning` adds `enable_versioning: false`.
+The workflow names no Go version: CI reads it from `go.mod`, which `init` writes with the `--go` version. `--no-testing` adds `run_tests: false` and `--no-linting` adds `lint: false` (backends and libraries), and `--no-versioning` adds `enable_versioning: false`.
 
 ## Common inputs
 
@@ -114,7 +111,7 @@ jobs:
 
 | Input | Default | Description |
 | :--- | :--- | :--- |
-| `go_version` | `''` | Go version for every job; empty reads it from `go.mod` |
+| `go_version` | `''` | Go version for every job; empty reads the project's `go.mod`, and without one uses Go 1.27 |
 | `working_directory` | `'.'` | Directory containing `go.mod` |
 | `runs_on` | `'ubuntu-latest'` | Runner label for every job — see [Choosing runners]({{< relref "reference.md#choosing-runners" >}}) |
 | `enable_secrets` | `true` | Run the Gitleaks secret scan |

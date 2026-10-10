@@ -290,7 +290,7 @@ func TestDisabledFeaturesBecomeWorkflowInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	with := w.Jobs["service"].With
-	if with["run_tests"] != false || with["enable_versioning"] != false || with["lint"] != false || with["go_version"] != "1.27" {
+	if with["run_tests"] != false || with["enable_versioning"] != false || with["lint"] != false || with["go_version"] != nil {
 		t.Errorf("with = %v", with)
 	}
 }
@@ -441,8 +441,9 @@ func TestSecurityScanningDoesNotNeedLinting(t *testing.T) {
 func TestAnExistingGoModsGoVersionDrivesCIUnlessGoIsGiven(t *testing.T) {
 	fs := fsys.NewMemory(map[string]string{dir + "/go.mod": "module example.com/api\n\ngo 1.25.3\n"})
 	run(t, fs, func(c *config.Init) { c.Go = ""; c.Docker = true })
-	if !strings.Contains(read(t, fs, ".github/workflows/index.yml"), "go_version: '1.25.3'") {
-		t.Error("CI doesn't use go.mod's Go")
+	// CI reads go.mod itself, so the generated workflow names no version
+	if strings.Contains(read(t, fs, ".github/workflows/index.yml"), "go_version") {
+		t.Error("the generated workflow pins a Go version instead of reading go.mod")
 	}
 	if !strings.Contains(read(t, fs, "Dockerfile"), "golang:1.25 AS build") {
 		t.Error("the Dockerfile doesn't use go.mod's Go")

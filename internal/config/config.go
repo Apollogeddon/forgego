@@ -10,7 +10,8 @@ const (
 	Website Mode = "website"
 )
 
-// DefaultGo is the Go version a new project targets; an existing go.mod's version wins.
+// DefaultGo is the Go version a new project targets; an existing go.mod's version wins. The
+// workflows fall back to it when a project has no go.mod, and a test keeps them in step.
 const DefaultGo = "1.27"
 
 // Init is the resolved configuration for `forgego init`.
