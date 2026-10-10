@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/Apollogeddon/forgego/compare/v1.4.0...v1.5.0) (2026-10-10)
+
+
+### Features
+
+* pin forgego in .forgego/forgego/go.mod so Dependabot proposes each release ([#36](https://github.com/Apollogeddon/forgego/issues/36)) ([10cf252](https://github.com/Apollogeddon/forgego/commit/10cf2524e567ba23128a734c6ed129b10c0111e2))
+
 ## [1.4.0](https://github.com/Apollogeddon/forgego/compare/v1.3.0...v1.4.0) (2026-10-10)
 
 
