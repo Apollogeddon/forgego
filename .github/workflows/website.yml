@@ -57,6 +57,11 @@ on:
         required: false
         type: boolean
         default: false
+      reviewers:
+        description: "Comma-separated logins to request a review of Dependabot's and release-please's pull requests from; empty means the repository's owner"
+        required: false
+        type: string
+        default: ''
     outputs:
       new_release_published:
         description: "Whether a new release was published"
@@ -88,6 +93,17 @@ jobs:
       artifact_path: public
       build_command: ${{ inputs.build_command }}
 
+  # Dependabot's pull requests ask for a review as they open, before the checks, so a failing
+  # update reaches the reviewer too
+  review:
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+    uses: ./.github/workflows/review.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      reviewers: ${{ inputs.reviewers }}
+    permissions:
+      pull-requests: write
+
   auto-merge:
     uses: ./.github/workflows/merge.yml
     with:
@@ -106,6 +122,7 @@ jobs:
     with:
       runs_on: ${{ inputs.runs_on }}
       working_directory: ${{ inputs.working_directory }}
+      reviewers: ${{ inputs.reviewers }}
 
   release-testing:
     # With test_on_push false, a push to main is checked and built only when release-please made a release.

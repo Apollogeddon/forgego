@@ -14,6 +14,7 @@ Forge.go ships reusable GitHub Actions workflows that give every project the sam
 | `testing.yml` | Full QA suite: quality, the tests, the build artifact, and vulnerability patching on `main` |
 | `version.yml` | Automated versioning and GitHub releases via release-please |
 | `merge.yml` | Auto-merges Dependabot pull requests once checks pass, except GitHub Actions updates |
+| `review.yml` | Requests a review on Dependabot's and release-please's pull requests, which `CODEOWNERS` doesn't do in a private repository on GitHub Free |
 | `service.yml` | Orchestrator for backends — testing, auto-merge, version, then the release binaries (and `.deb`) with GoReleaser |
 | `library.yml` | Orchestrator for libraries — testing, auto-merge, version, then publishing the release to the Go module proxy |
 | `website.yml` | Orchestrator for websites — testing, auto-merge, version, then GitHub Pages deployment |
@@ -120,6 +121,7 @@ jobs:
 | `enable_versioning` | `true` | Run release-please — `forgego init --no-versioning` sets it to `false` |
 | `test_on_push` | `true` | Run the checks on pushes too — see [Checking once per change]({{< relref "reference.md#checking-once-per-change" >}}) |
 | `test_release_prs` | `true` | Run the checks on release-please's release pull requests |
+| `reviewers` | `''` | Comma-separated logins to request a review of Dependabot's and release-please's pull requests from; empty means the repository's owner — see [review.yml]({{< relref "reference.md#reviewyml" >}}) |
 | `run_tests` | `true` | Run the tests — `forgego init --no-testing` sets it to `false` (`service.yml`, `library.yml`) |
 | `lint` | `true` | Run golangci-lint and the `go mod tidy` check — `forgego init --no-linting` sets it to `false` (`service.yml`, `library.yml`) |
 | `auto_patch` | `true` | On `main`, upgrade the modules govulncheck finds vulnerable and commit the result (`service.yml`, `library.yml`) |

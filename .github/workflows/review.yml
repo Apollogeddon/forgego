@@ -1,0 +1,53 @@
+name: Review Request
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      pull_request:
+        description: "The pull request to request a review on; empty means the one that triggered the run"
+        required: false
+        type: string
+        default: ''
+      reviewers:
+        description: "Comma-separated logins to request; empty means the repository's owner, when that's a user"
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  # CODEOWNERS only requests reviews in a private repository on a paid plan, so a bot's pull
+  # request (Dependabot's, release-please's) asks for one here instead, on any plan
+  request:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Request a review
+        uses: actions/github-script@v9
+        env:
+          PULL_REQUEST: ${{ inputs.pull_request }}
+          REVIEWERS: ${{ inputs.reviewers }}
+        with:
+          script: |
+            const number = Number(process.env.PULL_REQUEST || context.payload.pull_request?.number);
+            if (!number) return core.notice('No pull request to request a review on');
+            let reviewers = process.env.REVIEWERS.split(',').map((login) => login.trim()).filter(Boolean);
+            if (reviewers.length === 0) {
+              // an organisation can't be requested, and names its reviewers through the input instead
+              const { data: repo } = await github.rest.repos.get(context.repo);
+              if (repo.owner.type !== 'User') return core.notice('The owner is an organisation; set reviewers to request one');
+              reviewers = [repo.owner.login];
+            }
+            // a review request is a courtesy, never a check: a failure here mustn't fail the pipeline
+            try {
+              await github.rest.pulls.requestReviewers({ ...context.repo, pull_number: number, reviewers });
+              core.info(`Requested a review from ${reviewers.join(', ')} on #${number}`);
+            } catch (error) {
+              core.warning(`Couldn't request a review on #${number}: ${error.message}`);
+            }

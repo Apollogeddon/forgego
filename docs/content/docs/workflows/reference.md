@@ -13,7 +13,7 @@ Every pipeline follows the same three stages:
 2. **Versioning** — `version.yml` runs release-please on the main branch.
 3. **Delivery** — `service.yml` (release binaries and `.deb`), `library.yml` (Go module proxy), `website.yml` (GitHub Pages) or `docker.yml` (GHCR) publishes the result.
 
-Dependabot pull requests are auto-merged by `merge.yml` once testing passes, except GitHub Actions updates, which wait for a person to merge them.
+Dependabot pull requests are auto-merged by `merge.yml` once testing passes, except GitHub Actions updates, which wait for a person to merge them. `review.yml` requests a review on Dependabot's and release-please's pull requests, so they reach your review requests in a private repository too.
 
 `service.yml`, `library.yml` and `website.yml` expose `version.yml`'s `new_release_published`, `version` and `tag_name` as outputs, which the generated `docker` job uses to decide when to push.
 
@@ -128,6 +128,20 @@ Dependabot's GitHub Actions updates (branches starting `dependabot/github_action
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label |
+
+## review.yml
+
+*Review requests on bots' pull requests.*
+
+1. **`request`** — Requests a review on a pull request from `reviewers`, or from the repository's owner when `reviewers` is empty and the owner is a user (an organisation names its reviewers through the input). GitHub only requests code owners' reviews in a private repository on a paid plan, so without this, Dependabot's and release-please's pull requests in a private repository on GitHub Free never reach your review requests. A failed request logs a warning and never fails the pipeline. Needs `pull-requests: write`.
+
+`service.yml`, `library.yml` and `website.yml` call it on Dependabot's pull requests as they open, before the checks, so a failing update reaches you too; `version.yml` calls it on the release pull request it opened or updated. Dependabot updates that `merge.yml` merges leave your review requests once merged.
+
+| Input | Default | Purpose |
+| :--- | :--- | :--- |
+| `runs_on` | `'ubuntu-latest'` | Runner label |
+| `pull_request` | `''` | The pull request to request a review on; empty means the one that triggered the run |
+| `reviewers` | `''` | Comma-separated logins to request; empty means the repository's owner |
 
 ## service.yml
 
