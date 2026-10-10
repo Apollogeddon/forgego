@@ -37,6 +37,7 @@ func (Base) Apply(ctx *Context) bool {
 		ignore = templates.GitignoreWebsite
 	}
 	ok = CreateIfMissing(ctx, ".gitignore", ignore) && ok
+	ok = CreateFile(ctx, ".editorconfig", templates.Editorconfig) && ok
 
 	ok = useTool(ctx, templates.Task) && ok
 	// Security scanning doesn't depend on linting: CI's patch job upgrades what govulncheck finds.

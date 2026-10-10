@@ -181,7 +181,7 @@ The project name is the last element of the module path without a `/vN` suffix (
 
 ## Project structure
 
-A default `forgego init` (backend) in a project named `billing-api` produces:
+A default `forgego init` (backend) in a project named `billing-api`, with a `github.com` module path, produces:
 
 ```text
 .
@@ -194,11 +194,14 @@ A default `forgego init` (backend) in a project named `billing-api` produces:
 │   └── task/
 ├── .github/
 │   ├── .release.json           # release-please manifest
+│   ├── CODEOWNERS              # requests your review on others' pull requests
+│   ├── dependabot.yml          # weekly updates with a 3-day cooldown
 │   ├── release.json            # release-please config
 │   └── workflows/index.yml     # CI/CD calling the reusable workflows
 ├── cmd/billing-api/
 │   ├── main.go
 │   └── main_test.go
+├── .editorconfig
 ├── .gitignore
 ├── .golangci.local.yml         # your changes to the lint config
 ├── .golangci.yml               # generated from the two above — don't edit

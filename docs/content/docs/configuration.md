@@ -9,7 +9,7 @@ Forge.go writes three kinds of file:
 
 | Kind | Examples | Re-running `init` |
 | :--- | :--- | :--- |
-| **Config** | `lefthook.yml`, `.goreleaser.yaml`, `Dockerfile`, `hugo.toml`, `.github/workflows/index.yml` | Left alone; overwritten only with `--force` |
+| **Config** | `lefthook.yml`, `.goreleaser.yaml`, `Dockerfile`, `hugo.toml`, `.github/workflows/index.yml`, `.editorconfig`, `.github/dependabot.yml`, `.github/CODEOWNERS` | Left alone; overwritten only with `--force` |
 | **Your source** | `go.mod`, `.gitignore`, `.golangci.local.yml`, the starter source and test, `content/` | Created once, never overwritten — even with `--force` |
 | **Managed** | Everything under `.forgego/`, and `.golangci.yml` | Always refreshed; `--force` makes no difference |
 
@@ -213,3 +213,15 @@ Update `maintainer`, `description` and `license` in the `nfpms` section; Forge.g
 | `content/docs/_index.md` | The first documentation page. |
 
 `task dev` serves the site with live reload; `task build` builds it into `public/`. Hugo manages the site's `go.mod` itself — don't run `go mod tidy` on it, as nothing imports the theme from Go code and tidying would drop it.
+
+## Repository files
+
+`init` also writes three files for the repository itself. Like the other configs, an existing one is kept unless you pass `--force`.
+
+| File | What it does |
+| :--- | :--- |
+| `.editorconfig` | LF line endings, UTF-8 and 120 columns; tabs in Go files, `go.mod` and `go.sum`, two spaces elsewhere |
+| `.github/dependabot.yml` | Weekly Go module and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The workflow's auto-merge job merges them once CI passes. The tools in `.forgego/` aren't included: `forgego sync` keeps them in step with Forge.go. |
+| `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
+
+The `CODEOWNERS` owner is the account in a `github.com/<owner>/...` [module path]({{< relref "getting-started.md#module-path" >}}). A project whose module path isn't on GitHub gets no `CODEOWNERS`; run `init` again once it has a GitHub remote.
