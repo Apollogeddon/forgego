@@ -266,3 +266,27 @@ func TestEverythingWaitsForTheRunnerLists(t *testing.T) {
 		}
 	}
 }
+
+// The site checks are opt-in, and while they're off they mustn't skip the deploy or the merge.
+func TestSiteChecksAreOptIn(t *testing.T) {
+	inputs := readReusable(t, "website.yml").On.WorkflowCall.Inputs
+	for name, want := range map[string]any{
+		"check_links": false, "check_accessibility": false, "link_check_args": "--offline",
+		"accessibility_paths": "/", "accessibility_args": "", "base_url": "/",
+	} {
+		input, _ := inputs[name].(map[string]any)
+		if input["default"] != want {
+			t.Errorf("%s defaults to %v, want %v", name, input["default"], want)
+		}
+	}
+	jobs := readJobs(t, "website.yml")
+	if !strings.Contains(jobs["site-checks"].If, "inputs.check_links || inputs.check_accessibility") {
+		t.Errorf("site-checks runs with both checks off: if = %q", jobs["site-checks"].If)
+	}
+	for _, name := range []string{"deploy", "auto-merge"} {
+		job := jobs[name]
+		if !slices.Contains(job.Needs, "site-checks") || !strings.Contains(job.If, "!failure()") {
+			t.Errorf("%s: needs %v, if = %q; want it to wait for site-checks and run when they're skipped", name, job.Needs, job.If)
+		}
+	}
+}

@@ -62,6 +62,36 @@ on:
         required: false
         type: string
         default: ''
+      base_url:
+        description: "The site's baseURL from its Hugo config, e.g. https://owner.github.io/repo/; the site checks serve the build at its path and treat links to it as internal"
+        required: false
+        type: string
+        default: '/'
+      check_links:
+        description: "Check the built site's links with lychee before it deploys"
+        required: false
+        type: boolean
+        default: false
+      link_check_args:
+        description: "More lychee arguments; the default --offline checks internal links only, and '' checks external links too"
+        required: false
+        type: string
+        default: '--offline'
+      check_accessibility:
+        description: "Check the built site's pages with axe before it deploys"
+        required: false
+        type: boolean
+        default: false
+      accessibility_paths:
+        description: "Pages axe checks, relative to base_url, one per line or space-separated"
+        required: false
+        type: string
+        default: '/'
+      accessibility_args:
+        description: "More axe CLI arguments, e.g. --tags wcag2a,wcag2aa or --disable color-contrast"
+        required: false
+        type: string
+        default: ''
     outputs:
       new_release_published:
         description: "Whether a new release was published"
@@ -108,8 +138,9 @@ jobs:
     uses: ./.github/workflows/merge.yml
     with:
       runs_on: ${{ inputs.runs_on }}
-    needs: [testing]
-    if: inputs.auto_merge
+    needs: [testing, site-checks]
+    # the site checks are skipped unless turned on, which mustn't skip the merge
+    if: ${{ !failure() && !cancelled() && inputs.auto_merge && needs.testing.result == 'success' }}
     permissions:
       contents: write
       pull-requests: write
@@ -143,10 +174,84 @@ jobs:
       artifact_path: public
       build_command: ${{ inputs.build_command }}
 
+  # Links and accessibility, checked on the built artifact the deploy ships.
+  site-checks:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 20
+    needs: [testing, release-testing]
+    if: >-
+      !failure() && !cancelled() && (inputs.check_links || inputs.check_accessibility) &&
+      (needs.testing.result == 'success' || needs['release-testing'].result == 'success')
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ runner.temp }}/forgego-site
+      # the build's links include base_url's path, so the site goes under it in a root of its own
+      - name: Place the site at its base path
+        id: site
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+        run: |
+          case "$BASE_URL" in
+            http://*|https://*)
+              rest="${BASE_URL#*://}"
+              host="${rest%%/*}"
+              origin="${BASE_URL%%://*}://$host"
+              path="${rest#"$host"}"
+              ;;
+            *) origin='' path="$BASE_URL" ;;
+          esac
+          path="/${path#/}"
+          path="${path%/}/"
+          root="$RUNNER_TEMP/forgego-site-root"
+          mkdir -p "$root$path"
+          cp -R "$RUNNER_TEMP/forgego-site/." "$root$path"
+          args="--no-progress --root-dir $root --index-files index.html"
+          if [ -n "$origin" ]; then
+            # links to the site's own address are internal: check them in the build
+            args="$args --remap '^$(sed 's/[.]/\\./g' <<< "$origin$path") file://$root$path'"
+          fi
+          {
+            echo "root=$root"
+            echo "path=$path"
+            echo "lychee_args=$args"
+          } >> "$GITHUB_OUTPUT"
+      - uses: lycheeverse/lychee-action@v2
+        if: inputs.check_links
+        with:
+          args: ${{ steps.site.outputs.lychee_args }} ${{ inputs.link_check_args }} '${{ steps.site.outputs.root }}/**/*.html'
+      - uses: actions/setup-node@v7
+        if: inputs.check_accessibility
+        with:
+          node-version: lts/*
+      - name: Check accessibility
+        if: inputs.check_accessibility
+        env:
+          ROOT: ${{ steps.site.outputs.root }}
+          BASE_PATH: ${{ steps.site.outputs.path }}
+          PAGES: ${{ inputs.accessibility_paths }}
+          ARGS: ${{ inputs.accessibility_args }}
+          # browser-driver-manager installs a matching Chrome and ChromeDriver instead
+          CHROMEDRIVER_SKIP_DOWNLOAD: 'true'
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 --directory "$ROOT" > /dev/null 2>&1 &
+          npx --yes browser-driver-manager@2.0.1 install chrome
+          curl -sSf --retry 10 --retry-connrefused --retry-delay 1 -o /dev/null "http://127.0.0.1:4173$BASE_PATH"
+          urls=()
+          for page in $PAGES; do
+            urls+=("http://127.0.0.1:4173$BASE_PATH${page#/}")
+          done
+          # no-sandbox, as a container runner's Chrome may run as root
+          # shellcheck disable=SC2086 # one word per argument
+          npx --yes @axe-core/cli@4.13.0 "${urls[@]}" --exit --chrome-options=no-sandbox,disable-dev-shm-usage $ARGS
+
   deploy:
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
-    needs: [testing, version, release-testing]
+    needs: [testing, version, release-testing, site-checks]
     # !failure() rather than success(), so a skipped version or checks job doesn't skip the deploy
     if: |
       !failure() && !cancelled() &&
