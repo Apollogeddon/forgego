@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.6.0](https://github.com/Apollogeddon/forgego/compare/v1.5.0...v1.6.0) (2026-10-11)
+
+
+### Features
+
+* check a website's links and accessibility before it deploys ([#43](https://github.com/Apollogeddon/forgego/issues/43)) ([48ad78b](https://github.com/Apollogeddon/forgego/commit/48ad78bc27961d46c32e8fe920bf4cf76422f449))
+* run tests and native builds on more than one operating system ([1461af3](https://github.com/Apollogeddon/forgego/commit/1461af332de56a244cfe7618c1ed570723bd6b87))
+* run tests and native builds on more than one operating system ([a6fd15a](https://github.com/Apollogeddon/forgego/commit/a6fd15aed679de5ad1db8b4c2b1fdc7d0b18e08e))
+* sign release checksums with GPG and let callers run the checks themselves ([#42](https://github.com/Apollogeddon/forgego/issues/42)) ([4967974](https://github.com/Apollogeddon/forgego/commit/496797477a42fd7c5f57b49ce19d096ae01fcde6))
+
+
+### Bug Fixes
+
+* leave the extra and native-build jobs' names to GitHub, which shows a skipped one plainly ([41cd292](https://github.com/Apollogeddon/forgego/commit/41cd292437c1c0ee1d42b116a69dac30f980cb75))
+* leave the extra and native-build jobs' names to GitHub, which shows a skipped one plainly ([7358ccc](https://github.com/Apollogeddon/forgego/commit/7358ccc59bf0bf2900598f74448b571807efbee8))
+* tidy forgego's pin in its own directory ([c8184dc](https://github.com/Apollogeddon/forgego/commit/c8184dcc43eeb0484a34318321918870d0effc35))
+* tidy forgego's pin in its own directory ([10a72e2](https://github.com/Apollogeddon/forgego/commit/10a72e254666249345833ef2b82fea2c3026cad2))
+
 ## [1.5.0](https://github.com/Apollogeddon/forgego/compare/v1.4.0...v1.5.0) (2026-10-10)
 
 
