@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/Apollogeddon/forgego/compare/v1.6.0...v1.6.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **website:** ship Hextra's search script so sites build offline, and move to download-artifact v8 ([720c550](https://github.com/Apollogeddon/forgego/commit/720c550f569f1d99c0be5f701faec4c3fc0dd09b))
+
 ## [1.6.0](https://github.com/Apollogeddon/forgego/compare/v1.5.0...v1.6.0) (2026-10-11)
 
 
