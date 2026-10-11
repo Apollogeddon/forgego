@@ -191,7 +191,7 @@ Dependabot's GitHub Actions updates (branches starting `dependabot/github_action
 3. Calls → `version.yml` to trigger a release on the main branch. Skip with `enable_versioning: false`. It still runs when the checks were skipped, but not when they failed. *(Needs: testing)*
 4. Calls → `testing.yml` again as **`release-testing`**, only with `test_on_push: false` — see [Checking Once per Change](#checking-once-per-change). *(Needs: version)*
 5. **`native-build`** — Only with `native_builds` set, under the same conditions as `release`: on each runner it lists, runs the [setup script](#setup-scripts) and `build_command`, and uploads the files `artifact_path` holds. See [Native release builds](#native-release-builds). Needs `contents: read`. *(Needs: testing, version, release-testing)*
-6. **`release`** — On `main`, when a new release was published and the checks passed, runs GoReleaser (latest `v2`, through `goreleaser-action`) with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the draft release release-please created, then publishes it. With `release_binaries: false` it attaches the native builds and `release_files`, if any, and publishes the draft. Needs `contents: write`. *(Needs: testing, version, release-testing, native-build)*
+6. **`release`** — On `main`, when a new release was published and the checks passed, runs GoReleaser (latest `v2`, through `goreleaser-action`) with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the draft release release-please created, then publishes it. With `gpg_sign: true` it first imports the signing key for GoReleaser. With `release_binaries: false` it attaches the native builds and `release_files`, if any, and publishes the draft. Needs `contents: write`. *(Needs: testing, version, release-testing, native-build)*
 
 Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}), plus:
 
@@ -207,6 +207,17 @@ Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}), plus:
 | `native_builds` | `'[]'` | JSON list of runners that build release binaries natively, entries as in [`extra_runners`](#more-operating-systems) |
 | `release_files` | `''` | Files to attach beside the native builds, one per line, relative to `working_directory`, e.g. `LICENSE`; with `release_binaries: false` |
 | `checksums` | `'checksums.txt'` | The checksum file written for the native builds and `release_files`; empty attaches none; with `release_binaries: false` |
+| `gpg_sign` | `false` | Import the `GPG_PRIVATE_KEY` secret and give GoReleaser its fingerprint as `GPG_FINGERPRINT`; see [Signed releases](#signed-releases) |
+| `run_checks` | `true` | Run `testing.yml` here; see [Running your own checks](#running-your-own-checks) |
+
+And these secrets, both optional:
+
+| Secret | Purpose |
+| :--- | :--- |
+| `GPG_PRIVATE_KEY` | The ASCII-armored private key GoReleaser signs with; with `gpg_sign: true` |
+| `GPG_PASSPHRASE` | The key's passphrase, if it has one |
+
+To act once a release is out, such as rebuilding a site that lists its files, add a job that `needs` the `service.yml` job and checks its `new_release_published` output: a job that needs a reusable workflow waits for every job in it, the release included.
 
 ### Native release builds
 
@@ -234,6 +245,64 @@ release:
 checksum:
   extra_files:
     - glob: .forgego-native/*
+```
+
+### Signed releases
+
+Some consumers want a release's checksum file signed, such as a provider registry that checks a detached signature of it. With `gpg_sign: true`, the `release` job imports `GPG_PRIVATE_KEY` (with `GPG_PASSPHRASE`) into the runner's keyring through [ghaction-import-gpg](https://github.com/crazy-max/ghaction-import-gpg) and sets `GPG_FINGERPRINT` to its fingerprint for GoReleaser. It fails without the key, or with `release_binaries: false`, as the signing itself is GoReleaser's. Pass the secrets explicitly or with `secrets: inherit`:
+
+```yaml
+jobs:
+  service:
+    uses: apollogeddon/forgego/.github/workflows/service.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      gpg_sign: true
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+```
+
+Then sign the checksum file in `.goreleaser.yaml`, which attaches `<checksum file>.sig` beside it:
+
+```yaml
+signs:
+  - artifacts: checksum
+    args:
+      - --batch
+      - --local-user
+      - '{{ .Env.GPG_FINGERPRINT }}'
+      - --output
+      - ${signature}
+      - --detach-sign
+      - ${artifact}
+```
+
+`goreleaser release --snapshot` skips signing, so local snapshots need no key.
+
+### Running your own checks
+
+A project whose release must wait for checks `testing.yml` can't run, such as acceptance tests against a service started in the job, can run `testing.yml` and those checks in its own jobs and call `service.yml` after them with `run_checks: false`. `service.yml` then skips `testing` and `release-testing`, and with them its Dependabot auto-merge, so call `merge.yml` from the caller too:
+
+```yaml
+jobs:
+  testing:
+    uses: apollogeddon/forgego/.github/workflows/testing.yml@main
+    permissions:
+      contents: write
+  acceptance:
+    needs: testing
+    uses: ./.github/workflows/acceptance.yml
+  service:
+    needs: acceptance
+    uses: apollogeddon/forgego/.github/workflows/service.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      run_checks: false
 ```
 
 ## library.yml
