@@ -196,7 +196,7 @@ func PinSelf(fs fsys.FS, dir string, dryRun bool) bool {
 		return true
 	}
 	if dryRun {
-		console.Dry("Would run go mod tidy -modfile=%s", templates.SelfModPath)
+		console.Dry("Would run go mod tidy in %s", filepath.Dir(templates.SelfModPath))
 		return true
 	}
 	if err := gomod.Tidy(dir, templates.SelfModPath); err != nil {

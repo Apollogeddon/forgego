@@ -34,7 +34,7 @@ task sync
 - each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use;
 - `.forgego/golangci.yml` and `.golangci.yml`, when the project has `.forgego/golangci.yml` (linting on, not a website), using `.golangci.local.yml` if it exists;
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
-- the `FORGEGO` var in `Taskfile.yml`, when it runs a published Forge.go with `go run`: it moves to `go tool -modfile=.forgego/forgego/go.mod forgego`, and `.forgego/forgego/go.mod` pins the version doing the sync. `sync` writes that pin only when it's missing, as Dependabot proposes the next version from then on, and writes its `go.sum` with `go mod tidy`;
+- the `FORGEGO` var in `Taskfile.yml`, when it runs a published Forge.go with `go run`: it moves to `go tool -modfile=.forgego/forgego/go.mod forgego`, and `.forgego/forgego/go.mod` pins the version doing the sync. `sync` writes that pin only when it's missing, as Dependabot proposes the next version from then on, and writes its `go.sum` with `go mod tidy` in `.forgego/forgego/`;
 - tools pinned by an earlier Forge.go as `.forgego/<tool>.mod` and `.sum`, which it moves to `.forgego/<tool>/` and repoints `Taskfile.yml` and `lefthook.yml` at. Run `task hooks` afterwards, as the installed Git hooks still name the old path.
 
 `task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It runs in the lefthook pre-commit hook and in the CI linting job, so a stale file fails the checks.
