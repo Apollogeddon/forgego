@@ -301,7 +301,7 @@ jobs:
           fetch-depth: 0
       # inside the project, where GoReleaser's extra_files can glob it, but kept out of git so
       # GoReleaser doesn't count the checkout as dirty
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         if: env.NATIVE == 'true'
         with:
           pattern: forgego-native-*

@@ -33,6 +33,7 @@ task sync
 
 - each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use;
 - `.forgego/golangci.yml` and `.golangci.yml`, when the project has `.forgego/golangci.yml` (linting on, not a website), using `.golangci.local.yml` if it exists;
+- a website's vendored FlexSearch in `assets/forgego/flexsearch/`, when the project pins Hugo (see [Websites](#websites));
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
 - the `FORGEGO` var in `Taskfile.yml`, when it runs a published Forge.go with `go run`: it moves to `go tool -modfile=.forgego/forgego/go.mod forgego`, and `.forgego/forgego/go.mod` pins the version doing the sync. `sync` writes that pin only when it's missing, as Dependabot proposes the next version from then on, and writes its `go.sum` with `go mod tidy` in `.forgego/forgego/`;
 - tools pinned by an earlier Forge.go as `.forgego/<tool>.mod` and `.sum`, which it moves to `.forgego/<tool>/` and repoints `Taskfile.yml` and `lefthook.yml` at. Run `task hooks` afterwards, as the installed Git hooks still name the old path.
@@ -204,15 +205,27 @@ Update `maintainer`, `description` and `license` in the `nfpms` section; Forge.g
 
 ### Hugo: static site
 
-`--website` scaffolds a [Hugo](https://gohugo.io/) site using the [Hextra](https://github.com/imfing/hextra) theme as a Hugo module, so the theme is versioned in `go.mod` like any other dependency. Hugo itself is pinned in `.forgego/hugo/go.mod`.
+`--website` scaffolds a [Hugo](https://gohugo.io/) site using the [Hextra](https://github.com/imfing/hextra) theme as a Hugo module, so the theme is versioned in `go.mod` like any other dependency. Hugo itself is pinned in `.forgego/hugo/go.mod`, and the new site's `go.mod` pins the Hextra release Forge.go was tested with.
 
 | File | Purpose |
 | :--- | :--- |
 | `hugo.toml` | Site config: the Hextra import, a Docs menu entry and search. |
 | `content/_index.md` | The landing page (`layout: hextra-home`). |
 | `content/docs/_index.md` | The first documentation page. |
+| `assets/forgego/flexsearch/` | The [FlexSearch](https://github.com/nextapps-de/flexsearch) script Hextra's search uses, and its Apache-2.0 licence. |
 
 `task dev` serves the site with live reload; `task build` builds it into `public/`. Hugo manages the site's `go.mod` itself — don't run `go mod tidy` on it, as nothing imports the theme from Go code and tidying would drop it.
+
+#### Building without network access
+
+Hextra loads its search library, FlexSearch, from a CDN at build time unless the site points it at a local copy. Forge.go ships the exact file Hextra's pinned release loads in `assets/forgego/flexsearch/`, and `hugo.toml` points Hextra at it:
+
+```toml
+[params.search.flexsearch]
+  js = "forgego/flexsearch/flexsearch.bundle.min.js"
+```
+
+so, once Go has downloaded Hugo and the theme, the site builds with no network access. The copy is a managed file: `task sync` replaces it when Forge.go moves to a Hextra that loads a different FlexSearch, and `task sync-check` fails if it's edited. A site scaffolded by an earlier Forge.go gets the file from `task sync`; add the `[params.search.flexsearch]` lines to its `hugo.toml` yourself, as `hugo.toml` is the site's own. Older Hextra releases, such as v0.12.0, ignore that setting and still use the CDN.
 
 ## Repository files
 

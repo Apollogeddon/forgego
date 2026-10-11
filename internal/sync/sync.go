@@ -45,6 +45,13 @@ func expected(fs fsys.FS, dir string) ([]managed, error) {
 		}
 		files = append(files, managed{"go.mod", updated})
 	}
+	// a website is the project that pins Hugo
+	hugo := templates.Hugo
+	if fs.Exists(filepath.Join(dir, hugo.ModPath())) || fs.Exists(filepath.Join(dir, hugo.LegacyModPath())) {
+		for _, f := range templates.SiteFiles() {
+			files = append(files, managed{f.Path, f.Content})
+		}
+	}
 
 	// The project lints while forgego's base config is there; .golangci.local.yml is the
 	// project's own and stays when linting is switched off.

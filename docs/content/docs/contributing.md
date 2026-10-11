@@ -32,7 +32,7 @@ In this repository the `FORGEGO` Taskfile var is `go run ./cmd/forgego`, so `tas
 Run `lint`, `test` and `sync-check` before opening a pull request.
 
 > [!NOTE]
-> The integration test builds Forge.go, scaffolds a real project in each mode, and runs its generated tasks and Git hooks, downloading every pinned tool. It is the only test that catches a tool pin, task or hook that doesn't work, so run the full `task test` for changes to templates, tool pins, the Taskfile or hooks. The website test needs network access for the theme's search script; set `FORGEGO_OFFLINE=1` to skip it.
+> The integration test builds Forge.go, scaffolds a real project in each mode, and runs its generated tasks and Git hooks, downloading every pinned tool. It is the only test that catches a tool pin, task or hook that doesn't work, so run the full `task test` for changes to templates, tool pins, the Taskfile or hooks. The website test builds the site with Hugo refusing every remote resource, so it fails if the site reaches for a CDN.
 
 ## Tool versions
 
@@ -53,7 +53,7 @@ cd docs
 go tool -modfile=.forgego/task/go.mod task dev    # live preview
 ```
 
-`task build` builds it into `docs/public/`. Hextra fetches its search script from a CDN during the build, so building the site needs network access.
+`task build` builds it into `docs/public/`. Like any Forge.go website, it loads its search script from `assets/forgego/flexsearch/`, so once Go has downloaded Hugo and the theme it builds without network access. Dependabot bumps Hextra in `docs/go.mod`; a test fails until `HextraVersion` in `internal/templates/site.go` matches, and when the new Hextra loads a different FlexSearch, replace `internal/templates/flexsearch/` with that release's file and checksum, then run `task sync` here.
 
 ## Conventional Commits
 

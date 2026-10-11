@@ -90,7 +90,7 @@ func CreateIfMissing(ctx *Context, rel, content string) bool {
 	return true
 }
 
-// WriteManaged refreshes a file forgego owns under .forgego/, ignoring --force.
+// WriteManaged refreshes a file forgego owns, under .forgego/ or a website's vendored assets, ignoring --force.
 func WriteManaged(ctx *Context, rel, content string) bool {
 	path := ctx.path(rel)
 	if current, err := ctx.FS.ReadFile(path); err == nil && current == content {

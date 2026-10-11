@@ -139,7 +139,7 @@ forgego --version
 | `--go VERSION` | Target Go version, such as `1.27` or `1.27.1` (default: the existing `go.mod`'s, else `1.27`). |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
-`--website` scaffolds a static documentation site built with Hugo and the Hextra theme, which Hugo fetches as a Go module: `hugo.toml`, `content/_index.md` and `content/docs/_index.md`. There is no Go source. `task dev` serves the site locally with live reload, and `task build` writes it to `public/`. In CI, the `website.yml` workflow builds the site and deploys `public/` to GitHub Pages.
+`--website` scaffolds a static documentation site built with Hugo and the Hextra theme, which Hugo fetches as a Go module: `hugo.toml`, `content/_index.md` and `content/docs/_index.md`, plus the theme's search script in `assets/forgego/flexsearch/`, so the site builds without network access. There is no Go source. `task dev` serves the site locally with live reload, and `task build` writes it to `public/`. In CI, the `website.yml` workflow builds the site and deploys `public/` to GitHub Pages.
 
 Choose at most one mode; passing more than one exits with code `1`. An invalid combination — `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`.
 
@@ -217,6 +217,6 @@ A default `forgego init` (backend) in a project named `billing-api`, with a `git
 └── Taskfile.yml
 ```
 
-`--library` replaces `cmd/` with `billingapi.go` and `billingapi_test.go` at the root, and has no `.goreleaser.yaml`. `--website` has no Go source, lint config or tests: it adds `hugo.toml`, `content/_index.md`, `content/docs/_index.md` and `.forgego/hugo/go.mod`. `--docker` adds `Dockerfile` and `.dockerignore`, and `--debian` adds a `packaging/` directory.
+`--library` replaces `cmd/` with `billingapi.go` and `billingapi_test.go` at the root, and has no `.goreleaser.yaml`. `--website` has no Go source, lint config or tests: it adds `hugo.toml`, `content/_index.md`, `content/docs/_index.md`, `assets/forgego/flexsearch/` and `.forgego/hugo/go.mod`. `--docker` adds `Dockerfile` and `.dockerignore`, and `--debian` adds a `packaging/` directory.
 
 The starter source is only created in a new project, one without a `go.mod`: an existing project keeps its own code, and the build tasks point at `./cmd/<name>`, so adjust them if your `main` package lives elsewhere. The starter test is only created next to the untouched starter source, never beside your own code.
