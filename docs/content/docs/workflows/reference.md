@@ -323,10 +323,11 @@ Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}), plus:
 *Orchestrates the full pipeline for website projects and deploys to GitHub Pages.*
 
 1. Calls → `testing.yml` to build the site, with `lint` off and `run_tests` and `auto_patch` off by default — a Hugo site has no Go to lint, test or patch. The build (`build_command`, default `task build`) writes `public/`, uploaded as the `artifact_name` artifact.
-2. Calls → `merge.yml` to auto-merge Dependabot pull requests once testing passes. Disable with `auto_merge: false`. *(Needs: testing)*
+2. Calls → `merge.yml` to auto-merge Dependabot pull requests once testing passes, and the site checks if they're on. Disable with `auto_merge: false`. *(Needs: testing, site-checks)*
 3. Calls → `version.yml` to check if a new release was published. Skip with `enable_versioning: false`. *(Needs: testing)*
 4. Calls → `testing.yml` again as **`release-testing`**, only with `test_on_push: false`. *(Needs: version)*
-5. **`deploy`** — Downloads the build artifact and deploys it to GitHub Pages, in the `github-pages` environment. Runs on the main branch only and, when versioning is enabled, only when a new release is published. Needs `pages: write` and `id-token: write`. *(Needs: testing, version, release-testing)*
+5. **`site-checks`** — Only with `check_links` or `check_accessibility`: checks the built artifact's links and pages. See [Site checks](#site-checks). Needs `contents: read`. *(Needs: testing, release-testing)*
+6. **`deploy`** — Downloads the build artifact and deploys it to GitHub Pages, in the `github-pages` environment. Runs on the main branch only and, when versioning is enabled, only when a new release is published, and not when a site check failed. Needs `pages: write` and `id-token: write`. *(Needs: testing, version, release-testing, site-checks)*
 
 Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}) except `lint`, with `run_tests` and `auto_patch` off by default as a Hugo site has no Go to test or patch, plus:
 
@@ -335,6 +336,28 @@ Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}) except `lint
 | `artifact_name` | `'dist'` | Name of the site artifact passed to the deploy |
 | `build_command` | `'go tool -modfile=.forgego/task/go.mod task build'` | Builds the site into `public/` |
 | `auto_merge` | `true` | Auto-merge Dependabot pull requests |
+| `check_links` | `false` | Check the built site's links with lychee; internal links only unless `check_external_links` |
+| `check_external_links` | `false` | With `check_links`, check links to other sites too |
+| `link_check_args` | `''` | Extra lychee arguments, such as `--include-fragments` or `--exclude <pattern>` |
+| `check_accessibility` | `false` | Check the built site against WCAG 2.2 A and AA with axe, in a headless Chromium |
+| `accessibility_paths` | `''` | Comma- or newline-separated pages to check, relative to `base_path`; empty checks every page in the sitemap, else the home page |
+| `accessibility_impact` | `'serious'` | The lowest axe impact that fails the check (`minor`, `moderate`, `serious` or `critical`); lower ones are warnings |
+| `base_path` | `''` | The path the site is served under, such as `/repo/` for a GitHub Pages project site; empty means `/` |
+
+### Site checks
+
+Both checks run in one `site-checks` job on the artifact the build uploaded, so they check exactly what the deploy would ship, and a failure stops the deploy and the Dependabot merge. Both are off by default. The inputs match forgejs's website workflow.
+
+```yaml
+    with:
+      check_links: true
+      check_accessibility: true
+      base_path: /repo/
+```
+
+- **`base_path`** must be the path in `baseURL` in `hugo.toml`, such as `/repo/` for `https://owner.github.io/repo/`, as the build's links include it. The job serves the site under that path. The default suits the `hugo.toml` that `forgego init --website` writes.
+- **`check_links`** runs [lychee](https://github.com/lycheeverse/lychee) over every HTML page, with a directory link needing its `index.html`. Hugo writes many links with the site's full address; the job reads that address from the site's `sitemap.xml` and checks those links in the build as well. It runs `--offline` unless `check_external_links` is on, so another site being down can't fail the build. Pass more lychee options in `link_check_args`, or add a `lychee.toml` or `.lycheeignore` to the repository. Its report is in the job summary.
+- **`check_accessibility`** serves the site locally and runs [axe](https://github.com/dequelabs/axe-core) in Playwright's headless Chromium on each page in `accessibility_paths`, or every page in the sitemap Hugo writes. Violations at `accessibility_impact` or above fail the job, and lower ones are reported as warnings, with a table in the job summary. Some themes fail axe's `color-contrast` or `target-size` rules, which are `serious`: fix the theme, or set `accessibility_impact: critical` until you do. A self-hosted runner needs passwordless `sudo`, or Chromium's system libraries already installed.
 
 ## docker.yml
 
