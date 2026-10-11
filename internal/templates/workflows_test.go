@@ -3,6 +3,7 @@ package templates
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -168,5 +169,100 @@ func TestBotPullRequestsRequestAReview(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "catch (error)") || !strings.Contains(string(b), "core.warning") {
 		t.Error("review.yml can fail the pipeline")
+	}
+}
+
+// actionlint checks a local call's inputs too, but only where it's installed.
+func TestLocalCallsOnlyPassDeclaredInputs(t *testing.T) {
+	entries, err := os.ReadDir(filepath.Join("..", "..", ".github", "workflows"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var w struct {
+			Jobs map[string]callerJob `yaml:"jobs"`
+		}
+		if err := yaml.Unmarshal(b, &w); err != nil {
+			t.Fatalf("%s: %v", entry.Name(), err)
+		}
+		for name, job := range w.Jobs {
+			file, ok := strings.CutPrefix(job.Uses, "./.github/workflows/")
+			if !ok {
+				continue
+			}
+			declared := readReusable(t, file).On.WorkflowCall.Inputs
+			for input := range job.With {
+				if _, ok := declared[input]; !ok {
+					t.Errorf("%s: job %s passes %s, which %s doesn't declare", entry.Name(), name, input, file)
+				}
+			}
+		}
+	}
+}
+
+type matrixJob struct {
+	If       string   `yaml:"if"`
+	Needs    []string `yaml:"needs"`
+	Strategy struct {
+		Matrix map[string]string `yaml:"matrix"`
+	} `yaml:"strategy"`
+}
+
+func readMatrixJobs(t *testing.T, name string) map[string]matrixJob {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Jobs map[string]matrixJob `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &w); err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return w.Jobs
+}
+
+// The extra runners and native builds are opt-in: their defaults run nothing, and an empty
+// matrix would fail every caller's workflow, so each job is skipped before its matrix expands.
+func TestRunnerListsDefaultToNothing(t *testing.T) {
+	for _, c := range []struct{ file, job, input string }{
+		{"testing.yml", "extra", "extra_runners"},
+		{"service.yml", "native-build", "native_builds"},
+	} {
+		input, _ := readReusable(t, c.file).On.WorkflowCall.Inputs[c.input].(map[string]any)
+		if input["default"] != "[]" {
+			t.Errorf("%s: %s defaults to %v, want []", c.file, c.input, input["default"])
+		}
+		job := readMatrixJobs(t, c.file)[c.job]
+		if !strings.Contains(job.If, "inputs."+c.input+" != '[]'") || !strings.Contains(job.If, "inputs."+c.input+" != ''") {
+			t.Errorf("%s: %s runs with an empty %s: if = %q", c.file, c.job, c.input, job.If)
+		}
+		if job.Strategy.Matrix["target"] != "${{ fromJSON(inputs."+c.input+") }}" {
+			t.Errorf("%s: %s matrix = %v", c.file, c.job, job.Strategy.Matrix)
+		}
+	}
+}
+
+// A published release may be immutable, so everything is attached before the release job
+// publishes the draft, and the patch job waits for every runner's tests.
+func TestEverythingWaitsForTheRunnerLists(t *testing.T) {
+	if needs := readMatrixJobs(t, "testing.yml")["patch"].Needs; !slices.Contains(needs, "extra") {
+		t.Errorf("testing.yml: patch needs %v, want extra too", needs)
+	}
+	if needs := readMatrixJobs(t, "service.yml")["release"].Needs; !slices.Contains(needs, "native-build") {
+		t.Errorf("service.yml: release needs %v, want native-build too", needs)
+	}
+	jobs := readJobs(t, "service.yml")
+	for _, job := range []string{"testing", "release-testing"} {
+		for _, input := range []string{"extra_runners", "extra_test_task", "setup_script", "artifact_name", "artifact_path", "build_command"} {
+			if jobs[job].With[input] != "${{ inputs."+input+" }}" {
+				t.Errorf("service.yml: %s doesn't pass %s on", job, input)
+			}
+		}
 	}
 }
