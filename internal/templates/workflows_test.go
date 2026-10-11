@@ -271,8 +271,8 @@ func TestEverythingWaitsForTheRunnerLists(t *testing.T) {
 func TestSiteChecksAreOptIn(t *testing.T) {
 	inputs := readReusable(t, "website.yml").On.WorkflowCall.Inputs
 	for name, want := range map[string]any{
-		"check_links": false, "check_accessibility": false, "link_check_args": "--offline",
-		"accessibility_paths": "/", "accessibility_args": "", "base_url": "/",
+		"check_links": false, "check_external_links": false, "link_check_args": "",
+		"check_accessibility": false, "accessibility_paths": "", "accessibility_impact": "serious", "base_path": "",
 	} {
 		input, _ := inputs[name].(map[string]any)
 		if input["default"] != want {

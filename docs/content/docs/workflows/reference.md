@@ -267,31 +267,28 @@ Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}) except `lint
 | `artifact_name` | `'dist'` | Name of the site artifact passed to the deploy |
 | `build_command` | `'go tool -modfile=.forgego/task/go.mod task build'` | Builds the site into `public/` |
 | `auto_merge` | `true` | Auto-merge Dependabot pull requests |
-| `check_links` | `false` | Check the built site's links with lychee |
-| `link_check_args` | `'--offline'` | More lychee arguments; the default checks internal links only, `''` checks external links too |
-| `check_accessibility` | `false` | Check the built site's pages with axe |
-| `accessibility_paths` | `'/'` | The pages axe checks, relative to `base_url`, one per line or space-separated |
-| `accessibility_args` | `''` | More axe arguments, such as `--tags wcag2a,wcag2aa` or `--disable color-contrast` |
-| `base_url` | `'/'` | The site's `baseURL` from its Hugo config, for the site checks |
+| `check_links` | `false` | Check the built site's links with lychee; internal links only unless `check_external_links` |
+| `check_external_links` | `false` | With `check_links`, check links to other sites too |
+| `link_check_args` | `''` | Extra lychee arguments, such as `--include-fragments` or `--exclude <pattern>` |
+| `check_accessibility` | `false` | Check the built site against WCAG 2.2 A and AA with axe, in a headless Chromium |
+| `accessibility_paths` | `''` | Comma- or newline-separated pages to check, relative to `base_path`; empty checks every page in the sitemap, else the home page |
+| `accessibility_impact` | `'serious'` | The lowest axe impact that fails the check (`minor`, `moderate`, `serious` or `critical`); lower ones are warnings |
+| `base_path` | `''` | The path the site is served under, such as `/repo/` for a GitHub Pages project site; empty means `/` |
 
 ### Site checks
 
-Both checks run in one `site-checks` job on the artifact the build uploaded, so they check exactly what the deploy would ship, and a failure stops the deploy and the Dependabot merge. Both are off by default.
+Both checks run in one `site-checks` job on the artifact the build uploaded, so they check exactly what the deploy would ship, and a failure stops the deploy and the Dependabot merge. Both are off by default. The inputs match forgejs's website workflow.
 
 ```yaml
     with:
       check_links: true
       check_accessibility: true
-      accessibility_paths: |
-        /
-        /docs/
-        /docs/getting-started/
-      base_url: https://owner.github.io/repo/
+      base_path: /repo/
 ```
 
-- **`base_url`** must match `baseURL` in `hugo.toml`, as the build's links include its path. The job puts the site under that path, so `/repo/docs/` resolves, and treats links to the site's own address as internal. The default `/` suits the `hugo.toml` that `forgego init --website` writes.
-- **`check_links`** runs [lychee](https://github.com/lycheeverse/lychee) over every HTML page, with a directory link needing its `index.html`. By default it runs `--offline`, checking only links within the site, so another site being down can't fail the build. Set `link_check_args: ''` to check external links too, or pass more lychee options there, such as `--exclude <pattern>`. Its report is in the job summary.
-- **`check_accessibility`** serves the site on `127.0.0.1` with Python's `http.server`, installs a matching Chrome and ChromeDriver with browser-driver-manager, and runs [axe](https://github.com/dequelabs/axe-core-npm/tree/develop/packages/cli) on each page in `accessibility_paths`. Any violation fails the job; narrow the rules with `accessibility_args`, e.g. `--tags wcag2a,wcag2aa`, or `--disable <rule>` for a theme's known issue. The runner needs `python3`, and on a self-hosted runner the libraries Chrome needs.
+- **`base_path`** must be the path in `baseURL` in `hugo.toml`, such as `/repo/` for `https://owner.github.io/repo/`, as the build's links include it. The job serves the site under that path. The default suits the `hugo.toml` that `forgego init --website` writes.
+- **`check_links`** runs [lychee](https://github.com/lycheeverse/lychee) over every HTML page, with a directory link needing its `index.html`. Hugo writes many links with the site's full address; the job reads that address from the site's `sitemap.xml` and checks those links in the build as well. It runs `--offline` unless `check_external_links` is on, so another site being down can't fail the build. Pass more lychee options in `link_check_args`, or add a `lychee.toml` or `.lycheeignore` to the repository. Its report is in the job summary.
+- **`check_accessibility`** serves the site locally and runs [axe](https://github.com/dequelabs/axe-core) in Playwright's headless Chromium on each page in `accessibility_paths`, or every page in the sitemap Hugo writes. Violations at `accessibility_impact` or above fail the job, and lower ones are reported as warnings, with a table in the job summary. Some themes fail axe's `color-contrast` or `target-size` rules, which are `serious`: fix the theme, or set `accessibility_impact: critical` until you do. A self-hosted runner needs passwordless `sudo`, or Chromium's system libraries already installed.
 
 ## docker.yml
 

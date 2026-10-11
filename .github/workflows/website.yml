@@ -62,36 +62,41 @@ on:
         required: false
         type: string
         default: ''
-      base_url:
-        description: "The site's baseURL from its Hugo config, e.g. https://owner.github.io/repo/; the site checks serve the build at its path and treat links to it as internal"
+      base_path:
+        description: "The path the site is served under, e.g. /my-repo/ for a GitHub Pages project site, so the site checks resolve root-relative links; empty means /"
         required: false
         type: string
-        default: '/'
+        default: ''
       check_links:
-        description: "Check the built site's links with lychee before it deploys"
+        description: "Check the built site's links with lychee; internal links only unless check_external_links"
+        required: false
+        type: boolean
+        default: false
+      check_external_links:
+        description: "With check_links, check links to other sites too"
         required: false
         type: boolean
         default: false
       link_check_args:
-        description: "More lychee arguments; the default --offline checks internal links only, and '' checks external links too"
+        description: "Extra lychee arguments, e.g. --include-fragments or --exclude <pattern>"
         required: false
         type: string
-        default: '--offline'
+        default: ''
       check_accessibility:
-        description: "Check the built site's pages with axe before it deploys"
+        description: "Check the built site against WCAG 2.2 A and AA with axe, in a headless Chromium"
         required: false
         type: boolean
         default: false
       accessibility_paths:
-        description: "Pages axe checks, relative to base_url, one per line or space-separated"
-        required: false
-        type: string
-        default: '/'
-      accessibility_args:
-        description: "More axe CLI arguments, e.g. --tags wcag2a,wcag2aa or --disable color-contrast"
+        description: "Comma- or newline-separated pages to check, relative to base_path; empty checks every page in the sitemap, else the home page"
         required: false
         type: string
         default: ''
+      accessibility_impact:
+        description: "The lowest axe impact that fails the check (minor, moderate, serious or critical); lower ones are reported as warnings"
+        required: false
+        type: string
+        default: 'serious'
     outputs:
       new_release_published:
         description: "Whether a new release was published"
@@ -189,64 +194,177 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ runner.temp }}/forgego-site
-      # the build's links include base_url's path, so the site goes under it in a root of its own
-      - name: Place the site at its base path
+      # served from a copy under the base path, as the host serves it, so root-relative links resolve;
+      # links to the site's own address, as Hugo writes them, are checked in the copy too
+      - name: Stage the site for checking
         id: site
         env:
-          BASE_URL: ${{ inputs.base_url }}
+          BASE_PATH: ${{ inputs.base_path }}
+          BUILD: ${{ runner.temp }}/forgego-site
         run: |
-          case "$BASE_URL" in
-            http://*|https://*)
-              rest="${BASE_URL#*://}"
-              host="${rest%%/*}"
-              origin="${BASE_URL%%://*}://$host"
-              path="${rest#"$host"}"
-              ;;
-            *) origin='' path="$BASE_URL" ;;
-          esac
-          path="/${path#/}"
-          path="${path%/}/"
-          root="$RUNNER_TEMP/forgego-site-root"
-          mkdir -p "$root$path"
-          cp -R "$RUNNER_TEMP/forgego-site/." "$root$path"
-          args="--no-progress --root-dir $root --index-files index.html"
+          # Hugo writes absolute links with the site's own address; its sitemap says what that is
+          origin=''
+          if [ -f "$BUILD/sitemap.xml" ]; then
+            origin=$(grep -o '<loc>[^<]*</loc>' "$BUILD/sitemap.xml" | head -n1 | sed -n 's#^<loc>[[:space:]]*\(https\{0,1\}://[^/<]*\).*#\1#p')
+          fi
+          base="/${BASE_PATH#/}"
+          base="${base%/}/"
+          root="$RUNNER_TEMP/site"
+          rm -rf "$root"
+          mkdir -p "$root$base"
+          cp -R "$BUILD/." "$root$base"
+          remap=''
           if [ -n "$origin" ]; then
-            # links to the site's own address are internal: check them in the build
-            args="$args --remap '^$(sed 's/[.]/\\./g' <<< "$origin$path") file://$root$path'"
+            remap="--remap '^$(sed 's/[.]/\\./g' <<< "$origin")/ file://$root/'"
           fi
           {
             echo "root=$root"
-            echo "path=$path"
-            echo "lychee_args=$args"
+            echo "base=$base"
+            echo "remap=$remap"
           } >> "$GITHUB_OUTPUT"
-      - uses: lycheeverse/lychee-action@v2
+      # offline by default, so another site being down never fails the build; reads a lychee.toml or
+      # .lycheeignore in the repository
+      - name: Check links
         if: inputs.check_links
+        uses: lycheeverse/lychee-action@v2
         with:
-          args: ${{ steps.site.outputs.lychee_args }} ${{ inputs.link_check_args }} '${{ steps.site.outputs.root }}/**/*.html'
+          args: >-
+            --no-progress
+            ${{ !inputs.check_external_links && '--offline' || '' }}
+            --root-dir '${{ steps.site.outputs.root }}'
+            --fallback-extensions html
+            --index-files index.html
+            ${{ steps.site.outputs.remap }}
+            ${{ inputs.link_check_args }}
+            '${{ steps.site.outputs.root }}/**/*.html'
+          output: ${{ runner.temp }}/lychee/out.md
+          fail: true
+          failIfEmpty: false
+          jobSummary: true
       - uses: actions/setup-node@v7
-        if: inputs.check_accessibility
+        if: ${{ !cancelled() && inputs.check_accessibility && steps.site.outcome == 'success' }}
         with:
           node-version: lts/*
-      - name: Check accessibility
-        if: inputs.check_accessibility
-        env:
-          ROOT: ${{ steps.site.outputs.root }}
-          BASE_PATH: ${{ steps.site.outputs.path }}
-          PAGES: ${{ inputs.accessibility_paths }}
-          ARGS: ${{ inputs.accessibility_args }}
-          # browser-driver-manager installs a matching Chrome and ChromeDriver instead
-          CHROMEDRIVER_SKIP_DOWNLOAD: 'true'
+      # outside the project, so its lockfile and node_modules stay as they are
+      - name: Install the accessibility checker
+        if: ${{ !cancelled() && inputs.check_accessibility && steps.site.outcome == 'success' }}
+        working-directory: ${{ runner.temp }}
         run: |
-          python3 -m http.server 4173 --bind 127.0.0.1 --directory "$ROOT" > /dev/null 2>&1 &
-          npx --yes browser-driver-manager@2.0.1 install chrome
-          curl -sSf --retry 10 --retry-connrefused --retry-delay 1 -o /dev/null "http://127.0.0.1:4173$BASE_PATH"
-          urls=()
-          for page in $PAGES; do
-            urls+=("http://127.0.0.1:4173$BASE_PATH${page#/}")
-          done
-          # no-sandbox, as a container runner's Chrome may run as root
-          # shellcheck disable=SC2086 # one word per argument
-          npx --yes @axe-core/cli@4.13.0 "${urls[@]}" --exit --chrome-options=no-sandbox,disable-dev-shm-usage $ARGS
+          mkdir -p a11y
+          cd a11y
+          printf '{"private":true,"type":"module"}' > package.json
+          npm install --ignore-scripts --no-audit --no-fund --save-exact playwright@1.63.0 @axe-core/playwright@4.13.0
+          # the browser's system libraries need root to install; a runner without sudo must have them already
+          if sudo -n true 2>/dev/null; then
+            npx playwright install --with-deps --only-shell chromium
+          else
+            npx playwright install --only-shell chromium
+          fi
+          cat > check.mjs <<'EOF'
+          import fs from "node:fs";
+          import http from "node:http";
+          import path from "node:path";
+          import AxeBuilder from "@axe-core/playwright";
+          import { chromium } from "playwright";
+
+          const root = process.env.SITE_ROOT;
+          const base = process.env.BASE_PATH;
+          const levels = ["minor", "moderate", "serious", "critical"];
+          const threshold = levels.indexOf(process.env.IMPACT || "serious");
+          if (threshold < 0) throw new Error(`accessibility_impact must be one of ${levels.join(", ")}`);
+
+          const types = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript",
+            ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif", ".ico": "image/x-icon",
+            ".woff": "font/woff", ".woff2": "font/woff2", ".xml": "application/xml", ".txt": "text/plain" };
+
+          // the file a URL path serves, as a static host would: a directory's index.html, or the path plus .html
+          const resolve = (urlPath) => {
+            const file = path.join(root, decodeURIComponent(urlPath));
+            if (!file.startsWith(root + path.sep)) return undefined;
+            for (const candidate of [file, path.join(file, "index.html"), `${file}.html`]) {
+              if (fs.statSync(candidate, { throwIfNoEntry: false })?.isFile()) return candidate;
+            }
+          };
+
+          const server = http.createServer((req, res) => {
+            const file = resolve(new URL(req.url, "http://localhost").pathname);
+            if (!file) return res.writeHead(404).end("Not found");
+            res.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream" });
+            fs.createReadStream(file).pipe(res);
+          });
+          await new Promise((done) => server.listen(0, "127.0.0.1", done));
+          const origin = `http://127.0.0.1:${server.address().port}`;
+
+          // the listed paths, relative to the base path; without any, every page in the sitemap, else the home page
+          const sitemap = (file, seen = new Set()) => {
+            if (seen.has(file) || !fs.existsSync(file)) return [];
+            seen.add(file);
+            const locs = [...fs.readFileSync(file, "utf8").matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => new URL(m[1]).pathname);
+            return locs.flatMap((loc) => (loc.endsWith(".xml") ? sitemap(path.join(root, loc), seen) : [loc]));
+          };
+          const listed = (process.env.PAGES ?? "").split(/[\n,]/).map((p) => p.trim()).filter(Boolean);
+          let pages = listed.map((p) => base + p.replace(/^\//, ""));
+          if (pages.length === 0) {
+            const site = path.join(root, base);
+            const found = ["sitemap-index.xml", "sitemap.xml"].map((name) => path.join(site, name)).find(fs.existsSync);
+            pages = found ? [...new Set(sitemap(found))] : [base];
+            console.log(found ? `Checking ${pages.length} pages from ${path.relative(root, found)}` : "No sitemap, checking the home page");
+          }
+
+          const failures = [];
+          const notes = [];
+          const browser = await chromium.launch();
+          try {
+            const page = await (await browser.newContext()).newPage();
+            for (const pagePath of pages) {
+              const response = await page.goto(origin + pagePath, { waitUntil: "load" });
+              if (!response?.ok()) {
+                failures.push({ page: pagePath, rule: "page", impact: "critical", help: `HTTP ${response?.status()}`, nodes: [] });
+                continue;
+              }
+              const { violations } = await new AxeBuilder({ page })
+                .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+                .analyze();
+              for (const v of violations) {
+                const entry = { page: pagePath, rule: v.id, impact: v.impact, help: v.help, url: v.helpUrl, nodes: v.nodes.map((n) => n.target.join(" ")) };
+                (levels.indexOf(v.impact) >= threshold ? failures : notes).push(entry);
+              }
+            }
+          } finally {
+            await browser.close();
+            server.close();
+          }
+
+          const report = (entry, kind) => {
+            const where = entry.nodes.slice(0, 5).join(", ") + (entry.nodes.length > 5 ? `, and ${entry.nodes.length - 5} more` : "");
+            console.log(`::${kind} title=${entry.rule} (${entry.impact}) on ${entry.page}::${entry.help}${where ? `: ${where}` : ""}${entry.url ? ` ${entry.url}` : ""}`);
+          };
+          for (const entry of notes) report(entry, "warning");
+          for (const entry of failures) report(entry, "error");
+
+          const cell = (text) => String(text).replaceAll("|", "\\|").replaceAll("\n", " ");
+          const rows = [...failures, ...notes].map((e) =>
+            `| ${cell(e.page)} | ${e.url ? `[${e.rule}](${e.url})` : e.rule} | ${e.impact} | ${cell(e.help)} | ${e.nodes.length} |`);
+          const summary = [
+            "## Accessibility",
+            "",
+            `${pages.length} ${pages.length === 1 ? "page" : "pages"} checked against WCAG 2.2 A and AA: ${failures.length} violations at ${levels[threshold]} impact or above, ${notes.length} below it.`,
+            "",
+            ...(rows.length ? ["| Page | Rule | Impact | Problem | Elements |", "| :--- | :--- | :--- | :--- | ---: |", ...rows] : []),
+          ].join("\n");
+          if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
+          console.log(summary);
+          process.exitCode = failures.length > 0 ? 1 : 0;
+          EOF
+      - name: Check accessibility
+        if: ${{ !cancelled() && inputs.check_accessibility && steps.site.outcome == 'success' }}
+        env:
+          SITE_ROOT: ${{ steps.site.outputs.root }}
+          BASE_PATH: ${{ steps.site.outputs.base }}
+          PAGES: ${{ inputs.accessibility_paths }}
+          IMPACT: ${{ inputs.accessibility_impact }}
+        run: node "$RUNNER_TEMP/a11y/check.mjs"
 
   deploy:
     runs-on: ${{ inputs.runs_on }}
