@@ -197,7 +197,6 @@ jobs:
   # Release binaries GoReleaser can't cross-compile, such as a cgo build for macOS, each built on
   # its own runner and attached to the draft by the release job before it is published.
   native-build:
-    name: native-build ${{ matrix.target.name || matrix.target.runs_on || matrix.target }}
     runs-on: ${{ matrix.target.runs_on || matrix.target }}
     timeout-minutes: 30
     needs: [testing, version, release-testing]

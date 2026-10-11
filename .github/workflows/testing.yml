@@ -187,7 +187,6 @@ jobs:
   extra:
     # an empty matrix fails the workflow, so the job is skipped instead
     if: inputs.extra_runners != '' && inputs.extra_runners != '[]'
-    name: ${{ matrix.target.name || matrix.target.runs_on || matrix.target }}
     runs-on: ${{ matrix.target.runs_on || matrix.target }}
     timeout-minutes: 30
     needs: [quality]

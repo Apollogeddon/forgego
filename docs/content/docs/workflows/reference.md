@@ -113,7 +113,7 @@ The `testing` and `build` jobs run on `runs_on` alone. To test and build on othe
 | Key | Purpose |
 | :--- | :--- |
 | `runs_on` | Runner label, e.g. `macos-latest` |
-| `name` | The job's name and its artifact's suffix; defaults to `runs_on` |
+| `name` | The artifact's suffix; defaults to `runs_on` |
 | `env` | Environment variables for the setup script, the tests and the build, e.g. `{"CGO_ENABLED": "0"}`; single-line values |
 
 ```yaml
