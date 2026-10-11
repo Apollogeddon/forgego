@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: true
+      run_checks:
+        description: "Run testing.yml's checks and build here; false skips them, for a caller that runs its own checks and calls this workflow after them with needs"
+        required: false
+        type: boolean
+        default: true
       enable_secrets:
         required: false
         type: boolean
@@ -107,6 +112,18 @@ on:
         required: false
         type: string
         default: 'checksums.txt'
+      gpg_sign:
+        description: "Import the GPG_PRIVATE_KEY secret before GoReleaser runs and export its fingerprint as GPG_FINGERPRINT, for a signs section in .goreleaser.yaml; with release_binaries"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      GPG_PRIVATE_KEY:
+        description: "ASCII-armored private key GoReleaser signs with; with gpg_sign"
+        required: false
+      GPG_PASSPHRASE:
+        description: "The key's passphrase, if it has one; with gpg_sign"
+        required: false
     outputs:
       new_release_published:
         description: "Whether a new release was published"
@@ -122,6 +139,7 @@ jobs:
   testing:
     # With test_on_push false, a push checks only when a release is made, in release-testing.
     if: >-
+      inputs.run_checks &&
       (github.event_name != 'push' || inputs.test_on_push) &&
       (inputs.test_release_prs || !startsWith(github.head_ref, 'release-please--'))
     uses: ./.github/workflows/testing.yml
@@ -175,7 +193,7 @@ jobs:
     # With test_on_push false, a push to main is checked and built only when release-please made a release.
     needs: [version]
     if: >-
-      !cancelled() && github.event_name == 'push' && !inputs.test_on_push &&
+      !cancelled() && inputs.run_checks && github.event_name == 'push' && !inputs.test_on_push &&
       (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
     uses: ./.github/workflows/testing.yml
     with:
@@ -201,7 +219,7 @@ jobs:
     timeout-minutes: 30
     needs: [testing, version, release-testing]
     # an empty matrix fails the workflow, so the job is skipped instead
-    if: ${{ !failure() && !cancelled() && (needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) && inputs.native_builds != '' && inputs.native_builds != '[]' }}
+    if: ${{ !failure() && !cancelled() && (!inputs.run_checks || needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) && inputs.native_builds != '' && inputs.native_builds != '[]' }}
     permissions:
       contents: read
     strategy:
@@ -266,7 +284,7 @@ jobs:
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 20
     needs: [testing, version, release-testing, native-build]
-    if: ${{ !failure() && !cancelled() && (needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) }}
+    if: ${{ !failure() && !cancelled() && (!inputs.run_checks || needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) }}
     permissions:
       contents: write
     defaults:
@@ -324,6 +342,34 @@ jobs:
             echo "::error::native_builds with GoReleaser needs '.forgego-native/*' in release.extra_files and checksum.extra_files of .goreleaser.yaml"
             exit 1
           fi
+      - name: Check the signing setup
+        if: inputs.gpg_sign
+        working-directory: .
+        env:
+          KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          BINARIES: ${{ inputs.release_binaries }}
+        run: |
+          if [ "$BINARIES" != true ]; then
+            echo "::error::gpg_sign signs through the signs section of .goreleaser.yaml, so it needs release_binaries"
+            exit 1
+          fi
+          if [ -z "$KEY" ]; then
+            echo "::error::gpg_sign needs the GPG_PRIVATE_KEY secret"
+            exit 1
+          fi
+      - uses: crazy-max/ghaction-import-gpg@v7.0.0
+        id: gpg
+        if: inputs.gpg_sign
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      # set only when signing, so a project that doesn't sign sees no new variable
+      - name: Export the key's fingerprint
+        if: inputs.gpg_sign
+        working-directory: .
+        env:
+          FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}
+        run: echo "GPG_FINGERPRINT=$FINGERPRINT" >> "$GITHUB_ENV"
       # release-please created the release as a draft; GoReleaser attaches the binaries,
       # checksums and any .deb, then publishes it
       - uses: goreleaser/goreleaser-action@v7

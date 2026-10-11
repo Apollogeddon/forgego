@@ -266,3 +266,51 @@ func TestEverythingWaitsForTheRunnerLists(t *testing.T) {
 		}
 	}
 }
+
+// Signing and skipping the checks are opt-in: by default the release job imports no key and
+// service.yml runs its own checks.
+func TestReleaseSigningIsOptIn(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "service.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		On struct {
+			WorkflowCall struct {
+				Inputs  map[string]map[string]any `yaml:"inputs"`
+				Secrets map[string]map[string]any `yaml:"secrets"`
+			} `yaml:"workflow_call"`
+		} `yaml:"on"`
+		Jobs map[string]struct {
+			If    string `yaml:"if"`
+			Steps []struct {
+				If   string `yaml:"if"`
+				Uses string `yaml:"uses"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &w); err != nil {
+		t.Fatal(err)
+	}
+	call := w.On.WorkflowCall
+	if call.Inputs["gpg_sign"]["default"] != false || call.Inputs["run_checks"]["default"] != true {
+		t.Errorf("gpg_sign = %v, run_checks = %v", call.Inputs["gpg_sign"], call.Inputs["run_checks"])
+	}
+	for _, secret := range []string{"GPG_PRIVATE_KEY", "GPG_PASSPHRASE"} {
+		if required, _ := call.Secrets[secret]["required"].(bool); call.Secrets[secret] == nil || required {
+			t.Errorf("secret %s = %v, want it declared and optional", secret, call.Secrets[secret])
+		}
+	}
+	for _, step := range w.Jobs["release"].Steps {
+		if (strings.HasPrefix(step.Uses, "crazy-max/ghaction-import-gpg") || strings.Contains(step.Run, "GPG_FINGERPRINT")) &&
+			step.If != "inputs.gpg_sign" {
+			t.Errorf("release step %q runs without gpg_sign: if = %q", step.Uses+step.Run, step.If)
+		}
+	}
+	for _, job := range []string{"testing", "release-testing"} {
+		if !strings.Contains(w.Jobs[job].If, "inputs.run_checks") {
+			t.Errorf("%s runs with run_checks off: if = %q", job, w.Jobs[job].If)
+		}
+	}
+}
