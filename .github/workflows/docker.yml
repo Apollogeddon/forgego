@@ -37,15 +37,43 @@ on:
         required: false
         type: string
         default: ''
+      dockerfile:
+        description: "The Dockerfile, relative to working_directory; empty means its Dockerfile"
+        required: false
+        type: string
+        default: ''
+      qemu:
+        description: "Emulate other platforms with QEMU, for a Dockerfile that compiles in each platform's own image (the runner's own Docker only)"
+        required: false
+        type: boolean
+        default: false
+      build_args:
+        description: "More build arguments, one NAME=value per line, beside VERSION"
+        required: false
+        type: string
+        default: ''
+      tags:
+        description: "docker/metadata-action tag rules, one per line, in place of the default tags"
+        required: false
+        type: string
+        default: ''
 
 # Jobs inherit the calling job's token, which needs packages: write to push.
 
 jobs:
-  # The Dockerfiles cross-compile on the build host, and their runtime stages run nothing,
-  # so one job builds every platform without emulation.
+  # The generated Dockerfiles cross-compile on the build host, and their runtime stages run
+  # nothing, so one job builds every platform without emulation; qemu is for those that don't.
   build:
     runs-on: ${{ inputs.runs_on }}
-    timeout-minutes: 30
+    # emulated builds are many times slower
+    timeout-minutes: ${{ inputs.qemu && 90 || 30 }}
+    env:
+      DEFAULT_TAGS: |
+        type=semver,pattern={{version}},value=${{ inputs.version }}
+        type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+        type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
+        type=sha
+        type=raw,value=latest
     steps:
       - uses: actions/checkout@v7
         with:
@@ -66,6 +94,9 @@ jobs:
         run: |
           mkdir -p ~/.docker
           printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$(printf '%s:%s' "$ACTOR" "$TOKEN" | base64 -w0)" > ~/.docker/config.json
+      # a remote BuildKit brings its own emulation, if any
+      - uses: docker/setup-qemu-action@v4
+        if: inputs.qemu && inputs.buildkit_endpoint == ''
       - uses: docker/setup-buildx-action@v4
         if: inputs.buildkit_endpoint == ''
       - name: Use the remote BuildKit
@@ -79,19 +110,17 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.image }}
-          tags: |
-            type=semver,pattern={{version}},value=${{ inputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
-            type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
-            type=sha
-            type=raw,value=latest
+          tags: ${{ inputs.tags || env.DEFAULT_TAGS }}
 
       # Pushed images build without a cache, which another repository's job could have planted layers in.
       - uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.working_directory }}
+          file: ${{ inputs.dockerfile != '' && format('{0}/{1}', inputs.working_directory, inputs.dockerfile) || '' }}
           platforms: ${{ inputs.platforms }}
-          build-args: VERSION=${{ inputs.version || 'dev' }}
+          build-args: |
+            VERSION=${{ inputs.version || 'dev' }}
+            ${{ inputs.build_args }}
           push: ${{ inputs.push }}
           no-cache: ${{ inputs.push }}
           tags: ${{ steps.meta.outputs.tags }}

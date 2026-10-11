@@ -11,11 +11,11 @@ Forge.go ships reusable GitHub Actions workflows that give every project the sam
 | Workflow | Purpose |
 | :--- | :--- |
 | `quality.yml` | Secret scanning (Gitleaks), dependency scanning (OSV-Scanner and govulncheck), `forgego sync --check`, `go mod tidy -diff` and golangci-lint |
-| `testing.yml` | Full QA suite: quality, the tests, the build artifact, and vulnerability patching on `main` |
+| `testing.yml` | Full QA suite: quality, the tests, the build artifact (also on more operating systems, opt-in), and vulnerability patching on `main` |
 | `version.yml` | Automated versioning and GitHub releases via release-please |
 | `merge.yml` | Auto-merges Dependabot pull requests once checks pass, except GitHub Actions updates |
 | `review.yml` | Requests a review on Dependabot's and release-please's pull requests, which `CODEOWNERS` doesn't do in a private repository on GitHub Free |
-| `service.yml` | Orchestrator for backends — testing, auto-merge, version, then the release binaries (and `.deb`) with GoReleaser |
+| `service.yml` | Orchestrator for backends — testing, auto-merge, version, then the release binaries (and `.deb`) with GoReleaser, and any native builds |
 | `library.yml` | Orchestrator for libraries — testing, auto-merge, version, then publishing the release to the Go module proxy |
 | `website.yml` | Orchestrator for websites — testing, auto-merge, version, then GitHub Pages deployment |
 | `docker.yml` | Multi-platform Docker image build, pushed to GHCR on release — added as its own job by `--docker` |

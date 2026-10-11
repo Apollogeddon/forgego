@@ -21,6 +21,8 @@ Dependabot pull requests are auto-merged by `merge.yml` once testing passes, exc
 
 Every workflow takes a `runs_on` input, default `ubuntu-latest`, and passes it down to each workflow it calls, so every job runs on that runner label. Set it per repository to use self-hosted runners, e.g. from a repository variable: `runs_on: ${{ vars.RUNS_ON || 'ubuntu-latest' }}`.
 
+To test and build on other operating systems as well, list their runners in `extra_runners` (see [More operating systems](#more-operating-systems)), and in `service.yml`'s `native_builds` to build release binaries on them (see [Native release builds](#native-release-builds)).
+
 `docker.yml` builds every platform in one job on `runs_on` too. A runner without a Docker daemon can build and push through a remote BuildKit set with `buildkit_endpoint`. The `tests` step runs with the race detector, which needs cgo, so a self-hosted runner needs a C compiler.
 
 ## Checking once per change
@@ -84,7 +86,8 @@ In this mode release-please tags the release before the push's checks run. If th
 1. Calls → `quality.yml`.
 2. **`testing`** — Runs `task test` with `GOFLAGS=-race` (skip with `run_tests: false`) and uploads `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: quality)*
 3. **`build`** — Runs `build_command` (default `task build`) and uploads `artifact_path` as the `artifact_name` artifact. *(Needs: quality; runs alongside testing)*
-4. **`patch`** — On `main` with `auto_patch` enabled, first runs `task sync` and commits whatever it refreshes as `chore(deps): refresh the files forgego manages`, which catches up after a Dependabot update of Forge.go merges. It then runs govulncheck, `go get`s the fixed version of each vulnerable module it reports, runs `go mod tidy`, and commits `go.mod` and `go.sum` as `fix(deps): upgrade modules with known vulnerabilities via govulncheck`. Vulnerabilities in the standard library are fixed by a newer Go, not by `go get`, so they're left to you. Needs `contents: write`. *(Needs: quality, testing, build)*
+4. **`extra`** — Only with `extra_runners` set: on each runner it lists, such as macOS or Windows, runs the [setup script](#setup-scripts), then `task <extra_test_task>` (with `GOFLAGS=-race` wherever cgo is on, and skipped with `run_tests: false`), then `build_command`, and uploads `artifact_path` as the `<artifact_name>-<name>` artifact. *(Needs: quality; runs alongside testing)*
+5. **`patch`** — On `main` with `auto_patch` enabled, first runs `task sync` and commits whatever it refreshes as `chore(deps): refresh the files forgego manages`, which catches up after a Dependabot update of Forge.go merges. It then runs govulncheck, `go get`s the fixed version of each vulnerable module it reports, runs `go mod tidy`, and commits `go.mod` and `go.sum` as `fix(deps): upgrade modules with known vulnerabilities via govulncheck`. Vulnerabilities in the standard library are fixed by a newer Go, not by `go get`, so they're left to you. Needs `contents: write`. *(Needs: quality, testing, build, extra)*
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
@@ -99,6 +102,42 @@ In this mode release-please tags the release before the push's checks run. If th
 | `artifact_name` | `'dist'` | Name of the build artifact |
 | `artifact_path` | `'dist'` | What the build writes, relative to `working_directory` |
 | `build_command` | `'go tool -modfile=.forgego/task/go.mod task build'` | The build step |
+| `extra_runners` | `'[]'` | JSON list of [more runners](#more-operating-systems) to test and build on |
+| `extra_test_task` | `'test'` | The Task task the extra runners test with, such as a shorter `test:short` |
+| `setup_script` | `''` | A [setup script](#setup-scripts), relative to `working_directory`, run before compiling on the extra runners and native builds |
+
+### More operating systems
+
+The `testing` and `build` jobs run on `runs_on` alone. To test and build on other operating systems too, list their runners in `extra_runners`, as a JSON string. An entry is a runner label, or an object:
+
+| Key | Purpose |
+| :--- | :--- |
+| `runs_on` | Runner label, e.g. `macos-latest` |
+| `name` | The job's name and its artifact's suffix; defaults to `runs_on` |
+| `env` | Environment variables for the setup script, the tests and the build, e.g. `{"CGO_ENABLED": "0"}`; single-line values |
+
+```yaml
+    with:
+      extra_runners: >-
+        ["macos-latest", {"runs_on": "windows-latest", "name": "windows", "env": {"CGO_ENABLED": "0"}}]
+      extra_test_task: 'test:short'
+      setup_script: '.github/setup.sh'
+```
+
+An entry's `env` applies to its tests and its build alike, so the tests compile the same way as the binary the job builds. Every `run` step uses bash, Git Bash on Windows. `apt_packages` is installed on Linux entries too. An empty list, the default, skips the job, so existing callers run exactly as before.
+
+### Setup scripts
+
+`setup_script` is a script in your repository, run with `bash` on each extra runner and native build before anything compiles. Use it for what a platform needs that `apt_packages` can't install, such as a system library from Homebrew or an installer on Windows. It runs in `working_directory`, after the entry's `env` is set. `RUNNER_OS` (`Linux`, `macOS` or `Windows`) says where it runs, and `GITHUB_TOKEN` holds the job's read-only token, e.g. for the GitHub API's rate limit. It can export variables to later steps through `$GITHUB_ENV` and add to `PATH` through `$GITHUB_PATH`. To run PowerShell on Windows, call it from the script:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+case "$RUNNER_OS" in
+  macOS) brew install pkg-config ;;
+  Windows) pwsh -NoProfile -File .github/setup-windows.ps1 ;;
+esac
+```
 
 ## version.yml
 
@@ -151,13 +190,51 @@ Dependabot's GitHub Actions updates (branches starting `dependabot/github_action
 2. Calls → `merge.yml` to auto-merge Dependabot pull requests once testing passes. *(Needs: testing)*
 3. Calls → `version.yml` to trigger a release on the main branch. Skip with `enable_versioning: false`. It still runs when the checks were skipped, but not when they failed. *(Needs: testing)*
 4. Calls → `testing.yml` again as **`release-testing`**, only with `test_on_push: false` — see [Checking Once per Change](#checking-once-per-change). *(Needs: version)*
-5. **`release`** — On `main`, when a new release was published and the checks passed, runs GoReleaser (latest `v2`, through `goreleaser-action`) with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the draft release release-please created, then publishes it. With `release_binaries: false` it publishes the draft as it is. Needs `contents: write`. *(Needs: testing, version, release-testing)*
+5. **`native-build`** — Only with `native_builds` set, under the same conditions as `release`: on each runner it lists, runs the [setup script](#setup-scripts) and `build_command`, and uploads the files `artifact_path` holds. See [Native release builds](#native-release-builds). Needs `contents: read`. *(Needs: testing, version, release-testing)*
+6. **`release`** — On `main`, when a new release was published and the checks passed, runs GoReleaser (latest `v2`, through `goreleaser-action`) with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the draft release release-please created, then publishes it. With `release_binaries: false` it attaches the native builds and `release_files`, if any, and publishes the draft. Needs `contents: write`. *(Needs: testing, version, release-testing, native-build)*
 
 Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}), plus:
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
 | `release_binaries` | `true` | Build the release binaries with GoReleaser and attach them to the release |
+| `artifact_name` | `'dist'` | Name of the build artifact, passed to `testing.yml` |
+| `artifact_path` | `'dist'` | What the build writes, relative to `working_directory`; a native build attaches every file at its top level |
+| `build_command` | `'go tool -modfile=.forgego/task/go.mod task build'` | The build step, in `testing.yml` and each native build |
+| `extra_runners` | `'[]'` | JSON list of [more runners](#more-operating-systems) to test and build on, passed to `testing.yml` |
+| `extra_test_task` | `'test'` | The Task task the extra runners test with |
+| `setup_script` | `''` | A [setup script](#setup-scripts) for the extra runners and native builds |
+| `native_builds` | `'[]'` | JSON list of runners that build release binaries natively, entries as in [`extra_runners`](#more-operating-systems) |
+| `release_files` | `''` | Files to attach beside the native builds, one per line, relative to `working_directory`, e.g. `LICENSE`; with `release_binaries: false` |
+| `checksums` | `'checksums.txt'` | The checksum file written for the native builds and `release_files`; empty attaches none; with `release_binaries: false` |
+
+### Native release builds
+
+GoReleaser cross-compiles every platform on one Linux runner, which a cgo build can't do for macOS or Windows, and GoReleaser's prebuilt builds are a Pro feature. `native_builds` builds those on their own runners instead:
+
+```yaml
+    with:
+      native_builds: >-
+        [{"runs_on": "macos-latest", "name": "darwin"},
+         {"runs_on": "windows-latest", "name": "windows", "env": {"CGO_ENABLED": "0"}}]
+      setup_script: '.github/setup.sh'
+```
+
+Each entry is built at the release's commit with its whole history, so a build that names itself with `git describe` gets the tag. It runs `build_command` with the entry's `env`, so a `GOARCH` there builds that architecture where the runner can, and uploads every file at the top of `artifact_path`. Name the files for their platform, as they're all attached to one release.
+
+GitHub only accepts a release's files while it is a draft once immutable releases are on, so release-please must create the release as a draft (`"draft": true` and `"force-tag-creation": true` in `.github/release.json`, as `forgego init` writes it). The `release` job waits for every native build, attaches the files to the draft and then publishes it, so a failed build leaves the draft unpublished for a re-run.
+
+- **Without GoReleaser** (`release_binaries: false`), the `release` job attaches the native builds and `release_files` itself with `gh release upload`. With `checksums` set, it also attaches a checksum file of them all in GoReleaser's format: each file's SHA-256, two spaces and its name, sorted by name.
+- **With GoReleaser**, it adds the native builds to its own release. The `release` job puts them in `.forgego-native/` in `working_directory`, which it keeps out of git so GoReleaser doesn't count the checkout as dirty. List them in `.goreleaser.yaml`, so they're attached and in `checksums.txt` with GoReleaser's own files; the job fails rather than publish without them. A local `goreleaser release --snapshot` has no `.forgego-native/` and skips them.
+
+```yaml
+release:
+  extra_files:
+    - glob: .forgego-native/*
+checksum:
+  extra_files:
+    - glob: .forgego-native/*
+```
 
 ## library.yml
 
@@ -198,7 +275,18 @@ Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}) except `lint
 
 1. **`build`** — One job builds every platform. The generated Dockerfiles cross-compile (backend) or build the site (website) on the build host, and their runtime stages run nothing, so no platform needs emulation or a runner of its own. On pull requests the image is built but not pushed, so a broken Dockerfile fails the pull request's checks; make the `docker` job a required status check to stop Dependabot auto-merge on a failing build. On a release it pushes one multi-platform image tagged `X.Y.Z`, `X.Y`, `X` (not for `0.x` versions), `sha-<commit>` and `latest`, with provenance and SBOM attestations.
 
-Builds that aren't pushed use the GitHub Actions cache. Pushed images build without a cache, which another repository's job could have planted layers in. The build passes the release version as the `VERSION` build argument (`dev` when there's none).
+Builds that aren't pushed use the GitHub Actions cache. Pushed images build without a cache, which another repository's job could have planted layers in. The build passes the release version as the `VERSION` build argument (`dev` when there's none), and any `build_args` after it.
+
+A Dockerfile that compiles in each platform's own image, such as a cgo build against a platform's C libraries, needs the other platforms emulated: set `qemu: true`. Emulated builds are many times slower, so the job's timeout rises from 30 to 90 minutes. With `buildkit_endpoint` set, QEMU isn't set up, as the remote BuildKit runs the build.
+
+`tags` replaces the default tags with your own [metadata-action rules](https://github.com/docker/metadata-action#tags-input), one per line, for example:
+
+```yaml
+      tags: |
+        type=semver,pattern={{version}},value=${{ needs.service.outputs.tag_name }}
+        type=raw,value=latest
+        type=sha,format=long,prefix=
+```
 
 With `buildkit_endpoint` set, the job builds on that remote BuildKit instead of the runner's own Docker, so self-hosted runners without a Docker daemon can build and push multi-platform images. The registry credentials are written for buildx directly, as there's no `docker login` without a daemon.
 
@@ -210,4 +298,8 @@ With `buildkit_endpoint` set, the job builds on that remote BuildKit instead of 
 | `platforms` | `linux/amd64,linux/arm64` | Comma-separated platforms, e.g. `linux/amd64,linux/arm64,linux/arm/v7` |
 | `working_directory` | `'.'` | The build context |
 | `buildkit_endpoint` | `''` | A remote BuildKit, e.g. `tcp://runner.builder:1234`; empty uses the runner's own |
+| `dockerfile` | `''` | The Dockerfile, relative to `working_directory`; empty means `Dockerfile` |
+| `qemu` | `false` | Emulate other platforms with QEMU, for a Dockerfile that compiles in each platform's own image; the runner's own Docker only |
+| `build_args` | `''` | More build arguments, one `NAME=value` per line, beside `VERSION` |
+| `tags` | `''` | metadata-action tag rules, one per line, in place of the default tags |
 | `runs_on` | `'ubuntu-latest'` | Runner label |

@@ -53,6 +53,21 @@ on:
         required: false
         type: string
         default: 'go tool -modfile=.forgego/task/go.mod task build'
+      extra_runners:
+        description: 'JSON list of more runners to test and build on, each a label or {"runs_on", "name", "env"}, e.g. ["macos-latest", {"runs_on": "windows-latest", "env": {"CGO_ENABLED": "0"}}]'
+        required: false
+        type: string
+        default: '[]'
+      extra_test_task:
+        description: "The Task task the extra runners test with, e.g. a shorter test:short"
+        required: false
+        type: string
+        default: 'test'
+      setup_script:
+        description: "A script, relative to working_directory, run with bash before compiling on the extra runners and native builds; RUNNER_OS says where, and it can export through GITHUB_ENV and GITHUB_PATH"
+        required: false
+        type: string
+        default: ''
 
 jobs:
   quality:
@@ -167,9 +182,84 @@ jobs:
           path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
           if-no-files-found: ignore
 
+  # The tests and the build on each extra runner, such as macOS or Windows. An entry is a runner
+  # label, or an object whose env is set for both, so a test runs the build it ships with.
+  extra:
+    # an empty matrix fails the workflow, so the job is skipped instead
+    if: inputs.extra_runners != '' && inputs.extra_runners != '[]'
+    name: ${{ matrix.target.name || matrix.target.runs_on || matrix.target }}
+    runs-on: ${{ matrix.target.runs_on || matrix.target }}
+    timeout-minutes: 30
+    needs: [quality]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.extra_runners) }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install apt packages
+        if: runner.os == 'Linux' && inputs.apt_packages != ''
+        env:
+          PACKAGES: ${{ inputs.apt_packages }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # one word per package
+          sudo apt-get install -y --no-install-recommends $PACKAGES
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Set the entry's environment
+        if: matrix.target.env
+        env:
+          TARGET_ENV: ${{ toJSON(matrix.target.env) }}
+        run: jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$TARGET_ENV" >> "$GITHUB_ENV"
+      - name: Setup script
+        if: inputs.setup_script != ''
+        env:
+          SCRIPT: ${{ inputs.setup_script }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash "$SCRIPT"
+      - name: Tests
+        if: inputs.run_tests
+        env:
+          TASK: ${{ inputs.extra_test_task }}
+        # the race detector needs cgo, so it's on wherever cgo is
+        run: |
+          if [ "$(go env CGO_ENABLED)" = "1" ]; then export GOFLAGS="${GOFLAGS:+$GOFLAGS }-race"; fi
+          go tool -modfile=.forgego/task/go.mod task "$TASK"
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}-${{ matrix.target.name || matrix.target.runs_on || matrix.target }}
+          path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
+          if-no-files-found: ignore
+
   patch:
     if: ${{ !failure() && !cancelled() && inputs.auto_patch && github.ref == 'refs/heads/main' }}
-    needs: [quality, testing, build]
+    needs: [quality, testing, build, extra]
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     permissions:
