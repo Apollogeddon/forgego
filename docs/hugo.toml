@@ -43,6 +43,10 @@ enableGitInfo = false
   displayPoweredBy = false
   displayCopyright = false
 
+# FlexSearch from the site's assets, so the site builds without network access
+[params.search.flexsearch]
+  js = "forgego/flexsearch/flexsearch.bundle.min.js"
+
 [params.theme]
   default = "dark"
   displayToggle = false

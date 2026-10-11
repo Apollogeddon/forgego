@@ -148,6 +148,28 @@ func TestWebsite(t *testing.T) {
 	refuteFiles(t, fs, ".golangci.yml", ".forgego/golangci-lint/go.mod", ".forgego/gotestsum/go.mod", "cmd/billing-api/main.go")
 }
 
+func TestWebsiteShipsHextrasSearchScript(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, func(c *config.Init) { c.Mode = config.Website })
+	script := templates.FlexSearchDir + "/flexsearch.bundle.min.js"
+	assertFiles(t, fs, script, templates.FlexSearchDir+"/LICENSE")
+	if !strings.Contains(read(t, fs, "hugo.toml"), `js = "forgego/flexsearch/flexsearch.bundle.min.js"`) {
+		t.Error("hugo.toml doesn't point Hextra at the vendored FlexSearch")
+	}
+	if !strings.Contains(read(t, fs, "go.mod"), "require github.com/imfing/hextra "+templates.HextraVersion+" ") {
+		t.Errorf("go.mod doesn't pin the Hextra the script follows:\n%s", read(t, fs, "go.mod"))
+	}
+
+	// it's managed: sync puts back a stale copy
+	_ = fs.WriteFile(dir+"/"+script, "stale\n")
+	if code := sync.Run(fs, dir, true); code != 1 {
+		t.Fatal("sync --check missed a stale FlexSearch")
+	}
+	if code := sync.Run(fs, dir, false); code != 0 || read(t, fs, script) == "stale\n" {
+		t.Errorf("sync didn't refresh FlexSearch: %d", code)
+	}
+}
+
 func TestModuleComesFromTheGitRemote(t *testing.T) {
 	fs := fsys.NewMemory(map[string]string{
 		dir + "/.git/config": "[remote \"origin\"]\n\turl = git@github.com:Acme/Billing-API.git\n",

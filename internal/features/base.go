@@ -22,7 +22,11 @@ func (Base) Apply(ctx *Context) bool {
 		"GO":      ctx.Cfg.GoDirective(),
 	}
 	// go.mod is the project's own file: created once, never rewritten.
-	ok := CreateIfMissing(ctx, "go.mod", templates.Render(templates.GoMod, values))
+	gomod := templates.GoMod
+	if ctx.Cfg.IsWebsite() {
+		gomod = templates.SiteGoMod
+	}
+	ok := CreateIfMissing(ctx, "go.mod", templates.Render(gomod, values))
 
 	switch {
 	case ctx.Cfg.IsBackend():

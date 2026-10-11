@@ -110,11 +110,13 @@ func TestLibrary(t *testing.T) {
 }
 
 func TestWebsite(t *testing.T) {
-	if os.Getenv("FORGEGO_OFFLINE") != "" {
-		t.Skip("the theme fetches its search script from a CDN at build time")
-	}
 	dir := scaffold(t, "--website")
-	task(t, dir, "build")
+	// Hugo refuses every remote resource, so the build proves the site needs no CDN
+	cmd := command(dir, "go", "tool", "-modfile=.forgego/task/go.mod", "task", "build")
+	cmd.Env = append(cmd.Env, "HUGO_SECURITY_HTTP_URLS=none")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("the site doesn't build without remote resources: %v\n%s", err, out)
+	}
 	if _, err := os.Stat(filepath.Join(dir, "public", "docs", "index.html")); err != nil {
 		t.Errorf("the site has no docs page: %v", err)
 	}

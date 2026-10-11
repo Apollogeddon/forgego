@@ -73,6 +73,10 @@ func buildWebsite(ctx *Context) bool {
 	ok = CreateFile(ctx, "hugo.toml", templates.Render(templates.HugoConfig, values)) && ok
 	ok = CreateIfMissing(ctx, "content/_index.md", templates.Render(templates.SiteHome, values)) && ok
 	ok = CreateIfMissing(ctx, "content/docs/_index.md", templates.Render(templates.SiteDocsIndex, values)) && ok
+	// managed, so `forgego sync` replaces the copy when forgego moves to a new Hextra pin
+	for _, f := range templates.SiteFiles() {
+		ok = WriteManaged(ctx, f.Path, f.Content) && ok
+	}
 
 	hugo := ref(templates.Hugo)
 	ctx.Tasks.Add(taskfile.Task{Name: "dev", Desc: "Serve the site with live reload", Cmds: []string{hugo + " server"}})
