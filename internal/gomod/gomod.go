@@ -4,7 +4,9 @@ package gomod
 import (
 	"fmt"
 	"go/version"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/mod/modfile"
@@ -57,10 +59,14 @@ func EnsureToolchain(content, need string) (string, bool, error) {
 }
 
 // Tidy runs `go mod tidy` on the module file at rel inside dir, which writes its go.sum.
+// It runs in the pin's own directory: from dir with -modfile, Go would take the project's
+// packages for the pin module's and fill the pin with every dependency they import.
 // It's a variable so tests, whose files live in memory, can stand in for it.
 var Tidy = func(dir, rel string) error {
-	cmd := exec.Command("go", "mod", "tidy", "-modfile="+rel) //nolint:gosec // rel is forgego's own pin path
-	cmd.Dir = dir
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Dir = filepath.Join(dir, filepath.Dir(rel))
+	// a go.work above the project would otherwise pull the pin into the workspace
+	cmd.Env = append(os.Environ(), "GOWORK=off")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
