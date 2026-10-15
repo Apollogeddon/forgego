@@ -143,7 +143,7 @@ forgego --version
 
 Choose at most one mode. An invalid combination — more than one mode, a feature both on and off, `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`. An option or argument `init` doesn't know exits with code `1`.
 
-`--go` sets the `go` line of a new `go.mod` (`1.27` becomes `go 1.27.0`), the `go_version` passed to CI, and the `golang` image the `Dockerfile` builds with. Without it, an existing project's `go.mod` decides those, and its `go` line is never changed.
+`--go` sets the `go` line of a new `go.mod` (`1.27` becomes `go 1.27.0`) and the `golang` image the `Dockerfile` builds with. CI reads its Go version from `go.mod`, so the generated workflow passes no `go_version`. Without `--go`, an existing project's `go.mod` decides both. `init` never changes an existing `go.mod`'s `go` line, so to move such a project to another Go, edit `go.mod` (CI follows it) and pass the same `--go` with `--force` to rewrite the `Dockerfile`.
 
 `--no-testing`, `--no-linting` and `--no-versioning` also switch off the matching jobs in the generated CI workflow.
 
