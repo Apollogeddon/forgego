@@ -159,12 +159,12 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	if modes > 1 {
 		fmt.Fprintln(stderr, "choose one of --backend, --library or --website")
-		return 1
+		return core.ExitInvalidConfig
 	}
 	for _, f := range []feature{all, testing, linting, versioning} {
 		if f.on && f.off {
 			fmt.Fprintln(stderr, "a feature can't be both on and off")
-			return 1
+			return core.ExitInvalidConfig
 		}
 	}
 
