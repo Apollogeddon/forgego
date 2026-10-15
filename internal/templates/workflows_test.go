@@ -338,3 +338,36 @@ func TestReleaseSigningIsOptIn(t *testing.T) {
 		}
 	}
 }
+
+// A release is built with exactly the GoReleaser the snapshot task tried it with.
+func TestReleaseRunsTheSnapshotsGoReleaser(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "service.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Uses string            `yaml:"uses"`
+				With map[string]string `yaml:"with"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &w); err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, job := range w.Jobs {
+		for _, step := range job.Steps {
+			if strings.HasPrefix(step.Uses, "goreleaser/goreleaser-action@") {
+				found++
+				if step.With["version"] != GoreleaserVersion {
+					t.Errorf("goreleaser-action version = %q, want %q", step.With["version"], GoreleaserVersion)
+				}
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("no goreleaser-action step in service.yml")
+	}
+}
