@@ -338,3 +338,58 @@ func TestReleaseSigningIsOptIn(t *testing.T) {
 		}
 	}
 }
+
+// A merge made with GITHUB_TOKEN starts no push run, so merge.yml sends a repository_dispatch
+// that every generated workflow, and this repository's own, must listen for.
+func TestAutoMergeDispatchIsListenedFor(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "merge.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var merge struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Env  map[string]string `yaml:"env"`
+				With struct {
+					Script string `yaml:"script"`
+				} `yaml:"with"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &merge); err != nil {
+		t.Fatal(err)
+	}
+	var sent string
+	for _, step := range merge.Jobs["auto-merge"].Steps {
+		if strings.Contains(step.With.Script, "createDispatchEvent") {
+			sent = step.Env["DISPATCH_TYPE"]
+		}
+	}
+	if sent == "" {
+		t.Fatal("merge.yml's auto-merge job sends no repository_dispatch with a DISPATCH_TYPE")
+	}
+
+	own, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", ".index.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflows := map[string]string{".index.yml": string(own)}
+	for _, mode := range []string{"backend", "library", "website"} {
+		workflows[mode] = RenderWorkflow(WorkflowOptions{Mode: mode})
+	}
+	for name, workflow := range workflows {
+		var w struct {
+			On struct {
+				RepositoryDispatch struct {
+					Types []string `yaml:"types"`
+				} `yaml:"repository_dispatch"`
+			} `yaml:"on"`
+		}
+		if err := yaml.Unmarshal([]byte(workflow), &w); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := w.On.RepositoryDispatch.Types; !slices.Equal(got, []string{sent}) {
+			t.Errorf("%s listens for repository_dispatch types %v, want [%s]", name, got, sent)
+		}
+	}
+}

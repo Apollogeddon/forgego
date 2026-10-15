@@ -8,6 +8,9 @@ on:
     branches:
       - main
   workflow_dispatch:
+  # sent by the auto-merge job, as a merge it makes starts no push run on main
+  repository_dispatch:
+    types: [auto-merged]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -38,8 +41,8 @@ jobs:
           # the site's sync check runs cmd/forgego
           DOCS_INPUTS: '^(docs/|\.github/|cmd/|internal/|go\.(mod|sum)$)'
         run: |
-          # a manual run, a new branch or a rewritten history has no base to compare with
-          if [ "$EVENT" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          # a manual or dispatched run, a new branch or a rewritten history has no base to compare with
+          if [ "$EVENT" = workflow_dispatch ] || [ "$EVENT" = repository_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "docs=true" >> "$GITHUB_OUTPUT"
             exit 0

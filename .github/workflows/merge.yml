@@ -12,7 +12,7 @@ on:
 jobs:
   auto-merge:
     runs-on: ${{ inputs.runs_on }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     # Not for GitHub Actions updates: they change workflow files, which GITHUB_TOKEN may never
     # merge, so those pull requests wait for a person to merge them
     if: github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/github_actions/')
@@ -23,9 +23,36 @@ jobs:
       # Through the API rather than the gh CLI, which a self-hosted runner may not have
       - name: Enable auto-merge for Dependabot PRs
         uses: actions/github-script@v9
+        env:
+          DISPATCH_TYPE: auto-merged
         with:
           script: |
             const pr = context.payload.pull_request;
+            // A merge made with GITHUB_TOKEN starts no workflow, so main's pipeline (and release-please)
+            // would never see it. repository_dispatch is one of the two events that token may start.
+            const dispatch = async () => {
+              try {
+                await github.rest.repos.createDispatchEvent({
+                  ...context.repo,
+                  event_type: process.env.DISPATCH_TYPE,
+                  client_payload: { pull_request: pr.number },
+                });
+                core.info(`Sent ${process.env.DISPATCH_TYPE}, which runs a workflow listening for it on ${pr.base.ref}`);
+              } catch (error) {
+                core.warning(`Couldn't send ${process.env.DISPATCH_TYPE}, so main's pipeline won't run for #${pr.number}: ${error.message}`);
+              }
+            };
+            // Auto-merge merges once the remaining required checks pass, so wait a while for it
+            const dispatchOnceMerged = async () => {
+              for (let wait = 0; wait < 12 * 60; wait += 20) {
+                await new Promise((resolve) => setTimeout(resolve, 20_000));
+                const { data } = await github.rest.pulls.get({ ...context.repo, pull_number: pr.number }).catch(() => ({ data: {} }));
+                if (data.merged) return dispatch();
+                if (data.state === 'closed') return core.info(`#${pr.number} was closed without merging`);
+              }
+              core.warning(`#${pr.number} hadn't merged after 12 minutes, so main's pipeline won't run for it until the next push`);
+            };
+            let merged = false;
             try {
               await github.graphql(
                 `mutation ($id: ID!) {
@@ -46,4 +73,6 @@ jobs:
               if (!mergeable.test(error.message)) throw error;
               await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'squash' });
               core.info(`Merged #${pr.number}`);
+              merged = true;
             }
+            await (merged ? dispatch() : dispatchOnceMerged());
