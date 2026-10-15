@@ -169,7 +169,7 @@ esac
 
 *Dependabot auto-merge.*
 
-1. **`auto-merge`** — For pull requests opened by Dependabot, turns on GitHub's auto-merge through the API, so the pull request merges once the required checks pass; one with no checks left to wait for is merged straight away. It needs no `gh` CLI on the runner. Needs `contents: write` and `pull-requests: write`.
+1. **`auto-merge`** — For pull requests opened by Dependabot, when Dependabot also made the latest change (someone else's push to its branch waits for a person), turns on GitHub's auto-merge through the API, so the pull request merges once the required checks pass; one with no checks left to wait for is merged straight away. It needs no `gh` CLI on the runner. Needs `contents: write` and `pull-requests: write`.
 
 Dependabot's GitHub Actions updates (branches starting `dependabot/github_actions/`) are skipped and left for a person to merge: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge.
 

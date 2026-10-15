@@ -371,3 +371,26 @@ func TestReleaseRunsTheSnapshotsGoReleaser(t *testing.T) {
 		t.Fatal("no goreleaser-action step in service.yml")
 	}
 }
+
+// The author alone would merge someone else's push to Dependabot's branch, and the actor alone
+// a pull request someone else opened that Dependabot then updated.
+func TestAutoMergeNeedsDependabotToOpenThePullRequestAndMakeItsLatestChange(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "merge.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Jobs map[string]struct {
+			If string `yaml:"if"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &w); err != nil {
+		t.Fatal(err)
+	}
+	gate := w.Jobs["auto-merge"].If
+	for _, want := range []string{"github.event.pull_request.user.login == 'dependabot[bot]' && ", "github.actor == 'dependabot[bot]' && "} {
+		if !strings.Contains(gate, want) || strings.Contains(gate, "||") {
+			t.Errorf("auto-merge if = %q, want it to need %q", gate, want)
+		}
+	}
+}
