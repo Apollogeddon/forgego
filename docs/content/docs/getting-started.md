@@ -139,13 +139,13 @@ forgego --version
 | `--go VERSION` | Target Go version, such as `1.27` or `1.27.1` (default: the existing `go.mod`'s, else `1.27`). |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
-`--website` scaffolds a static documentation site built with Hugo and the Hextra theme, which Hugo fetches as a Go module: `hugo.toml`, `content/_index.md` and `content/docs/_index.md`, plus the theme's search script in `assets/forgego/flexsearch/`, so the site builds without network access. There is no Go source. `task dev` serves the site locally with live reload, and `task build` writes it to `public/`. In CI, the `website.yml` workflow builds the site and deploys `public/` to GitHub Pages.
+`--website` scaffolds a static documentation site built with Hugo and the Hextra theme, which Hugo fetches as a Go module: `hugo.toml`, `content/_index.md` and `content/docs/_index.md`, plus the theme's search script in `assets/forgego/flexsearch/`, so the site builds without network access. There is no Go source. `task dev` serves the site locally with live reload, and `task build` writes it to `public/`. In CI, the `website` pipeline builds the site and `pages` deploys `public/` to GitHub Pages.
 
 Choose at most one mode. An invalid combination — more than one mode, a feature both on and off, `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`. An option or argument `init` doesn't know exits with code `1`.
 
 `--go` sets the `go` line of a new `go.mod` (`1.27` becomes `go 1.27.0`) and the `golang` image the `Dockerfile` builds with. CI reads its Go version from `go.mod`, so the generated workflow passes no `go_version`. Without `--go`, an existing project's `go.mod` decides both. `init` never changes an existing `go.mod`'s `go` line, so to move such a project to another Go, edit `go.mod` (CI follows it) and pass the same `--go` with `--force` to rewrite the `Dockerfile`.
 
-`--no-testing`, `--no-linting` and `--no-versioning` also switch off the matching jobs in the generated CI workflow.
+`--no-testing`, `--no-linting` and `--no-versioning` also switch off the matching stages and jobs in the generated `.github/workflows/.index.yml`: see [Generated workflow]({{< relref "workflows/_index.md#generated-workflow" >}}). Run over a project an earlier Forge.go scaffolded, `init` removes the `.github/workflows/index.yml` it generated: see [Upgrading from index.yml]({{< relref "workflows/_index.md#upgrading-from-indexyml" >}}).
 
 ### Keeping up to date
 
@@ -153,8 +153,8 @@ Choose at most one mode. An invalid combination — more than one mode, a featur
 
 The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -modfile=.forgego/forgego/go.mod forgego`, from a pin in `.forgego/forgego/go.mod` set to the version that scaffolded the project. Dependabot proposes each new Forge.go release there, like any other module update, and the pull request auto-merges once CI passes:
 
-- a new release usually changes the files Forge.go manages, so on Dependabot's pull requests the CI linting job runs `task sync` instead of `task sync-check`, and checks the refreshed files;
-- once the update merges, the testing workflow's `patch` job runs `task sync` on `main` and commits the refreshed files.
+- a new release usually changes the files Forge.go manages, so on Dependabot's pull requests the `lint` stage runs `task sync` instead of `task sync-check`, and checks the refreshed files;
+- once the update merges, the weekly `patch` pipeline runs `task sync` on `main` and commits the refreshed files. Run the workflow by hand to commit them straight away, as `task sync-check` fails on other pull requests until then.
 
 A project scaffolded by an earlier Forge.go runs it with `go run …/forgego@<version>`. Run a newer version's `sync` once to move it to the pin:
 
@@ -205,7 +205,7 @@ A default `forgego init` (backend) in a project named `billing-api`, with a `git
 │   ├── CODEOWNERS              # requests your review on others' pull requests
 │   ├── dependabot.yml          # weekly updates with a 3-day cooldown
 │   ├── release.json            # release-please config
-│   └── workflows/index.yml     # CI/CD calling the reusable workflows
+│   └── workflows/.index.yml    # CI/CD calling Forge.go's pipelines
 ├── cmd/billing-api/
 │   ├── main.go
 │   └── main_test.go

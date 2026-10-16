@@ -29,7 +29,7 @@ forgego init --dry-run
 forgego init
 ```
 
-Existing files are left alone. Pass `--force` to replace your current `lefthook.yml`, `.goreleaser.yaml`, `Dockerfile`, release-please config and `.github/workflows/index.yml` with the Forge.go versions; your source code is never overwritten.
+Existing files are left alone. Pass `--force` to replace your current `lefthook.yml`, `.goreleaser.yaml`, `Dockerfile`, release-please config and `.github/workflows/.index.yml` with the Forge.go versions; your source code is never overwritten.
 
 ### 3. Retire old tooling
 
@@ -38,7 +38,7 @@ Remove what Forge.go now does, to avoid running two versions of the same check:
 - **Makefile:** move the targets Forge.go doesn't cover into `Taskfile.yml` as your own tasks (see [Adding your own tasks]({{< relref "examples.md#adding-your-own-tasks" >}})), then delete the `Makefile`. An existing `Taskfile.yml` keeps its tasks and vars; `init` only adds the ones it's missing.
 - **Tools pinned in `go.mod`:** remove `tool` directives (or a `tools.go` file of blank imports) for golangci-lint, govulncheck, gotestsum, lefthook or Task, then run `go mod tidy`. Forge.go pins each in its own module under `.forgego/`, so they no longer need to share your dependency graph.
 - **Hand-written Git hooks:** delete the scripts in `.git/hooks/`, and unset `core.hooksPath` if you pointed Git at a hooks directory of your own, then install lefthook's hooks with `task hooks`.
-- **Old CI workflows:** delete the workflows the generated `.github/workflows/index.yml` replaces — linting, tests, release and image builds.
+- **Old CI workflows:** delete the workflows the generated `.github/workflows/.index.yml` replaces — linting, tests, release and image builds.
 
 ### 4. Update the module
 
