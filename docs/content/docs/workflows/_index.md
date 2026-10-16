@@ -38,6 +38,8 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  repository_dispatch:
+    types: [auto-merged]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -129,6 +131,15 @@ Each orchestrator has a few inputs of its own, listed in the [Job reference]({{<
 ## Secrets
 
 No secrets need passing. The workflows only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. A library is published by its Git tag, so it needs no registry credentials either.
+
+GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot auto-merge makes to `main` doesn't run the pipeline either. The auto-merge job therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. Listen for it next to `push` and `pull_request`, as `init` does, so `main` is checked and release-please opens or updates its release pull request:
+
+```yaml
+  repository_dispatch:
+    types: [auto-merged]
+```
+
+The event runs on the default branch. A workflow that doesn't listen for it ignores it, and `main` waits for the next push as before.
 
 ## Required permissions
 
