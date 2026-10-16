@@ -49,12 +49,78 @@ jobs:
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # A high or critical finding (CVSS 7 or more) fails a pull request; on main it's annotated
+      # instead, so releases and the patch job that fixes it still run. Accept one with an
+      # IgnoredVulns entry in an osv-scanner.toml beside the go.mod
       - name: OSV Scan
+        id: osv
         run: |
-          curl -sL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o osv-scanner
-          chmod +x osv-scanner
-          ./osv-scanner scan source -r . || true
-          rm osv-scanner
+          curl -sL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          # 0: nothing found, 1: vulnerabilities found, 128: no lockfile, anything else: no scan
+          status=0
+          "$RUNNER_TEMP/osv-scanner" scan source -r --format json --output-file "$RUNNER_TEMP/osv.json" . || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          rm "$RUNNER_TEMP/osv-scanner"
+      - name: Report OSV findings
+        uses: actions/github-script@v9
+        env:
+          OSV_STATUS: ${{ steps.osv.outputs.status }}
+          OSV_REPORT: ${{ runner.temp }}/osv.json
+          OSV_ENFORCE: ${{ github.event_name == 'pull_request' }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const status = Number(process.env.OSV_STATUS);
+            if (status === 128) {
+              core.info('No lockfiles to scan');
+              return;
+            }
+            if ((status !== 0 && status !== 1) || !fs.existsSync(process.env.OSV_REPORT)) {
+              core.warning(`OSV-Scanner couldn't finish (exit ${status}), so dependencies weren't checked; see the scan step's log`, { title: 'OSV scan incomplete' });
+              return;
+            }
+            const report = JSON.parse(fs.readFileSync(process.env.OSV_REPORT, 'utf8'));
+            // a GitHub advisory's rating when an advisory has no CVSS score
+            const ratings = { CRITICAL: 9, HIGH: 7, MODERATE: 4, MEDIUM: 4, LOW: 1 };
+            const rows = [];
+            let blocking = 0;
+            for (const result of report.results ?? []) {
+              const file = path.relative(process.env.GITHUB_WORKSPACE, result.source.path);
+              for (const { package: pkg, vulnerabilities = [], groups = [] } of result.packages ?? []) {
+                for (const group of groups) {
+                  const vulns = vulnerabilities.filter((v) => group.ids.includes(v.id));
+                  let score = Number.parseFloat(group.max_severity);
+                  if (Number.isNaN(score)) {
+                    score = Math.max(0, ...vulns.map((v) => ratings[String(v.database_specific?.severity).toUpperCase()] ?? 0));
+                  }
+                  const high = score >= 7;
+                  const message = `${pkg.name} ${pkg.version}: ${group.ids.join(', ')} ${vulns[0]?.summary ?? ''} (severity ${score || 'unknown'})`;
+                  if (high) {
+                    blocking++;
+                    core.error(message, { title: 'High or critical vulnerability', file });
+                  } else {
+                    core.warning(message, { title: 'Vulnerability', file });
+                  }
+                  rows.push([file, `${pkg.name} ${pkg.version}`, group.ids.join(', '), String(score || 'unknown')]);
+                }
+              }
+            }
+            if (rows.length) {
+              await core.summary
+                .addHeading('OSV-Scanner findings', 3)
+                .addTable([['Lockfile', 'Package', 'Advisories', 'Severity'], ...rows])
+                .write();
+            }
+            const found = `${blocking} high or critical ${blocking === 1 ? 'vulnerability' : 'vulnerabilities'}`;
+            if (blocking && process.env.OSV_ENFORCE === 'true') {
+              core.setFailed(`${found}: update the packages, or record an accepted one in osv-scanner.toml`);
+            } else if (blocking) {
+              core.warning(`${found}: this fails pull requests until they're updated, as the patch job may do`, { title: 'OSV scan' });
+            } else {
+              core.info(`${rows.length} found, none high or critical`);
+            }
       - name: Install apt packages
         if: inputs.apt_packages != ''
         env:

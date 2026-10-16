@@ -141,9 +141,9 @@ forgego --version
 
 `--website` scaffolds a static documentation site built with Hugo and the Hextra theme, which Hugo fetches as a Go module: `hugo.toml`, `content/_index.md` and `content/docs/_index.md`, plus the theme's search script in `assets/forgego/flexsearch/`, so the site builds without network access. There is no Go source. `task dev` serves the site locally with live reload, and `task build` writes it to `public/`. In CI, the `website.yml` workflow builds the site and deploys `public/` to GitHub Pages.
 
-Choose at most one mode; passing more than one exits with code `1`. An invalid combination — `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`.
+Choose at most one mode. An invalid combination — more than one mode, a feature both on and off, `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`. An option or argument `init` doesn't know exits with code `1`.
 
-`--go` sets the `go` line of a new `go.mod` (`1.27` becomes `go 1.27.0`), the `go_version` passed to CI, and the `golang` image the `Dockerfile` builds with. Without it, an existing project's `go.mod` decides those, and its `go` line is never changed.
+`--go` sets the `go` line of a new `go.mod` (`1.27` becomes `go 1.27.0`) and the `golang` image the `Dockerfile` builds with. CI reads its Go version from `go.mod`, so the generated workflow passes no `go_version`. Without `--go`, an existing project's `go.mod` decides both. `init` never changes an existing `go.mod`'s `go` line, so to move such a project to another Go, edit `go.mod` (CI follows it) and pass the same `--go` with `--force` to rewrite the `Dockerfile`.
 
 `--no-testing`, `--no-linting` and `--no-versioning` also switch off the matching jobs in the generated CI workflow.
 
@@ -179,10 +179,10 @@ With versioning on, lefthook runs it as the `commit-msg` hook.
 `init` works out the module path in this order:
 
 1. The `module` line of an existing `go.mod`.
-2. The first remote in the enclosing Git repository's `.git/config`, plus the subdirectory: `git@github.com:acme/api.git` and `https://github.com/acme/api` both give `github.com/acme/api`, and its `services/billing` directory gives `github.com/acme/api/services/billing`.
+2. The enclosing Git repository's `origin` remote (else its first remote), plus the subdirectory. A worktree or submodule works too, as `init` follows its `.git` file to the repository's config: `git@github.com:acme/api.git` and `https://github.com/acme/api` both give `github.com/acme/api`, and its `services/billing` directory gives `github.com/acme/api/services/billing`.
 3. The directory name.
 
-The project name is the last element of the module path without a `/vN` suffix (`billing-api`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit. The Docker image, the `.deb` package, its systemd unit and its system user use the name lowercased, with anything but letters and digits turned into dashes (`BillingAPI` gives `billingapi`).
+The project name is the last element of the module path without a `/vN` suffix (`billing-api`). Accents come off letters first (`Café` gives `cafe`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit. The Docker image, the `.deb` package, its systemd unit and its system user use the name lowercased, with anything but letters and digits turned into dashes (`BillingAPI` gives `billingapi`).
 
 ## Project structure
 

@@ -67,7 +67,16 @@ In this mode release-please tags the release before the push's checks run. If th
 
 *Security and static analysis.*
 
-1. **`secure`** — Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner scan of the source tree, which reports without failing. When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls and warns rather than fails: the `patch` job upgrades them on `main`.
+1. **`secure`** — Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner scan of the source tree. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the job, so a change can't add one. Elsewhere, such as on `main` or a release, it's an error annotation that doesn't fail the job, so releases and the `patch` job still run. Lower findings, and advisories with no severity at all, as Go's own vulnerability database gives, are warning annotations; every finding is listed in the job summary. If the scanner can't run, for example because OSV's API is unreachable, the job warns and passes. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside `go.mod`:
+
+   ```toml
+   [[IgnoredVulns]]
+   id = "GO-2026-0000"
+   ignoreUntil = 2026-12-31
+   reason = "No fixed version yet; the vulnerable function isn't called"
+   ```
+
+   When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls and warns rather than fails: the `patch` job upgrades them on `main`.
 2. **`linting`** — `task sync-check` (when the project pins Task), or `task sync` on Dependabot's pull requests, as a Forge.go update changes the files it manages; then, with `lint` on, `go mod tidy -diff`, `golangci-lint fmt --diff` and `golangci-lint run`.
 
 | Input | Default | Purpose |
@@ -160,7 +169,7 @@ esac
 
 *Dependabot auto-merge.*
 
-1. **`auto-merge`** — For pull requests opened by Dependabot, turns on GitHub's auto-merge through the API, so the pull request merges once the required checks pass; one with no checks left to wait for is merged straight away. It needs no `gh` CLI on the runner. Needs `contents: write` and `pull-requests: write`.
+1. **`auto-merge`** — For pull requests opened by Dependabot, when Dependabot also made the latest change (someone else's push to its branch waits for a person), turns on GitHub's auto-merge through the API, so the pull request merges once the required checks pass; one with no checks left to wait for is merged straight away. It needs no `gh` CLI on the runner. Needs `contents: write` and `pull-requests: write`.
 
 Dependabot's GitHub Actions updates (branches starting `dependabot/github_actions/`) are skipped and left for a person to merge: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge.
 
@@ -191,7 +200,7 @@ Dependabot's GitHub Actions updates (branches starting `dependabot/github_action
 3. Calls → `version.yml` to trigger a release on the main branch. Skip with `enable_versioning: false`. It still runs when the checks were skipped, but not when they failed. *(Needs: testing)*
 4. Calls → `testing.yml` again as **`release-testing`**, only with `test_on_push: false` — see [Checking Once per Change](#checking-once-per-change). *(Needs: version)*
 5. **`native-build`** — Only with `native_builds` set, under the same conditions as `release`: on each runner it lists, runs the [setup script](#setup-scripts) and `build_command`, and uploads the files `artifact_path` holds. See [Native release builds](#native-release-builds). Needs `contents: read`. *(Needs: testing, version, release-testing)*
-6. **`release`** — On `main`, when a new release was published and the checks passed, runs GoReleaser (latest `v2`, through `goreleaser-action`) with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the draft release release-please created, then publishes it. With `gpg_sign: true` it first imports the signing key for GoReleaser. With `release_binaries: false` it attaches the native builds and `release_files`, if any, and publishes the draft. Needs `contents: write`. *(Needs: testing, version, release-testing, native-build)*
+6. **`release`** — On `main`, when a new release was published and the checks passed, runs GoReleaser through `goreleaser-action`, pinned to the version the generated `release:snapshot` task runs, with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the draft release release-please created, then publishes it. With `gpg_sign: true` it first imports the signing key for GoReleaser. With `release_binaries: false` it attaches the native builds and `release_files`, if any, and publishes the draft. Needs `contents: write`. *(Needs: testing, version, release-testing, native-build)*
 
 Takes the [common inputs]({{< relref "_index.md#common-inputs" >}}), plus:
 

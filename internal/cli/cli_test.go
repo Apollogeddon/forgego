@@ -41,19 +41,22 @@ func TestInitDryRunResolvesFeatureFlags(t *testing.T) {
 	}
 }
 
+// Options that can't be combined exit 2, as forgejs and forgepy do; an option or argument
+// forgego doesn't know exits 1.
 func TestInitRejectsConflictingFlags(t *testing.T) {
-	for _, args := range [][]string{
-		{"init", "--library", "--website"},
-		{"init", "--testing", "--no-testing"},
-		{"init", "extra"},
-		{"init", "--unknown"},
+	for _, tc := range []struct {
+		args []string
+		code int
+	}{
+		{[]string{"init", "--library", "--website"}, 2},
+		{[]string{"init", "--testing", "--no-testing"}, 2},
+		{[]string{"init", "--dry-run", "--library", "--docker", "-C", t.TempDir()}, 2},
+		{[]string{"init", "extra"}, 1},
+		{[]string{"init", "--unknown"}, 1},
 	} {
-		if code, _ := run(t, args...); code != 1 {
-			t.Errorf("%v: exit %d, want 1", args, code)
+		if code, _ := run(t, tc.args...); code != tc.code {
+			t.Errorf("%v: exit %d, want %d", tc.args, code, tc.code)
 		}
-	}
-	if code, _ := run(t, "init", "--dry-run", "--library", "--docker", "-C", t.TempDir()); code != 2 {
-		t.Errorf("--library --docker: exit %d, want 2", code)
 	}
 }
 

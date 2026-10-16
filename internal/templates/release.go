@@ -90,8 +90,8 @@ if [ -d /run/systemd/system ]; then
 fi
 `
 
-// GoreleaserVersion is the GoReleaser the snapshot task runs. CI pins ~> v2 through
-// goreleaser-action.
+// GoreleaserVersion is the GoReleaser the snapshot task runs, and service.yml's release job
+// installs through goreleaser-action; a test keeps the two in step.
 const GoreleaserVersion = "v2.18.2"
 
 // DockerfileBackend cross-compiles on the build host for each target platform, so a
