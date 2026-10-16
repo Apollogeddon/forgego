@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/Apollogeddon/forgego/compare/v2.0.0...v2.0.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* use the /v2 module path so forgego v2 can be installed and pinned ([#52](https://github.com/Apollogeddon/forgego/issues/52)) ([99eb491](https://github.com/Apollogeddon/forgego/commit/99eb49107e918cf5183960a2a7c1c1809a539d55))
+
 ## [2.0.0](https://github.com/Apollogeddon/forgego/compare/v1.6.1...v2.0.0) (2026-10-16)
 
 
