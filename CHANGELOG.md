@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/Apollogeddon/forgego/compare/v2.0.1...v2.0.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* drop sync's migrations for v1.0 tool-pin paths and go run FORGEGO Taskfile vars ([#54](https://github.com/Apollogeddon/forgego/issues/54)) ([6504184](https://github.com/Apollogeddon/forgego/commit/65041845e0a5a98b7819083f4b6e265b451a8933))
+
 ## [2.0.1](https://github.com/Apollogeddon/forgego/compare/v2.0.0...v2.0.1) (2026-10-16)
 
 
