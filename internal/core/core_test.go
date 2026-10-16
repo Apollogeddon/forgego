@@ -659,3 +659,32 @@ func TestDependabotProposesForgegosPin(t *testing.T) {
 	}
 	t.Error("Dependabot doesn't watch forgego's pin")
 }
+
+func TestASubdirectoryWithSpacesGetsAValidGoModThatReruns(t *testing.T) {
+	fs := fsys.NewMemory(map[string]string{
+		"/work/.git/config": "[remote \"origin\"]\n\turl = git@github.com:acme/api.git\n",
+	})
+	cfg := config.Default("/work/My Service")
+	for range 2 {
+		if code := Init(cfg, fs); code != 0 {
+			t.Fatalf("Init returned %d", code)
+		}
+	}
+	got, _ := fs.ReadFile("/work/My Service/go.mod")
+	if !strings.HasPrefix(got, "module github.com/acme/api/my-service\n") {
+		t.Errorf("go.mod = %q", got)
+	}
+	if _, err := fs.ReadFile("/work/My Service/cmd/my-service/main.go"); err != nil {
+		t.Errorf("no starter under the module's name: %v", err)
+	}
+}
+
+func TestAnInvalidModulePathWritesNothing(t *testing.T) {
+	fs := fsys.NewMemory(map[string]string{"/work/.git/config": "[remote \"origin\"]\n\turl = file:///srv/git/repo.git\n"})
+	if code := Init(config.Default("/work/app"), fs); code != 1 {
+		t.Errorf("Init returned %d", code)
+	}
+	if paths := fs.Paths(); len(paths) != 1 {
+		t.Errorf("wrote %v", paths)
+	}
+}

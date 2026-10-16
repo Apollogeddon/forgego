@@ -179,8 +179,10 @@ With versioning on, lefthook runs it as the `commit-msg` hook.
 `init` works out the module path in this order:
 
 1. The `module` line of an existing `go.mod`.
-2. The enclosing Git repository's `origin` remote (else its first remote), plus the subdirectory. A worktree or submodule works too, as `init` follows its `.git` file to the repository's config: `git@github.com:acme/api.git` and `https://github.com/acme/api` both give `github.com/acme/api`, and its `services/billing` directory gives `github.com/acme/api/services/billing`.
-3. The directory name.
+2. The enclosing Git repository's `origin` remote (else its first remote), plus the subdirectory. A worktree or submodule works too, as `init` follows its `.git` file to the repository's config: `git@github.com:acme/api.git` and `https://github.com/acme/api` both give `github.com/acme/api`, and its `services/billing` directory gives `github.com/acme/api/services/billing`. Each subdirectory is lowercased, and one that isn't a valid module path element is turned into one as the directory name is below (`My Service` gives `my-service`).
+3. The directory name, lowercased with anything but letters and digits turned into dashes (`My Project` gives `my-project`).
+
+If the path it works out still isn't a valid module path, as from a `file://` remote, `init` stops with exit code `1` before it writes anything; run `go mod init <module path>` first.
 
 The project name is the last element of the module path without a `/vN` suffix (`billing-api`). Accents come off letters first (`Café` gives `cafe`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit. The Docker image, the `.deb` package, its systemd unit and its system user use the name lowercased, with anything but letters and digits turned into dashes (`BillingAPI` gives `billingapi`).
 
