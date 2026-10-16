@@ -4,6 +4,8 @@ import (
 	"embed"
 
 	"golang.org/x/mod/modfile"
+
+	"github.com/apollogeddon/forgego/v2/internal/version"
 )
 
 //go:generate go run ./gen
@@ -73,10 +75,10 @@ const (
 	SelfCommand = "go tool -modfile=" + SelfModPath + " forgego"
 )
 
-// SelfModFile is the module that pins forgego at version, such as v1.5.0.
-func SelfModFile(version string) string {
+// SelfModFile is the module that pins forgego at release, such as v2.0.1.
+func SelfModFile(release string) string {
 	return "module github.com/apollogeddon/forgego/tools/forgego\n\ngo " + Task.GoVersion() +
-		"\n\ntool github.com/apollogeddon/forgego/cmd/forgego\n\nrequire github.com/apollogeddon/forgego " + version + "\n"
+		"\n\ntool " + version.Module + "/cmd/forgego\n\nrequire " + version.Module + " " + release + "\n"
 }
 
 // Config returns one of forgego's embedded base configs, such as golangci.yml.

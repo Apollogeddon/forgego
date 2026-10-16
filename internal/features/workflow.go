@@ -3,9 +3,9 @@ package features
 import (
 	"strings"
 
-	"github.com/apollogeddon/forgego/internal/config"
-	"github.com/apollogeddon/forgego/internal/console"
-	"github.com/apollogeddon/forgego/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/config"
+	"github.com/apollogeddon/forgego/v2/internal/console"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
 // Workflow generates the project's CI, which calls forgego's pipelines.

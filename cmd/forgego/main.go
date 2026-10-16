@@ -5,7 +5,7 @@ package main
 import (
 	"os"
 
-	"github.com/apollogeddon/forgego/internal/cli"
+	"github.com/apollogeddon/forgego/v2/internal/cli"
 )
 
 func main() {

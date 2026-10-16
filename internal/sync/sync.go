@@ -6,17 +6,25 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/apollogeddon/forgego/internal/console"
-	"github.com/apollogeddon/forgego/internal/fsys"
-	"github.com/apollogeddon/forgego/internal/golangci"
-	"github.com/apollogeddon/forgego/internal/gomod"
-	"github.com/apollogeddon/forgego/internal/templates"
-	"github.com/apollogeddon/forgego/internal/version"
-	"github.com/apollogeddon/forgego/internal/yamlx"
+	"golang.org/x/mod/modfile"
+
+	"github.com/apollogeddon/forgego/v2/internal/console"
+	"github.com/apollogeddon/forgego/v2/internal/fsys"
+	"github.com/apollogeddon/forgego/v2/internal/golangci"
+	"github.com/apollogeddon/forgego/v2/internal/gomod"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/version"
+	"github.com/apollogeddon/forgego/v2/internal/yamlx"
 )
 
 // TaskfileVar is the Taskfile var that runs this forgego version.
 const TaskfileVar = "FORGEGO"
+
+const (
+	dependabotPath = ".github/dependabot.yml"
+	legacyAllow    = `dependency-name: "` + version.LegacyModule + `"`
+	currentAllow   = `dependency-name: "` + version.Module + `"`
+)
 
 type managed struct {
 	rel, content string
@@ -44,6 +52,12 @@ func expected(fs fsys.FS, dir string) ([]managed, error) {
 			return nil, err
 		}
 		files = append(files, managed{"go.mod", updated})
+	}
+	// Dependabot proposes forgego by its module path, which v2 changed
+	if content, err := fs.ReadFile(filepath.Join(dir, dependabotPath)); err == nil && strings.Contains(content, legacyAllow) {
+		files = append(files, managed{dependabotPath, strings.ReplaceAll(content, legacyAllow, currentAllow)})
+	} else if err != nil && !fsys.IsNotExist(err) {
+		return nil, err
 	}
 	// a website is the project that pins Hugo
 	hugo := templates.Hugo
@@ -111,6 +125,10 @@ func Run(fs fsys.FS, dir string, check bool) int {
 		}
 		if selfPinned(fs, dir) && !fs.Exists(filepath.Join(dir, templates.SelfModPath)) {
 			console.Warn("%s is missing", templates.SelfModPath)
+			missingPin = 1
+		}
+		if version.Released() && legacyPin(fs, dir) {
+			console.Warn("%s pins forgego at %s, which v2 moved to %s", templates.SelfModPath, version.LegacyModule, version.Module)
 			missingPin = 1
 		}
 		for _, rel := range legacy {
@@ -182,12 +200,29 @@ func RunCommand() string {
 
 // PinSelf pins this forgego in dir when nothing pins it yet, then writes the pin's go.sum
 // if it's missing. Dependabot owns the pinned version from then on, so an existing pin
-// is never rewritten.
+// is only rewritten when it pins v1's module path, which no v2 release can be required at.
 func PinSelf(fs fsys.FS, dir string, dryRun bool) bool {
 	if !version.Released() {
 		return true
 	}
 	mod := filepath.Join(dir, templates.SelfModPath)
+	if legacyPin(fs, dir) {
+		if dryRun {
+			console.Dry("Would move %s to forgego %s at %s", templates.SelfModPath, version.Current(), version.Module)
+			return true
+		}
+		// the old go.sum holds v1's checksums, so it goes and Tidy writes the new one
+		if err := fs.Remove(mod); err != nil {
+			console.Err("Failed to remove %s: %v", templates.SelfModPath, err)
+			return false
+		}
+		if fs.Exists(filepath.Join(dir, templates.SelfSumPath)) {
+			if err := fs.Remove(filepath.Join(dir, templates.SelfSumPath)); err != nil {
+				console.Err("Failed to remove %s: %v", templates.SelfSumPath, err)
+				return false
+			}
+		}
+	}
 	if !fs.Exists(mod) {
 		if dryRun {
 			console.Dry("Would pin forgego %s in %s", version.Current(), templates.SelfModPath)
@@ -212,6 +247,24 @@ func PinSelf(fs fsys.FS, dir string, dryRun bool) bool {
 	}
 	console.OK("Wrote %s", templates.SelfSumPath)
 	return true
+}
+
+// legacyPin reports whether dir's pin requires forgego at v1's module path.
+func legacyPin(fs fsys.FS, dir string) bool {
+	content, err := fs.ReadFile(filepath.Join(dir, templates.SelfModPath))
+	if err != nil {
+		return false
+	}
+	f, err := modfile.ParseLax(templates.SelfModPath, []byte(content), nil)
+	if err != nil {
+		return false
+	}
+	for _, r := range f.Require {
+		if r.Mod.Path == version.LegacyModule {
+			return true
+		}
+	}
+	return false
 }
 
 // selfPinned reports whether the Taskfile runs forgego from its pin.

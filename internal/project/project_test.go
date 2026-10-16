@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/apollogeddon/forgego/internal/fsys"
+	"github.com/apollogeddon/forgego/v2/internal/fsys"
 )
 
 func TestRemoteModule(t *testing.T) {

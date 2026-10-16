@@ -10,13 +10,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/apollogeddon/forgego/internal/commitmsg"
-	"github.com/apollogeddon/forgego/internal/config"
-	"github.com/apollogeddon/forgego/internal/console"
-	"github.com/apollogeddon/forgego/internal/core"
-	"github.com/apollogeddon/forgego/internal/fsys"
-	"github.com/apollogeddon/forgego/internal/sync"
-	"github.com/apollogeddon/forgego/internal/version"
+	"github.com/apollogeddon/forgego/v2/internal/commitmsg"
+	"github.com/apollogeddon/forgego/v2/internal/config"
+	"github.com/apollogeddon/forgego/v2/internal/console"
+	"github.com/apollogeddon/forgego/v2/internal/core"
+	"github.com/apollogeddon/forgego/v2/internal/fsys"
+	"github.com/apollogeddon/forgego/v2/internal/sync"
+	"github.com/apollogeddon/forgego/v2/internal/version"
 )
 
 const usage = `forgego scaffolds tooling into Go projects: linting, testing, CI/CD, Docker and

@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/mod/modfile"
 
-	"github.com/apollogeddon/forgego/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
 // ToolsGo is the newest Go any of tools needs, such as go1.27.0; empty for none.

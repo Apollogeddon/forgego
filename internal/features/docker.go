@@ -1,9 +1,9 @@
 package features
 
 import (
-	"github.com/apollogeddon/forgego/internal/config"
-	"github.com/apollogeddon/forgego/internal/taskfile"
-	"github.com/apollogeddon/forgego/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/config"
+	"github.com/apollogeddon/forgego/v2/internal/taskfile"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
 // Docker adds a Dockerfile: a distroless binary for a backend, nginx for a website.

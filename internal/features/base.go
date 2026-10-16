@@ -1,10 +1,10 @@
 package features
 
 import (
-	"github.com/apollogeddon/forgego/internal/config"
-	"github.com/apollogeddon/forgego/internal/sync"
-	"github.com/apollogeddon/forgego/internal/taskfile"
-	"github.com/apollogeddon/forgego/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/config"
+	"github.com/apollogeddon/forgego/v2/internal/sync"
+	"github.com/apollogeddon/forgego/v2/internal/taskfile"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
 // Base creates go.mod and the starter source, and pins Task, which runs everything else.

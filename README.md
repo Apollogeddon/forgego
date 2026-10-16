@@ -35,13 +35,13 @@ Forge.go (`forgego`) is a project-scaffolding CLI for Go. Its `init` command set
 Install it with `go install`:
 
 ```bash
-go install github.com/apollogeddon/forgego/cmd/forgego@latest
+go install github.com/apollogeddon/forgego/v2/cmd/forgego@latest
 ```
 
 Or run it without installing:
 
 ```bash
-go run github.com/apollogeddon/forgego/cmd/forgego@latest init
+go run github.com/apollogeddon/forgego/v2/cmd/forgego@latest init
 ```
 
 Each [release](https://github.com/apollogeddon/forgego/releases) also attaches prebuilt binaries for Linux, macOS and Windows.
