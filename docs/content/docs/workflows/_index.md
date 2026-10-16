@@ -35,8 +35,8 @@ There is no separate packaging pipeline: a `--debian` project uses `service.yml`
 | Event | Pipelines |
 | :--- | :--- |
 | Pull request | The checks (`library`, `service` or `website`, then the `docker` build), then `merge` on Dependabot's |
-| Push to `main`, `auto-merged` dispatch | `version`; on a release, the checks again, then `publish`, `pages` or the `docker` push |
-| Manual run | The same as a push to `main`, and `patch` |
+| Push to `main` | `version`; on a release, the checks again, then `publish`, `pages` or the `docker` push |
+| Manual run, `auto-merged` dispatch | The same as a push to `main`, and `patch` |
 | Weekly schedule | `patch` |
 
 A project without versioning has no release to wait for: its checks run on every push to `main` as well, and a website deploys from every push.
@@ -95,7 +95,7 @@ jobs:
       contents: read
 
   patch:
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}
     uses: apollogeddon/forgego/.github/workflows/patch.yml@main
     permissions:
       contents: write
@@ -136,7 +136,7 @@ Up to 1.6, `init` generated `.github/workflows/index.yml`, which called `service
 
 No secrets need passing. The pipelines only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. A library is published by its Git tag, so it needs no registry credentials either. `publish.yml` takes two optional secrets for [signed releases]({{< relref "reference.md#signed-releases" >}}); pass them by name.
 
-GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request. The event runs on the default branch.
+GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request, and `patch` commits the files a Forge.go update refreshes. The event runs on the default branch.
 
 ## Required permissions
 

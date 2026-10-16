@@ -280,7 +280,7 @@ func TestOwnIndexCallsLocalPipelines(t *testing.T) {
 	if !maps.Equal(w.Concurrency, generated.Concurrency) {
 		t.Errorf("concurrency = %v, want the generated %v", w.Concurrency, generated.Concurrency)
 	}
-	if w.Jobs["patch"].If != "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" {
+	if w.Jobs["patch"].If != "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'" {
 		t.Errorf("patch if = %q", w.Jobs["patch"].If)
 	}
 }
@@ -333,7 +333,7 @@ func TestGeneratedIndexCallsForgegosPipelines(t *testing.T) {
 		if w.Concurrency["group"] != "${{ github.workflow }}-${{ github.head_ref || github.run_id }}" || w.Concurrency["cancel-in-progress"] != true {
 			t.Errorf("%s: concurrency = %v", name, w.Concurrency)
 		}
-		if w.Jobs["patch"].If != "${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}" {
+		if w.Jobs["patch"].If != "${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}" {
 			t.Errorf("%s: patch if = %q", name, w.Jobs["patch"].If)
 		}
 		for id, j := range w.Jobs {

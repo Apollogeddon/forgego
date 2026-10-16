@@ -154,7 +154,7 @@ Choose at most one mode. An invalid combination — more than one mode, a featur
 The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -modfile=.forgego/forgego/go.mod forgego`, from a pin in `.forgego/forgego/go.mod` set to the version that scaffolded the project. Dependabot proposes each new Forge.go release there, like any other module update, and the pull request auto-merges once CI passes:
 
 - a new release usually changes the files Forge.go manages, so on Dependabot's pull requests the `lint` stage runs `task sync` instead of `task sync-check`, and checks the refreshed files;
-- once the update merges, the weekly `patch` pipeline runs `task sync` on `main` and commits the refreshed files. Run the workflow by hand to commit them straight away, as `task sync-check` fails on other pull requests until then.
+- once the update merges, the `merge` pipeline's `auto-merged` dispatch runs the `patch` pipeline, which runs `task sync` on `main` and commits the refreshed files, so `task sync-check` keeps passing on other pull requests.
 
 A project scaffolded by an earlier Forge.go runs it with `go run …/forgego@<version>`. Run a newer version's `sync` once to move it to the pin:
 

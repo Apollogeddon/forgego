@@ -31,7 +31,7 @@ on:
   # sent by the merge pipeline, as a merge it makes starts no push run on main
   repository_dispatch:
     types: [auto-merged]
-  # weekly, for the patch pipeline; a manual run patches too
+  # weekly, for the patch pipeline; a manual or dispatched run patches too
   schedule:
     - cron: '17 3 * * 1'
 
@@ -88,7 +88,7 @@ func (j pipelineJob) render(b *strings.Builder) {
 }
 
 // RenderWorkflow returns the project's .github/workflows/.index.yml. Pull requests run the checks, main runs
-// release-please and, on a release, the checks again before shipping, and a weekly run patches.
+// release-please and, on a release, the checks again before shipping, and a weekly or dispatched run patches.
 func RenderWorkflow(o WorkflowOptions) string {
 	checks := "service"
 	switch o.Mode {
@@ -179,8 +179,8 @@ func RenderWorkflow(o WorkflowOptions) string {
 
 	jobs = append(jobs, pipelineJob{
 		id: "patch", pipeline: "patch",
-		comment:     "weekly or on a manual run, forgego's files refreshed and vulnerable modules upgraded on main",
-		cond:        "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+		comment:     "weekly, on a manual run or after a Dependabot merge, forgego's files refreshed and vulnerable modules upgraded on main",
+		cond:        "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'",
 		permissions: []string{"contents: write"},
 	}, pipelineJob{
 		id: "merge", pipeline: "merge",

@@ -312,7 +312,7 @@ With `buildkit_endpoint` set, the stages build on that remote BuildKit instead o
 
 1. **`update`** — On `main`, first runs `task sync` and commits whatever it refreshes as `chore(deps): refresh the files forgego manages`, which catches up after a Dependabot update of Forge.go merges. When the project pins govulncheck, it then runs it, `go get`s the fixed version of each vulnerable module it reports, runs `go mod tidy`, and commits `go.mod` and `go.sum` as `fix(deps): upgrade modules with known vulnerabilities via govulncheck`. Vulnerabilities in the standard library are fixed by a newer Go, not by `go get`, so they're left to you. Needs `contents: write`.
 
-The generated `.index.yml` runs it weekly and on a manual run. Until it runs after a Forge.go update merges, `task sync-check` fails on other pull requests: run the workflow by hand, or `task sync` and commit.
+The generated `.index.yml` runs it weekly, on a manual run, and on the `auto-merged` dispatch `merge.yml` sends after a Dependabot merge, so a Forge.go update's refreshed files are committed straight away and `task sync-check` keeps passing on other pull requests.
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
