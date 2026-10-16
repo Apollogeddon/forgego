@@ -47,7 +47,7 @@ func Init(cfg config.Init, fs fsys.FS) int {
 
 	info, err := project.Detect(fs, cfg.Target)
 	if err != nil {
-		console.Err("Failed to read go.mod: %v", err)
+		console.Err("Failed to detect the project: %v", err)
 		return 1
 	}
 	console.Info("Module: %s", info.Module)

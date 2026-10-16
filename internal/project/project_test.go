@@ -128,3 +128,32 @@ func TestDetectInARealWorktree(t *testing.T) {
 		t.Errorf("module %q, want github.com/o/r", info.Module)
 	}
 }
+
+func TestASubdirectoryBecomesValidPathElements(t *testing.T) {
+	fs := fsys.NewMemory(map[string]string{"/repo/.git/config": "[remote \"origin\"]\n\turl = git@github.com:acme/api.git\n"})
+	for dir, want := range map[string]string{
+		"/repo/My Service":            "github.com/acme/api/my-service",
+		"/repo/Services/billing_v2.1": "github.com/acme/api/services/billing_v2.1",
+		"/repo/.config/Ünï Café":      "github.com/acme/api/.config/uni-cafe",
+	} {
+		info, err := Detect(fs, dir)
+		if err != nil {
+			t.Fatalf("%s: %v", dir, err)
+		}
+		if info.Module != want {
+			t.Errorf("%s: module %q, want %q", dir, info.Module, want)
+		}
+	}
+}
+
+func TestDetectRefusesAModulePathItCantMakeValid(t *testing.T) {
+	for dir, config := range map[string]string{
+		"/repo/con": "[remote \"origin\"]\n\turl = git@github.com:acme/api.git\n",
+		"/repo":     "[remote \"origin\"]\n\turl = file:///srv/git/repo.git\n",
+	} {
+		fs := fsys.NewMemory(map[string]string{"/repo/.git/config": config})
+		if info, err := Detect(fs, dir); err == nil {
+			t.Errorf("%s: module %q, want an error", dir, info.Module)
+		}
+	}
+}

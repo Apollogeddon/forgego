@@ -2,6 +2,7 @@
 package project
 
 import (
+	"fmt"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"unicode"
 
 	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/module"
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
@@ -43,7 +45,7 @@ func Detect(fs fsys.FS, dir string) (Info, error) {
 	if content, err := fs.ReadFile(filepath.Join(dir, "go.mod")); err == nil {
 		f, err := modfile.ParseLax("go.mod", []byte(content), nil)
 		if err != nil {
-			return info, err
+			return info, fmt.Errorf("read go.mod: %w", err)
 		}
 		if f.Module != nil {
 			info.Module = f.Module.Mod.Path
@@ -53,13 +55,18 @@ func Detect(fs fsys.FS, dir string) (Info, error) {
 		}
 		info.HasGoMod = true
 	} else if !fsys.IsNotExist(err) {
-		return info, err
+		return info, fmt.Errorf("read go.mod: %w", err)
 	}
 	if info.Module == "" {
 		info.Module = moduleFromRemote(fs, dir)
-	}
-	if info.Module == "" {
-		info.Module = Slug(filepath.Base(dir))
+		if info.Module == "" {
+			info.Module = Slug(filepath.Base(dir))
+		}
+		// go.mod is written from this path, and the go command can't read one with an invalid path
+		if err := module.CheckImportPath(info.Module); err != nil {
+			return info, fmt.Errorf("no valid module path from the git remote or the directory name (%w): "+
+				"run `go mod init <module path>` first", err)
+		}
 	}
 	info.Name = path.Base(majorSuffix.ReplaceAllString(info.Module, ""))
 	info.Slug = Slug(info.Name)
@@ -86,11 +93,25 @@ func moduleFromRemote(fs fsys.FS, dir string) string {
 	if err != nil {
 		return ""
 	}
-	module := remoteModule(content)
-	if module == "" || sub == "." {
-		return module
+	base := remoteModule(content)
+	if base == "" || sub == "." {
+		return base
 	}
-	return module + "/" + strings.ToLower(filepath.ToSlash(sub))
+	elems := strings.Split(filepath.ToSlash(sub), "/")
+	for i, elem := range elems {
+		elems[i] = pathElement(elem)
+	}
+	return base + "/" + strings.Join(elems, "/")
+}
+
+// pathElement makes a directory name a module path element: one that already is one is only
+// lowercased, and any other is slugged as the directory-name fallback is, so My Service gives my-service.
+func pathElement(name string) string {
+	lower := strings.ToLower(name)
+	if module.CheckImportPath(lower) == nil {
+		return lower
+	}
+	return Slug(name)
 }
 
 // gitConfig reads the config of the repository whose working tree is root. Its .git is the
