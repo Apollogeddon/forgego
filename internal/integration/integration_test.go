@@ -53,6 +53,30 @@ func scaffold(t *testing.T, args ...string) string {
 	return dir
 }
 
+// checkStages runs what the generated .index.yml's check pipeline runs in its lint, test and build stages,
+// after checking the pipeline it calls is one this repository serves at @main.
+func checkStages(t *testing.T, dir, pipeline string, golang bool) {
+	t.Helper()
+	index, err := os.ReadFile(filepath.Join(dir, ".github", "workflows", ".index.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range regexp.MustCompile(`apollogeddon/forgego/\.github/workflows/([\w-]+\.yml)@main`).FindAllStringSubmatch(string(index), -1) {
+		if _, err := os.Stat(filepath.Join("..", "..", ".github", "workflows", m[1])); err != nil {
+			t.Errorf(".index.yml calls %s, which this repository doesn't have", m[1])
+		}
+	}
+	if !strings.Contains(string(index), "/"+pipeline+".yml@main") {
+		t.Errorf(".index.yml doesn't call %s.yml", pipeline)
+	}
+	task(t, dir, "sync-check")
+	if golang {
+		sh(t, dir, "go", "mod", "tidy", "-diff")
+		sh(t, dir, "go", "tool", "-modfile=.forgego/golangci-lint/go.mod", "golangci-lint", "fmt", "--diff")
+		sh(t, dir, "go", "tool", "-modfile=.forgego/golangci-lint/go.mod", "golangci-lint", "run")
+	}
+}
+
 // task runs a generated task, with forgego itself pointed at the build under test.
 func task(t *testing.T, dir string, args ...string) string {
 	t.Helper()
@@ -80,6 +104,7 @@ func TestBackend(t *testing.T) {
 	dir := scaffold(t, "--docker", "--debian")
 	task(t, dir, "hooks")
 	task(t, dir, "lint")
+	checkStages(t, dir, "service", true)
 	if out := task(t, dir, "test"); !strings.Contains(out, "DONE 1 tests") {
 		t.Errorf("test ran no tests:\n%s", out)
 	}
@@ -87,7 +112,6 @@ func TestBackend(t *testing.T) {
 	if out := sh(t, dir, filepath.Join("dist", "demo")); out != "demo dev\n" {
 		t.Errorf("the built binary printed %q", out)
 	}
-	task(t, dir, "sync-check")
 
 	// the installed git hook itself runs the pinned lefthook, which finds no lefthook on PATH
 	msgs := t.TempDir()
@@ -104,9 +128,36 @@ func TestBackend(t *testing.T) {
 func TestLibrary(t *testing.T) {
 	dir := scaffold(t, "--library")
 	task(t, dir, "lint")
+	checkStages(t, dir, "library", true)
 	task(t, dir, "test")
 	task(t, dir, "build")
-	task(t, dir, "sync-check")
+}
+
+// An index.yml an earlier forgego wrote would run beside .index.yml, calling pipelines that are gone.
+func TestAnOldGeneratedWorkflowGoes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds forgego")
+	}
+	legacy, err := os.ReadFile(filepath.Join("..", "templates", "testdata", "legacy", "main-library.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	old := filepath.Join(dir, ".github", "workflows", "index.yml")
+	if err := os.MkdirAll(filepath.Dir(old), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(old, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sh(t, dir, "git", "init", "-q")
+	out := sh(t, dir, forgego, "init", "--library")
+	if _, err := os.Stat(old); !os.IsNotExist(err) || !strings.Contains(out, "Removed .github/workflows/index.yml") {
+		t.Errorf("the old index.yml is still there: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".github", "workflows", ".index.yml")); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestWebsite(t *testing.T) {
@@ -120,5 +171,5 @@ func TestWebsite(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "public", "docs", "index.html")); err != nil {
 		t.Errorf("the site has no docs page: %v", err)
 	}
-	task(t, dir, "sync-check")
+	checkStages(t, dir, "website", false)
 }

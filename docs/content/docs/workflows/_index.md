@@ -4,153 +4,154 @@ linkTitle: Workflows
 weight: 7
 ---
 
-Forge.go ships reusable GitHub Actions workflows that give every project the same quality checks, release process and delivery pipeline. `forgego init` generates a `.github/workflows/index.yml` that calls the right one for your mode. This page shows the generated workflow and the inputs and permissions the workflows share; the [Job reference]({{< relref "reference.md" >}}) describes each workflow in detail.
+Forge.go ships reusable GitHub Actions pipelines that give every project the same checks, release process and delivery. `forgego init` generates a root workflow, `.github/workflows/.index.yml`, whose jobs each call one pipeline. This page covers the generated workflow, when each pipeline runs, and the permissions they need; the [Job reference]({{< relref "reference.md" >}}) describes each pipeline's stages and inputs.
 
-## Available workflows
+## Names on the run page
 
-| Workflow | Purpose |
+A root job calls a pipeline, and a pipeline's jobs are its stages, so a run page lists every job as `<pipeline> / <stage>`: `service / lint`, `version / release`, `pages / deploy`. No pipeline calls another, so there's never a third level. A pipeline an event doesn't need, such as `publish` on a pull request, shows as one skipped row.
+
+A root job's id is the pipeline's name. A second call to the same pipeline names its variant in brackets, such as `service (api)`.
+
+## Pipelines
+
+| Pipeline | Stages | Purpose |
+| :--- | :--- | :--- |
+| `library.yml` | lint, scan, test, build | A library's checks |
+| `service.yml` | lint, scan, test, test (windows), test (macos), build | A backend's checks, with Windows and macOS when asked |
+| `website.yml` | lint, scan, test, build, check | A Hugo website's checks, the build, and optional link and accessibility checks of it |
+| `docker.yml` | build, push | A multi-platform image: built on pull requests, pushed to GHCR on a release |
+| `version.yml` | release | release-please: the release pull request, then the tag and the draft GitHub release |
+| `publish.yml` | package, assets | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively |
+| `pages.yml` | deploy | The built website, to GitHub Pages |
+| `patch.yml` | update | `task sync` and govulncheck's module upgrades, committed to `main` |
+| `merge.yml` | review, squash | A review request on Dependabot's pull requests, and their squash merge once the checks pass |
+
+The stages are `lint` (`forgego sync --check`, `go mod tidy -diff` and golangci-lint), `scan` (Gitleaks, OSV-Scanner and govulncheck), `test`, `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `deploy`, `update`, `review` and `squash`.
+
+There is no separate packaging pipeline: a `--debian` project uses `service.yml`, and GoReleaser builds the `.deb` in `publish.yml`'s `assets` stage.
+
+## When each pipeline runs
+
+| Event | Pipelines |
 | :--- | :--- |
-| `quality.yml` | Secret scanning (Gitleaks), dependency scanning (OSV-Scanner and govulncheck), `forgego sync --check`, `go mod tidy -diff` and golangci-lint |
-| `testing.yml` | Full QA suite: quality, the tests, the build artifact (also on more operating systems, opt-in), and vulnerability patching on `main` |
-| `version.yml` | Automated versioning and GitHub releases via release-please |
-| `merge.yml` | Auto-merges Dependabot pull requests once checks pass, except GitHub Actions updates |
-| `review.yml` | Requests a review on Dependabot's and release-please's pull requests, which `CODEOWNERS` doesn't do in a private repository on GitHub Free |
-| `service.yml` | Orchestrator for backends — testing, auto-merge, version, then the release binaries (and `.deb`) with GoReleaser, and any native builds |
-| `library.yml` | Orchestrator for libraries — testing, auto-merge, version, then publishing the release to the Go module proxy |
-| `website.yml` | Orchestrator for websites — testing, auto-merge, version, then GitHub Pages deployment |
-| `docker.yml` | Multi-platform Docker image build, pushed to GHCR on release — added as its own job by `--docker` |
+| Pull request | The checks (`library`, `service` or `website`, then the `docker` build), then `merge` on Dependabot's |
+| Push to `main` | `version`; on a release, the checks again, then `publish`, `pages` or the `docker` push |
+| Manual run, `auto-merged` dispatch | The same as a push to `main`, and `patch` |
+| Weekly schedule | `patch` |
 
-There is no separate packaging workflow: a `--debian` project uses `service.yml`, and GoReleaser builds the `.deb` in its release job.
+A project without versioning has no release to wait for: its checks run on every push to `main` as well, and a website deploys from every push.
 
-## Setup
+## Generated workflow
 
-Call the workflows with the `uses` keyword, at `apollogeddon/forgego/.github/workflows/<file>@main`. `forgego init` generates a starter `index.yml` for the selected mode.
-
-### Generated workflows
-
-Every generated `index.yml` starts with the same triggers and concurrency rule: a newer push cancels the pull request run it replaces, and a run on `main` is never cancelled, so a release is never created without being published.
+`forgego init` writes `.github/workflows/.index.yml` for the selected mode. Every one starts with the same triggers and concurrency rule: a newer push to a pull request cancels the run it replaces, and every other run has a concurrency group of its own, so a run on `main`, running or queued, is never cancelled and a release is never created without being published.
 
 ```yaml
-name: CI
+name: index
 
 on:
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
   repository_dispatch:
     types: [auto-merged]
+  schedule:
+    - cron: '17 3 * * 1'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 ```
 
-**Backend** — generated by `forgego init --backend`:
+**Library**, generated by `forgego init --library`:
 
 ```yaml
 jobs:
-  service:
-    uses: apollogeddon/forgego/.github/workflows/service.yml@main
+  version:
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'schedule' }}
+    uses: apollogeddon/forgego/.github/workflows/version.yml@main
     permissions:
       contents: write
       pull-requests: write
-    with:
-      auto_patch: true
-```
 
-**Library** — generated by `forgego init --library`:
-
-```yaml
-jobs:
   library:
+    needs: version
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.version.outputs.new_release_published == 'true') }}
     uses: apollogeddon/forgego/.github/workflows/library.yml@main
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
+
+  publish:
+    needs: [version, library]
+    if: ${{ !cancelled() && needs.library.result == 'success' && needs.version.outputs.new_release_published == 'true' }}
+    uses: apollogeddon/forgego/.github/workflows/publish.yml@main
     with:
-      auto_patch: true
-```
-
-**Website** — generated by `forgego init --website`:
-
-```yaml
-jobs:
-  website:
-    uses: apollogeddon/forgego/.github/workflows/website.yml@main
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
-      pull-requests: write
-    with:
-```
-
-**Debian** — `forgego init --debian` generates the backend job unchanged: `service.yml`'s release job builds the `.deb` from the `nfpms` section of `.goreleaser.yaml`.
-
-**Docker** — `--docker` adds a separate `docker` job that runs after your pipeline job (backend or website) and uses its release outputs. Projects without Docker have no Docker job at all:
-
-```yaml
-jobs:
-  service:
-    # ...as above
-  docker:
-    needs: service
-    uses: apollogeddon/forgego/.github/workflows/docker.yml@main
+      tag_name: ${{ needs.version.outputs.tag_name }}
+      package: true
+      assets: false
     permissions:
       contents: read
-      packages: write
+
+  patch:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}
+    uses: apollogeddon/forgego/.github/workflows/patch.yml@main
+    permissions:
+      contents: write
+
+  merge:
+    needs: library
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' }}
+    uses: apollogeddon/forgego/.github/workflows/merge.yml@main
     with:
-      push: ${{ github.ref == 'refs/heads/main' && needs.service.outputs.new_release_published == 'true' }}
-      version: ${{ needs.service.outputs.version }}
+      checks_passed: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    permissions:
+      contents: write
+      pull-requests: write
 ```
 
-The workflow names no Go version: CI reads it from `go.mod`, which `init` writes with the `--go` version. `--no-testing` adds `run_tests: false` and `--no-linting` adds `lint: false` (backends and libraries), and `--no-versioning` adds `enable_versioning: false`.
+The other modes differ only in their jobs:
 
-## Common inputs
+| Mode | Jobs |
+| :--- | :--- |
+| `--backend` | `version`, `service`, `publish` (GoReleaser, with `contents: write`), `patch`, `merge` |
+| `--library` | `version`, `library`, `publish` (the Go module proxy), `patch`, `merge` |
+| `--website` | `version`, `website`, `pages`, `patch`, `merge` |
+| `--debian` | As `--backend`: GoReleaser builds the `.deb` from the `nfpms` section of `.goreleaser.yaml` |
 
-`service.yml`, `library.yml` and `website.yml` share these inputs:
+- `--docker` adds a `docker` job after the checks: it builds on pull requests, and builds and pushes on a release. `merge` waits for it, so a broken image stops a Dependabot merge.
+- `--no-testing` passes `run_tests: false` and `--no-linting` passes `lint: false` to a backend's or library's checks, which skips their `test` stage and golangci-lint.
+- `--no-versioning` leaves out `version` and `publish`: the checks, and a website's deploy, run on every push to `main` instead.
 
-| Input | Default | Description |
-| :--- | :--- | :--- |
-| `go_version` | `''` | Go version for every job; empty reads the project's `go.mod`, and without one uses Go 1.27 |
-| `working_directory` | `'.'` | Directory containing `go.mod` |
-| `runs_on` | `'ubuntu-latest'` | Runner label for every job — see [Choosing runners]({{< relref "reference.md#choosing-runners" >}}) |
-| `enable_secrets` | `true` | Run the Gitleaks secret scan |
-| `enable_versioning` | `true` | Run release-please — `forgego init --no-versioning` sets it to `false` |
-| `test_on_push` | `true` | Run the checks on pushes too — see [Checking once per change]({{< relref "reference.md#checking-once-per-change" >}}) |
-| `test_release_prs` | `true` | Run the checks on release-please's release pull requests |
-| `reviewers` | `''` | Comma-separated logins to request a review of Dependabot's and release-please's pull requests from; empty means the repository's owner — see [review.yml]({{< relref "reference.md#reviewyml" >}}) |
-| `run_tests` | `true` | Run the tests — `forgego init --no-testing` sets it to `false` (`service.yml`, `library.yml`) |
-| `lint` | `true` | Run golangci-lint and the `go mod tidy` check — `forgego init --no-linting` sets it to `false` (`service.yml`, `library.yml`) |
-| `auto_patch` | `true` | On `main`, upgrade the modules govulncheck finds vulnerable and commit the result (`service.yml`, `library.yml`) |
-| `apt_packages` | `''` | apt packages to install before anything compiles, space-separated: the C libraries a cgo dependency needs, such as `libfuse-dev` (`service.yml`, `library.yml`). Ubuntu runners only |
+The workflow names no Go version: CI reads it from `go.mod`, which `init` writes with the `--go` version.
 
-Each orchestrator has a few inputs of its own, listed in the [Job reference]({{< relref "reference.md" >}}).
+### Upgrading from `index.yml`
+
+Up to 1.6, `init` generated `.github/workflows/index.yml`, which called `service.yml`, `library.yml` or `website.yml` as one job. Once `init` has written `.index.yml`, it removes such a file when it's exactly as an earlier release generated it, ignoring line endings, trailing spaces, blank lines and the `go_version` releases before 1.4 copied from `go.mod`. One you've changed since, say to set `runs_on`, is kept with a warning until you run `init --force`: move your changes to `.index.yml` first. An `index.yml` that calls none of Forge.go's workflows is your own and is never removed; check it doesn't repeat `.index.yml`'s jobs. Nothing is removed when `init` kept an existing `.index.yml`. See [Inputs that moved]({{< relref "reference.md#inputs-that-moved" >}}) for a hand-written caller.
+
+`forgego sync` never touches `.index.yml`: like the other generated configs, it's yours once written.
 
 ## Secrets
 
-No secrets need passing. The workflows only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. A library is published by its Git tag, so it needs no registry credentials either.
+No secrets need passing. The pipelines only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. A library is published by its Git tag, so it needs no registry credentials either. `publish.yml` takes two optional secrets for [signed releases]({{< relref "reference.md#signed-releases" >}}); pass them by name.
 
-GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot auto-merge makes to `main` doesn't run the pipeline either. The auto-merge job therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. Listen for it next to `push` and `pull_request`, as `init` does, so `main` is checked and release-please opens or updates its release pull request:
-
-```yaml
-  repository_dispatch:
-    types: [auto-merged]
-```
-
-The event runs on the default branch. A workflow that doesn't listen for it ignores it, and `main` waits for the next push as before.
+GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request, and `patch` commits the files a Forge.go update refreshes. The event runs on the default branch.
 
 ## Required permissions
 
-| Permission | Needed for |
-| :--- | :--- |
-| `contents: write` | release-please tags and releases, the release binaries, and the `patch` job's commit |
-| `pull-requests: write` | Release pull requests and Dependabot auto-merge |
-| `pages: write` | GitHub Pages deployment (website) |
-| `id-token: write` | GitHub Pages deployment (website) |
-| `packages: write` | Pushing Docker images to GHCR (the `docker` job) |
+Each root job grants what its pipeline's stages need, and nothing else:
 
-GitHub checks a called workflow's permissions against the caller's before running anything, so grant everything your mode needs even if a job would be skipped.
+| Root job | Permissions | Needed for |
+| :--- | :--- | :--- |
+| `library`, `service`, `website` | `contents: read`, `pull-requests: write` | Gitleaks reads a pull request's commits and comments on one it finds a secret in |
+| `docker` | `contents: read`, `packages: write` | Pushing to GHCR |
+| `version` | `contents: write`, `pull-requests: write` | release-please's tags, releases and release pull requests |
+| `publish` | `contents: read`; `contents: write` for `assets` | The proxy fetch; attaching the release's files and publishing the draft |
+| `pages` | `pages: write`, `id-token: write` | GitHub Pages |
+| `patch` | `contents: write` | Committing the refreshed files and patches |
+| `merge` | `contents: write`, `pull-requests: write` | The review request, the merge and the dispatch |
+
+GitHub checks a called workflow's permissions against the caller's before running anything, even a job that would be skipped. So a caller grants the union of what a pipeline's stages ask for. In `publish.yml`, `package` and the native builds ask for exactly `contents: read`, and `assets` asks for nothing and takes the caller's grant, so only a caller that turns `assets` on, a service's, grants `contents: write`.
 
 For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions**. For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**. Auto-merge squash-merges, so release-please lists each update once: a merge commit repeats the pull request's title, and release-please reads that as a second change. Merge your own pull requests the same way, with **Squash and merge**. Dependabot's GitHub Actions updates are never auto-merged: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge, so merge those pull requests yourself.

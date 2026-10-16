@@ -1,0 +1,364 @@
+name: publish
+
+# Ships a release: a library through the Go module proxy, and a service's files attached to its GitHub release.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      working_directory:
+        description: "Directory holding go.mod"
+        required: false
+        type: string
+        default: '.'
+      go_version:
+        description: "Go version; empty reads the project's go.mod, else Go 1.27"
+        required: false
+        type: string
+        default: ''
+      apt_packages:
+        description: "apt packages to install before a native build compiles, space-separated; Ubuntu runners only"
+        required: false
+        type: string
+        default: ''
+      tag_name:
+        description: "The release to publish, as version.yml's tag_name"
+        required: false
+        type: string
+        default: ''
+      package:
+        description: "Fetch the release through the Go module proxy, so it's on pkg.go.dev straight away; for a library"
+        required: false
+        type: boolean
+        default: false
+      assets:
+        description: "Attach the release's files with GoReleaser or the native builds, and publish the draft release-please made; needs contents: write"
+        required: false
+        type: boolean
+        default: true
+      release_binaries:
+        description: "Build the release binaries with GoReleaser and attach them to the release"
+        required: false
+        type: boolean
+        default: true
+      build_command:
+        description: "The command each native build runs"
+        required: false
+        type: string
+        default: 'go tool -modfile=.forgego/task/go.mod task build'
+      artifact_path:
+        description: "What a native build writes, relative to working_directory; every file in it is attached"
+        required: false
+        type: string
+        default: 'dist'
+      setup_script:
+        description: "A script, relative to working_directory, run with bash before each native build compiles"
+        required: false
+        type: string
+        default: ''
+      native_builds:
+        description: 'JSON list of runners that build release binaries natively with build_command, each a label or {"runs_on", "name", "env"}; their artifact_path files are attached to the draft before it is published'
+        required: false
+        type: string
+        default: '[]'
+      release_files:
+        description: "Files to attach beside the native builds, relative to working_directory, one per line, e.g. LICENSE; with release_binaries off"
+        required: false
+        type: string
+        default: ''
+      checksums:
+        description: "Name of the SHA-256 checksum file of the native builds and release_files; empty attaches none; with release_binaries off"
+        required: false
+        type: string
+        default: 'checksums.txt'
+      gpg_sign:
+        description: "Import the GPG_PRIVATE_KEY secret before GoReleaser runs and export its fingerprint as GPG_FINGERPRINT, for a signs section in .goreleaser.yaml; with release_binaries"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      GPG_PRIVATE_KEY:
+        description: "ASCII-armored private key GoReleaser signs with; with gpg_sign"
+        required: false
+      GPG_PASSPHRASE:
+        description: "The key's passphrase, if it has one; with gpg_sign"
+        required: false
+
+# GitHub checks a called workflow's permissions against its caller's before running any of it, even a job
+# that will be skipped, so a caller grants the union of what the stages ask for. package and the native builds
+# ask for contents: read; assets asks for nothing and takes the caller's grant, so only a caller that turns it
+# on grants contents: write.
+
+jobs:
+  # A Go module is published by its tag; fetching it through the proxy makes the proxy and pkg.go.dev
+  # pick the release up now rather than on first use
+  package:
+    name: package
+    if: inputs.package
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache: false
+      - name: Publish to the Go module proxy
+        env:
+          GOPROXY: https://proxy.golang.org
+          TAG: ${{ inputs.tag_name }}
+        run: |
+          if [ -z "$TAG" ]; then
+            echo "::error::package needs tag_name, the release to fetch"
+            exit 1
+          fi
+          module=$(go list -m)
+          version="${TAG##*/}"
+          # From v2 on, Go only finds a release whose module path ends in its major version.
+          major="${version%%.*}"
+          major="${major#v}"
+          if [ "$major" -ge 2 ] && [ "${module##*/}" != "v$major" ]; then
+            echo "::error::$version needs the module path $module/v$major: Go can't fetch a v2+ release of $module. See https://go.dev/doc/modules/major-version"
+            exit 1
+          fi
+          (cd "$RUNNER_TEMP" && go mod download -json "$module@$version")
+
+  # Release binaries GoReleaser can't cross-compile, such as a cgo build for macOS, each built on
+  # its own runner and attached to the draft by assets before it is published.
+  assets-native:
+    # GitHub adds each entry's values to the name, and shows a skipped one plainly
+    name: assets (native)
+    runs-on: ${{ matrix.target.runs_on || matrix.target }}
+    timeout-minutes: 30
+    # an empty matrix fails the workflow, so the job is skipped instead
+    if: inputs.assets && inputs.native_builds != '' && inputs.native_builds != '[]'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.native_builds) }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      # the whole history, so the build can name the release's tag
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install apt packages
+        if: runner.os == 'Linux' && inputs.apt_packages != ''
+        env:
+          PACKAGES: ${{ inputs.apt_packages }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # one word per package
+          sudo apt-get install -y --no-install-recommends $PACKAGES
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          # no module cache in a job that builds a release
+          cache: false
+      - name: Set the entry's environment
+        if: matrix.target.env
+        env:
+          TARGET_ENV: ${{ toJSON(matrix.target.env) }}
+        run: jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$TARGET_ENV" >> "$GITHUB_ENV"
+      - name: Run the setup script
+        if: inputs.setup_script != ''
+        env:
+          SCRIPT: ${{ inputs.setup_script }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash "$SCRIPT"
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
+        with:
+          name: forgego-native-${{ strategy.job-index }}
+          path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
+          if-no-files-found: error
+
+  # Through GoReleaser, or the native builds and release_files. It takes the caller's grant, which needs
+  # contents: write to attach to the release and publish it
+  assets:
+    name: assets
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 20
+    needs: [assets-native]
+    if: ${{ !cancelled() && inputs.assets && needs.assets-native.result != 'failure' }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    env:
+      NATIVE: ${{ inputs.native_builds != '' && inputs.native_builds != '[]' }}
+    steps:
+      # GoReleaser reads the release tag from the history
+      - name: Check out
+        uses: actions/checkout@v7
+        if: inputs.release_binaries || env.NATIVE == 'true' || inputs.release_files != ''
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # inside the project, where GoReleaser's extra_files can glob it, but kept out of git so
+      # GoReleaser doesn't count the checkout as dirty
+      - name: Download the native builds
+        uses: actions/download-artifact@v8
+        if: env.NATIVE == 'true'
+        with:
+          pattern: forgego-native-*
+          merge-multiple: true
+          path: ${{ inputs.working_directory }}/.forgego-native
+      - name: Keep the native builds out of git
+        if: env.NATIVE == 'true'
+        run: |
+          exclude="$(git rev-parse --git-path info/exclude)"
+          mkdir -p "$(dirname "$exclude")"
+          echo '.forgego-native/' >> "$exclude"
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        if: inputs.release_binaries
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        if: inputs.release_binaries
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          # no module cache in a job that publishes
+          cache: false
+      # GoReleaser attaches the native builds only through its own config, so check it lists them
+      # rather than publish a release without them
+      - name: Check GoReleaser attaches the native builds
+        if: inputs.release_binaries && env.NATIVE == 'true'
+        run: |
+          if ! grep -qs '\.forgego-native/' .goreleaser.yaml .goreleaser.yml goreleaser.yaml goreleaser.yml; then
+            echo "::error::native_builds with GoReleaser needs '.forgego-native/*' in release.extra_files and checksum.extra_files of .goreleaser.yaml"
+            exit 1
+          fi
+      - name: Check the signing setup
+        if: inputs.gpg_sign
+        working-directory: .
+        env:
+          KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          BINARIES: ${{ inputs.release_binaries }}
+        run: |
+          if [ "$BINARIES" != true ]; then
+            echo "::error::gpg_sign signs through the signs section of .goreleaser.yaml, so it needs release_binaries"
+            exit 1
+          fi
+          if [ -z "$KEY" ]; then
+            echo "::error::gpg_sign needs the GPG_PRIVATE_KEY secret"
+            exit 1
+          fi
+      - name: Import the signing key
+        uses: crazy-max/ghaction-import-gpg@v7.0.0
+        id: gpg
+        if: inputs.gpg_sign
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      # set only when signing, so a project that doesn't sign sees no new variable
+      - name: Export the key's fingerprint
+        if: inputs.gpg_sign
+        working-directory: .
+        env:
+          FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}
+        run: echo "GPG_FINGERPRINT=$FINGERPRINT" >> "$GITHUB_ENV"
+      # release-please created the release as a draft; GoReleaser attaches the binaries,
+      # checksums and any .deb, then publishes it
+      # the GoReleaser the generated snapshot task runs (templates.GoreleaserVersion); a test keeps them in step
+      - name: Release with GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        if: inputs.release_binaries
+        with:
+          version: 'v2.18.2'
+          args: release --clean
+          workdir: ${{ inputs.working_directory }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # without GoReleaser, attach the native builds, release_files and their checksums to the
+      # draft here, as a published release may be immutable
+      - name: Attach the native builds and release files
+        if: ${{ !inputs.release_binaries && (env.NATIVE == 'true' || inputs.release_files != '') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag_name }}
+          FILES: ${{ inputs.release_files }}
+          CHECKSUMS: ${{ inputs.checksums }}
+        run: |
+          staging="$RUNNER_TEMP/forgego-release"
+          mkdir -p "$staging"
+          if [ -d .forgego-native ]; then cp -R .forgego-native/. "$staging/"; fi
+          while IFS= read -r file; do
+            if [ -n "$file" ]; then cp "$file" "$staging/"; fi
+          done <<< "$FILES"
+          cd "$staging"
+          if [ -n "$CHECKSUMS" ]; then
+            # the format GoReleaser writes: sha256, two spaces, the file name, sorted by name
+            find . -maxdepth 1 -type f ! -name "$CHECKSUMS" -printf '%f\n' | LC_ALL=C sort | xargs -r -d '\n' sha256sum > "$RUNNER_TEMP/$CHECKSUMS"
+            mv "$RUNNER_TEMP/$CHECKSUMS" .
+          fi
+          # --clobber, so a re-run replaces what an earlier attempt attached
+          find . -maxdepth 1 -type f -print0 | xargs -0 gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber
+      # publish release-please's draft once everything is attached
+      - name: Publish the draft release
+        if: ${{ !inputs.release_binaries }}
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag_name }}
+        run: |
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true" ]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          fi

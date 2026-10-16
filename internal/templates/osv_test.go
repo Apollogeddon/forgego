@@ -18,9 +18,9 @@ type osvStep struct {
 	With map[string]string `yaml:"with"`
 }
 
-func secureSteps(t *testing.T) map[string]osvStep {
+func scanSteps(t *testing.T, pipeline string) map[string]osvStep {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "quality.yml"))
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", pipeline))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,19 +33,38 @@ func secureSteps(t *testing.T) map[string]osvStep {
 		t.Fatal(err)
 	}
 	steps := map[string]osvStep{}
-	for _, step := range w.Jobs["secure"].Steps {
+	for _, step := range w.Jobs["scan"].Steps {
 		steps[step.Name] = step
 	}
 	return steps
 }
 
+func secureSteps(t *testing.T) map[string]osvStep {
+	t.Helper()
+	return scanSteps(t, "service.yml")
+}
+
 func TestOSVScanNeverSwallowsTheResult(t *testing.T) {
 	steps := secureSteps(t)
-	if run := steps["OSV Scan"].Run; strings.Contains(run, "|| true") || !strings.Contains(run, "--format json") {
-		t.Errorf("OSV Scan run = %q", run)
+	if run := steps["Scan with OSV"].Run; strings.Contains(run, "|| true") || !strings.Contains(run, "--format json") {
+		t.Errorf("Scan with OSV run = %q", run)
 	}
 	if got := steps["Report OSV findings"].Env["OSV_ENFORCE"]; got != "${{ github.event_name == 'pull_request' }}" {
 		t.Errorf("OSV_ENFORCE = %q", got)
+	}
+}
+
+// Every check pipeline gates on OSV the same way, so a fix to one reaches them all.
+func TestCheckPipelinesShareTheOSVScan(t *testing.T) {
+	want := secureSteps(t)
+	for _, pipeline := range []string{"library.yml", "website.yml"} {
+		got := scanSteps(t, pipeline)
+		for _, name := range []string{"Scan with OSV", "Report OSV findings"} {
+			if got[name].Run != want[name].Run || got[name].With["script"] != want[name].With["script"] ||
+				got[name].Env["OSV_ENFORCE"] != want[name].Env["OSV_ENFORCE"] {
+				t.Errorf("%s: %q differs from service.yml's", pipeline, name)
+			}
+		}
 	}
 }
 

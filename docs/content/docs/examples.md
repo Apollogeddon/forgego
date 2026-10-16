@@ -3,7 +3,7 @@ title: Examples
 weight: 6
 ---
 
-These recipes cover common changes to a Forge.go project's configuration and to the GitHub Actions workflow that calls Forge.go's reusable workflows.
+These recipes cover common changes to a Forge.go project's configuration and to `.github/workflows/.index.yml`, the GitHub Actions workflow that calls Forge.go's pipelines.
 
 ## Configuration patterns
 
@@ -106,19 +106,33 @@ GOFLAGS=-race task test
 
 ### Monorepos
 
-`forgego init -C services/api` scaffolds a subdirectory, using the repository's remote plus the subdirectory as the module path (`github.com/acme/platform/services/api`). GitHub only runs workflows from the repository root's `.github/workflows/`, so move the generated job there and point it at the subdirectory with `working_directory`, given relative to the repository root without a leading `./` or trailing `/`:
+`forgego init -C services/api` scaffolds a subdirectory, using the repository's remote plus the subdirectory as the module path (`github.com/acme/platform/services/api`). GitHub only runs workflows from the repository root's `.github/workflows/`, so move the generated jobs there and point each at the subdirectory with `working_directory`, given relative to the repository root without a leading `./` or trailing `/`. A second module's jobs name their variant in brackets, so the run page reads `service (api) / test`:
 
 ```yaml
 jobs:
-  api:
-    uses: apollogeddon/forgego/.github/workflows/service.yml@main
+  version-api:
+    name: version (api)
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'schedule' }}
+    uses: apollogeddon/forgego/.github/workflows/version.yml@main
     permissions:
       contents: write
       pull-requests: write
     with:
       working_directory: 'services/api'
-      go_version: '1.27'
+
+  service-api:
+    name: service (api)
+    needs: version-api
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.version-api.outputs.new_release_published == 'true') }}
+    uses: apollogeddon/forgego/.github/workflows/service.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      working_directory: 'services/api'
 ```
+
+Pass the same `working_directory` to the module's `publish`, `patch` and `docker` jobs.
 
 `version.yml` reads the module's own `services/api/.github/release.json` and `.release.json`, but release-please keys a package by its path from the repository root, so change the `"."` key in both to the subdirectory. Go also wants a subdirectory module's tags prefixed with its path (`services/api/v1.2.3`), so set that as the package's `component`, with `/` as the separator:
 
@@ -144,36 +158,40 @@ release-please then only counts commits under `services/api`, and each module in
 
 ### Testing across Go versions
 
-Call `testing.yml` from a matrix to run the quality, test and build jobs on several Go versions:
+Call a check pipeline once more with another `go_version` to run its stages on that Go too:
 
 ```yaml
 jobs:
-  test:
-    strategy:
-      matrix:
-        go: ['1.26', '1.27']
-    uses: apollogeddon/forgego/.github/workflows/testing.yml@main
+  service-go126:
+    name: service (go 1.26)
+    needs: version
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.version.outputs.new_release_published == 'true') }}
+    uses: apollogeddon/forgego/.github/workflows/service.yml@main
     permissions:
-      contents: write
+      contents: read
+      pull-requests: write
     with:
-      go_version: ${{ matrix.go }}
-      # artifact names must be unique per run, and security patching should only run once
-      artifact_name: dist-go${{ matrix.go }}
-      auto_patch: false
+      go_version: '1.26'
+      # artifact names must be unique per run
+      artifact_name: dist-go1.26
 ```
+
+Add it to `merge`'s `needs` so a Dependabot merge waits for it too.
 
 The pinned tools need Go 1.27, so on an older `go_version` the `toolchain` line in `go.mod` decides which Go actually runs the tools.
 
 ### Custom build steps
 
-`testing.yml` runs `task build` by default and uploads `dist/`; pass `build_command` and `artifact_path` to change them:
+The check pipelines' `build` stage runs `task build` by default and uploads `dist/`; pass `build_command` and `artifact_path` to change them:
 
 ```yaml
 jobs:
-  test:
-    uses: apollogeddon/forgego/.github/workflows/testing.yml@main
+  service:
+    # ...as generated
+    uses: apollogeddon/forgego/.github/workflows/service.yml@main
     permissions:
-      contents: write
+      contents: read
+      pull-requests: write
     with:
       build_command: 'go tool -modfile=.forgego/task/go.mod task build VERSION=ci'
       artifact_path: 'dist'
@@ -181,21 +199,21 @@ jobs:
 
 ### Releasing without binaries
 
-A service that's only ever deployed from its Docker image doesn't need GoReleaser to attach binaries. Turn the release job off:
+A service that's only ever deployed from its Docker image doesn't need GoReleaser to attach binaries. Turn GoReleaser off in the `publish` job, which then only publishes release-please's draft:
 
 ```yaml
 jobs:
-  service:
-    uses: apollogeddon/forgego/.github/workflows/service.yml@main
+  publish:
+    # ...as generated
+    uses: apollogeddon/forgego/.github/workflows/publish.yml@main
     permissions:
       contents: write
-      pull-requests: write
     with:
-      go_version: '1.27'
+      tag_name: ${{ needs.version.outputs.tag_name }}
       release_binaries: false
 ```
 
-Don't do this with `--debian`: the `.deb` is built by the same release job.
+Don't do this with `--debian`: the `.deb` is built by the same GoReleaser run.
 
 ### Building Docker images for more platforms
 
@@ -204,14 +222,15 @@ With `--docker`, CI builds `linux/amd64` and `linux/arm64`. Add platforms with t
 ```yaml
 jobs:
   docker:
-    needs: service
+    needs: [version, service]
+    if: ${{ !cancelled() && needs.service.result == 'success' }}
     uses: apollogeddon/forgego/.github/workflows/docker.yml@main
     permissions:
       contents: read
       packages: write
     with:
-      push: ${{ github.ref == 'refs/heads/main' && needs.service.outputs.new_release_published == 'true' }}
-      version: ${{ needs.service.outputs.version }}
+      push: ${{ needs.version.outputs.new_release_published == 'true' }}
+      version: ${{ needs.version.outputs.version }}
       platforms: 'linux/amd64,linux/arm64,linux/arm/v7'
 ```
 
@@ -219,14 +238,15 @@ The backend `Dockerfile` cross-compiles, so extra platforms cost build time but 
 
 ### Self-hosted runners
 
-Every workflow takes `runs_on`. Set it from a repository variable to switch runners without editing the workflow:
+Every pipeline takes `runs_on`. Set it on each job from a repository variable to switch runners without editing the workflow:
 
 ```yaml
 jobs:
   service:
+    # ...as generated
     uses: apollogeddon/forgego/.github/workflows/service.yml@main
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
     with:
       runs_on: ${{ vars.RUNS_ON || 'ubuntu-latest' }}

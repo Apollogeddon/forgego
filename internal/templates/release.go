@@ -90,7 +90,7 @@ if [ -d /run/systemd/system ]; then
 fi
 `
 
-// GoreleaserVersion is the GoReleaser the snapshot task runs, and service.yml's release job
+// GoreleaserVersion is the GoReleaser the snapshot task runs, and publish.yml's assets stage
 // installs through goreleaser-action; a test keeps the two in step.
 const GoreleaserVersion = "v2.18.2"
 
