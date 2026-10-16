@@ -1,0 +1,105 @@
+name: patch
+
+# Weekly or on a manual run: refreshes the files forgego manages, upgrades the modules govulncheck finds
+# vulnerable, and commits the result to main.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      working_directory:
+        description: "Directory holding go.mod"
+        required: false
+        type: string
+        default: '.'
+      go_version:
+        description: "Go version; empty reads the project's go.mod, else Go 1.27"
+        required: false
+        type: string
+        default: ''
+      apt_packages:
+        description: "apt packages to install before compiling, space-separated, e.g. the C libraries a cgo dependency needs; Ubuntu runners only"
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  update:
+    name: update
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      # the branch's tip rather than the triggering commit, so a patch committed earlier in the run is kept;
+      # keeps its credentials, to push the patch
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Install apt packages
+        if: inputs.apt_packages != ''
+        env:
+          PACKAGES: ${{ inputs.apt_packages }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # one word per package
+          sudo apt-get install -y --no-install-recommends $PACKAGES
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          # no module cache in a job that pushes to main
+          cache: false
+      # a Dependabot bump of forgego leaves the files it manages for this job to refresh
+      - name: Refresh forgego's files
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
+        run: go tool -modfile=.forgego/task/go.mod task sync
+      # sync is the only change in this checkout so far, and which files it touches varies
+      - name: Commit forgego's files
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "chore(deps): refresh the files forgego manages"
+          repository: ${{ inputs.working_directory }}
+      # govulncheck names the fixed version of each vulnerable module, so this upgrades
+      # just those. The standard library is fixed by a newer Go, not by go get.
+      - name: Upgrade vulnerable modules
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        run: |
+          go tool -modfile=.forgego/govulncheck/go.mod govulncheck -format json ./... > "$RUNNER_TEMP/govulncheck.json"
+          mapfile -t upgrades < <(jq -r '
+            select((.finding.fixed_version // "") != "")
+            | .finding
+            | select(.trace[0].module != "stdlib")
+            | "\(.trace[0].module)@\(.fixed_version)"' "$RUNNER_TEMP/govulncheck.json" | sort -u)
+          if [ "${#upgrades[@]}" -eq 0 ]; then exit 0; fi
+          go get "${upgrades[@]}"
+          go mod tidy
+      - name: Commit the patches
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "fix(deps): upgrade modules with known vulnerabilities via govulncheck"
+          file_pattern: 'go.mod go.sum'
+          repository: ${{ inputs.working_directory }}

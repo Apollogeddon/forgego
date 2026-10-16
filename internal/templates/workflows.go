@@ -1,9 +1,15 @@
 package templates
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
-// WorkflowRepo is where the reusable workflows a generated project calls live.
+// WorkflowRepo is where the pipelines a generated project calls live.
 const WorkflowRepo = "apollogeddon/forgego/.github/workflows/"
+
+// IndexWorkflow is the generated root workflow. Its leading dot keeps it apart from the pipelines it calls.
+const IndexWorkflow = ".github/workflows/.index.yml"
 
 // WorkflowOptions is what decides a project's generated CI.
 type WorkflowOptions struct {
@@ -14,74 +20,189 @@ type WorkflowOptions struct {
 	Versioning bool
 }
 
-const workflowHeader = `name: CI
+const workflowHeader = `name: index
 
 on:
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-  # sent by the auto-merge job, as a merge it makes starts no push run on main
+  workflow_dispatch:
+  # sent by the merge pipeline, as a merge it makes starts no push run on main
   repository_dispatch:
     types: [auto-merged]
+  # weekly, for the patch pipeline; a manual run patches too
+  schedule:
+    - cron: '17 3 * * 1'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  # never cancel a run on main mid-release, or the release is created but never published
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # a pull request's newer run replaces its older one; every other run has a group of its own, so a run on
+  # main, running or queued, is never cancelled and a release is never created without being published
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
 `
 
-const dockerJob = `
-  docker:
-    needs: __PIPELINE__
-    uses: ` + WorkflowRepo + `docker.yml@main
-    permissions:
-      contents: read
-      packages: write
-    with:
-      push: ${{ github.ref == 'refs/heads/main' && needs.__PIPELINE__.outputs.new_release_published == 'true' }}
-      version: ${{ needs.__PIPELINE__.outputs.version }}
-`
+const released = "needs.version.outputs.new_release_published == 'true'"
 
-// RenderWorkflow returns the project's .github/workflows/index.yml. Docker is its own job
-// after the pipeline, so a project without it carries no permanently skipped job.
-func RenderWorkflow(o WorkflowOptions) string {
-	job, workflow := "service", "service.yml"
-	permissions := []string{"contents: write", "pull-requests: write"}
-	switch o.Mode {
-	case "library":
-		job, workflow = "library", "library.yml"
-	case "website":
-		job, workflow = "website", "website.yml"
-		permissions = []string{"contents: write", "pages: write", "id-token: write", "pull-requests: write"}
+// input is one `with:` entry, kept in order.
+type input struct{ key, value string }
+
+// pipelineJob is one root job, which calls one pipeline, so a run page reads <pipeline> / <stage>.
+type pipelineJob struct {
+	id, comment, cond, pipeline string
+	needs                       []string
+	with                        []input
+	permissions                 []string
+}
+
+func expr(e string) string { return "${{ " + e + " }}" }
+
+func (j pipelineJob) render(b *strings.Builder) {
+	if j.comment != "" {
+		b.WriteString("  # " + j.comment + "\n")
 	}
+	b.WriteString("  " + j.id + ":\n")
+	switch len(j.needs) {
+	case 0:
+	case 1:
+		b.WriteString("    needs: " + j.needs[0] + "\n")
+	default:
+		b.WriteString("    needs: [" + strings.Join(j.needs, ", ") + "]\n")
+	}
+	if j.cond != "" {
+		b.WriteString("    if: " + expr(j.cond) + "\n")
+	}
+	b.WriteString("    uses: " + WorkflowRepo + j.pipeline + ".yml@main\n")
+	if len(j.with) > 0 {
+		b.WriteString("    with:\n")
+		for _, in := range j.with {
+			b.WriteString("      " + in.key + ": " + in.value + "\n")
+		}
+	}
+	b.WriteString("    permissions:\n")
+	for _, p := range j.permissions {
+		b.WriteString("      " + p + "\n")
+	}
+}
+
+// RenderWorkflow returns the project's .github/workflows/.index.yml. Pull requests run the checks, main runs
+// release-please and, on a release, the checks again before shipping, and a weekly run patches.
+func RenderWorkflow(o WorkflowOptions) string {
+	checks := "service"
+	switch o.Mode {
+	case "library", "website":
+		checks = o.Mode
+	}
+	var jobs []pipelineJob
+
+	if o.Versioning {
+		jobs = append(jobs, pipelineJob{
+			id: "version", comment: "release-please, on main",
+			cond:        "github.event_name != 'pull_request' && github.event_name != 'schedule'",
+			pipeline:    "version",
+			permissions: []string{"contents: write", "pull-requests: write"},
+		})
+	}
+
+	// Disabled standard features become pipeline inputs, so CI doesn't run what the project doesn't have;
+	// --no-versioning leaves out the version job, and with it the release checks and publish.
+	check := pipelineJob{
+		id: checks, pipeline: checks,
+		comment:     "the checks, on pull requests and every push to main",
+		cond:        "github.event_name != 'schedule'",
+		permissions: []string{"contents: read", "pull-requests: write"},
+	}
+	if o.Versioning {
+		check.comment = "a pull request's checks, and on main a release's, before it ships"
+		check.needs = []string{"version"}
+		check.cond = "!cancelled() && (github.event_name == 'pull_request' || " + released + ")"
+	}
+	if o.Mode != "website" {
+		if !o.Testing {
+			check.with = append(check.with, input{"run_tests", "false"})
+		}
+		if !o.Linting {
+			check.with = append(check.with, input{"lint", "false"})
+		}
+	}
+	jobs = append(jobs, check)
+	checkJobs := []string{checks}
+
+	afterChecks := "!cancelled() && needs." + checks + ".result == 'success'"
+	if o.Docker {
+		// it builds on pull requests, and builds and pushes on a release
+		docker := pipelineJob{
+			id: "docker", pipeline: "docker", needs: []string{checks}, cond: afterChecks,
+			permissions: []string{"contents: read", "packages: write"},
+		}
+		if o.Versioning {
+			docker.needs = []string{"version", checks}
+			docker.with = []input{{"push", expr(released)}, {"version", expr("needs.version.outputs.version")}}
+		}
+		jobs = append(jobs, docker)
+		checkJobs = append(checkJobs, "docker")
+	}
+
+	if o.Versioning && o.Mode != "website" {
+		publish := pipelineJob{
+			id: "publish", pipeline: "publish", needs: []string{"version", checks},
+			cond: afterChecks + " && " + released,
+		}
+		if o.Mode == "library" {
+			// the assets stage, which would need contents: write, is off, so the grant stays read-only
+			publish.comment = "the release, through the Go module proxy"
+			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}, {"package", "true"}, {"assets", "false"}}
+			publish.permissions = []string{"contents: read"}
+		} else {
+			publish.comment = "the release's binaries, built by GoReleaser and attached to the GitHub release"
+			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}}
+			publish.permissions = []string{"contents: write"}
+		}
+		jobs = append(jobs, publish)
+	}
+
+	if o.Mode == "website" {
+		pages := pipelineJob{
+			id: "pages", pipeline: "pages", comment: "every change to main, to GitHub Pages",
+			needs: []string{checks}, cond: "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'",
+			permissions: []string{"pages: write", "id-token: write"},
+		}
+		if o.Versioning {
+			pages.comment = "a release, to GitHub Pages"
+			pages.needs = []string{"version", checks}
+			pages.cond = afterChecks + " && " + released
+		}
+		jobs = append(jobs, pages)
+	}
+
+	jobs = append(jobs, pipelineJob{
+		id: "patch", pipeline: "patch",
+		comment:     "weekly or on a manual run, forgego's files refreshed and vulnerable modules upgraded on main",
+		cond:        "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+		permissions: []string{"contents: write"},
+	}, pipelineJob{
+		id: "merge", pipeline: "merge",
+		comment:     "Dependabot's pull requests: a review request, and a squash merge when the checks passed",
+		needs:       checkJobs,
+		cond:        "!cancelled() && github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'",
+		with:        []input{{"checks_passed", expr("!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')")}},
+		permissions: []string{"contents: write", "pull-requests: write"},
+	})
 
 	var b strings.Builder
 	b.WriteString(workflowHeader)
-	b.WriteString("  " + job + ":\n")
-	b.WriteString("    uses: " + WorkflowRepo + workflow + "@main\n")
-	b.WriteString("    permissions:\n")
-	for _, p := range permissions {
-		b.WriteString("      " + p + "\n")
-	}
-	b.WriteString("    with:\n")
-	// Disabled standard features become pipeline inputs, so CI doesn't run what the project doesn't have.
-	if !o.Testing && o.Mode != "website" {
-		b.WriteString("      run_tests: false\n")
-	}
-	if !o.Linting && o.Mode != "website" {
-		b.WriteString("      lint: false\n")
-	}
-	if !o.Versioning {
-		b.WriteString("      enable_versioning: false\n")
-	}
-	if o.Mode != "website" {
-		b.WriteString("      auto_patch: true\n")
-	}
-	if o.Docker {
-		b.WriteString(strings.ReplaceAll(dockerJob, "__PIPELINE__", job))
+	for i, j := range jobs {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		j.render(&b)
 	}
 	return b.String()
 }
+
+var forgegoPipeline = regexp.MustCompile(`(?i)apollogeddon/forgego/\.github/workflows/`)
+
+// CallsForgego reports whether a workflow calls forgego's pipelines, rather than being the project's own.
+func CallsForgego(content string) bool { return forgegoPipeline.MatchString(content) }

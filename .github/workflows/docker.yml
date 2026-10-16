@@ -1,4 +1,6 @@
-name: Docker Image
+name: docker
+
+# Builds a multi-platform image; with push, builds it again from scratch and pushes it to GitHub Container Registry.
 
 on:
   workflow_call:
@@ -14,7 +16,7 @@ on:
         type: string
         default: 'linux/amd64,linux/arm64'
       push:
-        description: "Push to the registry; otherwise build only (validates the Dockerfile on PRs)"
+        description: "Build and push to the registry in the push stage; otherwise the build stage builds only, which checks the Dockerfile"
         required: false
         type: boolean
         default: false
@@ -29,6 +31,7 @@ on:
         type: string
         default: ''
       working_directory:
+        description: "Directory holding the Dockerfile and the build context"
         required: false
         type: string
         default: '.'
@@ -58,15 +61,20 @@ on:
         type: string
         default: ''
 
-# Jobs inherit the calling job's token, which needs packages: write to push.
+
+# The generated Dockerfiles cross-compile on the build host, and their runtime stages run nothing, so
+# one job builds every platform without emulation; qemu is for a Dockerfile that doesn't.
 
 jobs:
-  # The generated Dockerfiles cross-compile on the build host, and their runtime stages run
-  # nothing, so one job builds every platform without emulation; qemu is for those that don't.
+  # the image, unpushed, so a pull request checks the Dockerfile
   build:
+    name: build
+    if: ${{ !inputs.push }}
     runs-on: ${{ inputs.runs_on }}
     # emulated builds are many times slower
     timeout-minutes: ${{ inputs.qemu && 90 || 30 }}
+    permissions:
+      contents: read
     env:
       DEFAULT_TAGS: |
         type=semver,pattern={{version}},value=${{ inputs.version }}
@@ -75,45 +83,36 @@ jobs:
         type=sha
         type=raw,value=latest
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Resolve image name
+      - name: Resolve the image name
         id: image
         env:
           IMAGE: ${{ inputs.image }}
           REPOSITORY: ${{ github.repository }}
         run: echo "image=$(echo "${IMAGE:-ghcr.io/$REPOSITORY}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-
-      # Without a Docker daemon there's no docker login, so write the credentials buildx reads instead.
-      - name: Registry credentials
-        if: inputs.push
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ACTOR: ${{ github.actor }}
-        run: |
-          mkdir -p ~/.docker
-          printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$(printf '%s:%s' "$ACTOR" "$TOKEN" | base64 -w0)" > ~/.docker/config.json
       # a remote BuildKit brings its own emulation, if any
-      - uses: docker/setup-qemu-action@v4
+      - name: Set up QEMU
         if: inputs.qemu && inputs.buildkit_endpoint == ''
-      - uses: docker/setup-buildx-action@v4
+        uses: docker/setup-qemu-action@v4
+      - name: Set up Buildx
         if: inputs.buildkit_endpoint == ''
+        uses: docker/setup-buildx-action@v4
       - name: Use the remote BuildKit
         if: inputs.buildkit_endpoint != ''
         env:
           ENDPOINT: ${{ inputs.buildkit_endpoint }}
         run: docker buildx create --name forgego --driver remote "$ENDPOINT" --use
-
-      - name: Compute tags
+      - name: Compute the tags
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.image }}
           tags: ${{ inputs.tags || env.DEFAULT_TAGS }}
-
-      # Pushed images build without a cache, which another repository's job could have planted layers in.
-      - uses: docker/build-push-action@v7
+      - name: Build
+        uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.working_directory }}
           file: ${{ inputs.dockerfile != '' && format('{0}/{1}', inputs.working_directory, inputs.dockerfile) || '' }}
@@ -121,11 +120,83 @@ jobs:
           build-args: |
             VERSION=${{ inputs.version || 'dev' }}
             ${{ inputs.build_args }}
-          push: ${{ inputs.push }}
-          no-cache: ${{ inputs.push }}
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          provenance: ${{ inputs.push && 'mode=max' || 'false' }}
-          sbom: ${{ inputs.push }}
-          cache-from: ${{ !inputs.push && 'type=gha' || '' }}
-          cache-to: ${{ !inputs.push && 'type=gha,mode=max' || '' }}
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # a release's image, tagged and pushed
+  push:
+    name: push
+    if: inputs.push
+    runs-on: ${{ inputs.runs_on }}
+    # emulated builds are many times slower
+    timeout-minutes: ${{ inputs.qemu && 90 || 30 }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DEFAULT_TAGS: |
+        type=semver,pattern={{version}},value=${{ inputs.version }}
+        type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+        type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
+        type=sha
+        type=raw,value=latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Resolve the image name
+        id: image
+        env:
+          IMAGE: ${{ inputs.image }}
+          REPOSITORY: ${{ github.repository }}
+        run: echo "image=$(echo "${IMAGE:-ghcr.io/$REPOSITORY}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+      # Without a Docker daemon there's no docker login, so write the credentials buildx reads instead.
+      - name: Write the registry credentials
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          mkdir -p ~/.docker
+          printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$(printf '%s:%s' "$ACTOR" "$TOKEN" | base64 -w0)" > ~/.docker/config.json
+      # a remote BuildKit brings its own emulation, if any
+      - name: Set up QEMU
+        if: inputs.qemu && inputs.buildkit_endpoint == ''
+        uses: docker/setup-qemu-action@v4
+      - name: Set up Buildx
+        if: inputs.buildkit_endpoint == ''
+        uses: docker/setup-buildx-action@v4
+      - name: Use the remote BuildKit
+        if: inputs.buildkit_endpoint != ''
+        env:
+          ENDPOINT: ${{ inputs.buildkit_endpoint }}
+        run: docker buildx create --name forgego --driver remote "$ENDPOINT" --use
+      - name: Compute the tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.image }}
+          tags: ${{ inputs.tags || env.DEFAULT_TAGS }}
+      # A pushed image builds without a cache, which another repository's job could have planted layers in.
+      - name: Push to GHCR
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.working_directory }}
+          file: ${{ inputs.dockerfile != '' && format('{0}/{1}', inputs.working_directory, inputs.dockerfile) || '' }}
+          platforms: ${{ inputs.platforms }}
+          build-args: |
+            VERSION=${{ inputs.version || 'dev' }}
+            ${{ inputs.build_args }}
+          push: true
+          no-cache: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+      - name: Forget the credentials
+        if: always()
+        run: rm -f ~/.docker/config.json

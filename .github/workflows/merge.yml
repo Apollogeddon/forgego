@@ -1,4 +1,6 @@
-name: Auto Merge
+name: merge
+
+# Dependabot's pull requests: a review request, then a squash merge once the checks pass.
 
 on:
   workflow_call:
@@ -8,20 +10,64 @@ on:
         required: false
         type: string
         default: 'ubuntu-latest'
+      reviewers:
+        description: "Comma-separated logins to request a review from; empty means the repository's owner, when that's a user"
+        required: false
+        type: string
+        default: ''
+      checks_passed:
+        description: "Whether the pull request's checks passed in this run; the squash waits for them"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
-  auto-merge:
+  # CODEOWNERS only requests reviews in a private repository on a paid plan, so Dependabot's pull
+  # requests ask for one here instead, on any plan, and whether the checks passed or not
+  review:
+    name: review
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Request a review
+        uses: actions/github-script@v9
+        env:
+          REVIEWERS: ${{ inputs.reviewers }}
+        with:
+          script: |
+            const number = context.payload.pull_request?.number;
+            if (!number) return core.notice('No pull request to request a review on');
+            let reviewers = process.env.REVIEWERS.split(',').map((login) => login.trim()).filter(Boolean);
+            if (reviewers.length === 0) {
+              // an organisation can't be requested, and names its reviewers through the input instead
+              const { data: repo } = await github.rest.repos.get(context.repo);
+              if (repo.owner.type !== 'User') return core.notice('The owner is an organisation; set reviewers to request one');
+              reviewers = [repo.owner.login];
+            }
+            // a review request is a courtesy, never a check: a failure here mustn't fail the pipeline
+            try {
+              await github.rest.pulls.requestReviewers({ ...context.repo, pull_number: number, reviewers });
+              core.info(`Requested a review from ${reviewers.join(', ')} on #${number}`);
+            } catch (error) {
+              core.warning(`Couldn't request a review on #${number}: ${error.message}`);
+            }
+
+  squash:
+    name: squash
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 15
-    # Dependabot opened the pull request and made its latest change. Not for GitHub Actions updates:
-    # they change workflow files, which GITHUB_TOKEN may never merge, so a person merges them
-    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/github_actions/')
+    # Dependabot opened the pull request and made its latest change, and the checks passed. Not for GitHub
+    # Actions updates: they change workflow files, which GITHUB_TOKEN may never merge, so a person merges them
+    if: inputs.checks_passed && github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/github_actions/')
     permissions:
       contents: write
       pull-requests: write
     steps:
       # Through the API rather than the gh CLI, which a self-hosted runner may not have
-      - name: Enable auto-merge for Dependabot PRs
+      - name: Enable auto-merge
         uses: actions/github-script@v9
         env:
           DISPATCH_TYPE: auto-merged
@@ -66,7 +112,7 @@ jobs:
               // passed (clean) or that only waits on checks it doesn't require (unstable), or on
               // any PR to a branch with no protection rules, as nothing would hold it back. Nor
               // where the plan doesn't offer auto-merge, as on a free account's private repository.
-              // Merge it now instead, as gh pr merge --auto does; this job runs after testing
+              // Merge it now instead, as gh pr merge --auto does; this job runs after the checks
               // passed, so no check is skipped
               const mergeable =
                 /is in (clean|unstable|has[ _]hooks) status|protected branch rules not configured|auto merge is not allowed/i;

@@ -1,4 +1,6 @@
-name: Go Website
+name: website
+
+# A Hugo website's checks: lint (forgego's files), scan, test (off by default), build, and checks of the built site. pages.yml deploys the build.
 
 on:
   workflow_call:
@@ -8,42 +10,18 @@ on:
         required: false
         type: string
         default: 'ubuntu-latest'
-      test_on_push:
-        description: "Run the checks on pushes too; false runs them on pull requests (and scheduled runs) only"
+      working_directory:
+        description: "Directory holding go.mod"
         required: false
-        type: boolean
-        default: true
-      test_release_prs:
-        description: "Run the checks on release-please's release pull requests"
-        required: false
-        type: boolean
-        default: true
-      enable_secrets:
-        required: false
-        type: boolean
-        default: true
+        type: string
+        default: '.'
       go_version:
         description: "Go version; empty reads the project's go.mod, else Go 1.27"
         required: false
         type: string
         default: ''
-      working_directory:
-        required: false
-        type: string
-        default: '.'
-      enable_versioning:
-        required: false
-        type: boolean
-        default: true
-      artifact_name:
-        required: false
-        type: string
-        default: 'dist'
-      build_command:
-        required: false
-        type: string
-        default: 'go tool -modfile=.forgego/task/go.mod task build'
-      auto_merge:
+      enable_secrets:
+        description: "Scan for secrets with Gitleaks"
         required: false
         type: boolean
         default: true
@@ -52,16 +30,16 @@ on:
         required: false
         type: boolean
         default: false
-      auto_patch:
-        description: "On main, upgrade the modules govulncheck finds vulnerable; off, as a Hugo site has none"
-        required: false
-        type: boolean
-        default: false
-      reviewers:
-        description: "Comma-separated logins to request a review of Dependabot's and release-please's pull requests from; empty means the repository's owner"
+      artifact_name:
+        description: "The build artifact's name"
         required: false
         type: string
-        default: ''
+        default: 'dist'
+      build_command:
+        description: "The command the build stage runs"
+        required: false
+        type: string
+        default: 'go tool -modfile=.forgego/task/go.mod task build'
       base_path:
         description: "The path the site is served under, e.g. /my-repo/ for a GitHub Pages project site, so the site checks resolve root-relative links; empty means /"
         required: false
@@ -97,100 +75,280 @@ on:
         required: false
         type: string
         default: 'serious'
-    outputs:
-      new_release_published:
-        description: "Whether a new release was published"
-        value: ${{ jobs.version.outputs.new_release_published }}
-      version:
-        description: "Released version (e.g. 1.2.3); empty when nothing was released"
-        value: ${{ jobs.version.outputs.version }}
-      tag_name:
-        description: "Released tag (e.g. v1.2.3); empty when nothing was released"
-        value: ${{ jobs.version.outputs.tag_name }}
 
 jobs:
-  testing:
-    # With test_on_push false, a push checks only when a release is made, in release-testing.
-    # Without versioning every push deploys, and only these checks build what it deploys, so they always run.
-    if: >-
-      (github.event_name != 'push' || inputs.test_on_push || !inputs.enable_versioning) &&
-      (inputs.test_release_prs || !startsWith(github.head_ref, 'release-please--'))
-    uses: ./.github/workflows/testing.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      working_directory: ${{ inputs.working_directory }}
-      go_version: ${{ inputs.go_version }}
-      enable_secrets: ${{ inputs.enable_secrets }}
-      lint: false
-      run_tests: ${{ inputs.run_tests }}
-      auto_patch: ${{ inputs.auto_patch }}
-      artifact_name: ${{ inputs.artifact_name }}
-      artifact_path: public
-      build_command: ${{ inputs.build_command }}
-
-  # Dependabot's pull requests ask for a review as they open, before the checks, so a failing
-  # update reaches the reviewer too
-  review:
-    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
-    uses: ./.github/workflows/review.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      reviewers: ${{ inputs.reviewers }}
-    permissions:
-      pull-requests: write
-
-  auto-merge:
-    uses: ./.github/workflows/merge.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-    needs: [testing, site-checks]
-    # the site checks are skipped unless turned on, which mustn't skip the merge
-    if: ${{ !failure() && !cancelled() && inputs.auto_merge && needs.testing.result == 'success' }}
-    permissions:
-      contents: write
-      pull-requests: write
-
-  version:
-    # Runs when the checks were skipped, as on a push to main with test_on_push false, but not when they failed.
-    if: ${{ !failure() && !cancelled() && inputs.enable_versioning }}
-    uses: ./.github/workflows/version.yml
-    needs: [testing]
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      working_directory: ${{ inputs.working_directory }}
-      reviewers: ${{ inputs.reviewers }}
-
-  release-testing:
-    # With test_on_push false, a push to main is checked and built only when release-please made a release.
-    needs: [version]
-    if: >-
-      !cancelled() && github.event_name == 'push' && !inputs.test_on_push &&
-      (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
-    uses: ./.github/workflows/testing.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      working_directory: ${{ inputs.working_directory }}
-      go_version: ${{ inputs.go_version }}
-      enable_secrets: ${{ inputs.enable_secrets }}
-      lint: false
-      run_tests: ${{ inputs.run_tests }}
-      auto_patch: ${{ inputs.auto_patch }}
-      artifact_name: ${{ inputs.artifact_name }}
-      artifact_path: public
-      build_command: ${{ inputs.build_command }}
-
-  # Links and accessibility, checked on the built artifact the deploy ships.
-  site-checks:
+  lint:
+    name: lint
     runs-on: ${{ inputs.runs_on }}
-    timeout-minutes: 20
-    needs: [testing, release-testing]
-    if: >-
-      !failure() && !cancelled() && (inputs.check_links || inputs.check_accessibility) &&
-      (needs.testing.result == 'success' || needs['release-testing'].result == 'success')
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Check forgego's files are current
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.actor != 'dependabot[bot]'
+        run: go tool -modfile=.forgego/task/go.mod task sync-check
+      # a Dependabot bump of forgego changes the files it manages: lint against them refreshed, and the
+      # patch pipeline commits them
+      - name: Refresh forgego's files
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.actor == 'dependabot[bot]'
+        run: go tool -modfile=.forgego/task/go.mod task sync
+
+  scan:
+    name: scan
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Gitleaks reads a pull request's commits and comments on the one it finds a secret in
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Scan with Gitleaks
+        if: inputs.enable_secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # A high or critical finding (CVSS 7 or more) fails a pull request; elsewhere it's annotated
+      # instead, so releases and the patch pipeline that fixes it still run. Accept one with an
+      # IgnoredVulns entry in an osv-scanner.toml beside the go.mod
+      - name: Scan with OSV
+        id: osv
+        run: |
+          curl -sL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          # 0: nothing found, 1: vulnerabilities found, 128: no lockfile, anything else: no scan
+          status=0
+          "$RUNNER_TEMP/osv-scanner" scan source -r --format json --output-file "$RUNNER_TEMP/osv.json" . || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          rm "$RUNNER_TEMP/osv-scanner"
+      - name: Report OSV findings
+        uses: actions/github-script@v9
+        env:
+          OSV_STATUS: ${{ steps.osv.outputs.status }}
+          OSV_REPORT: ${{ runner.temp }}/osv.json
+          OSV_ENFORCE: ${{ github.event_name == 'pull_request' }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const status = Number(process.env.OSV_STATUS);
+            if (status === 128) {
+              core.info('No lockfiles to scan');
+              return;
+            }
+            if ((status !== 0 && status !== 1) || !fs.existsSync(process.env.OSV_REPORT)) {
+              core.warning(`OSV-Scanner couldn't finish (exit ${status}), so dependencies weren't checked; see the scan step's log`, { title: 'OSV scan incomplete' });
+              return;
+            }
+            const report = JSON.parse(fs.readFileSync(process.env.OSV_REPORT, 'utf8'));
+            // a GitHub advisory's rating when an advisory has no CVSS score
+            const ratings = { CRITICAL: 9, HIGH: 7, MODERATE: 4, MEDIUM: 4, LOW: 1 };
+            const rows = [];
+            let blocking = 0;
+            for (const result of report.results ?? []) {
+              const file = path.relative(process.env.GITHUB_WORKSPACE, result.source.path);
+              for (const { package: pkg, vulnerabilities = [], groups = [] } of result.packages ?? []) {
+                for (const group of groups) {
+                  const vulns = vulnerabilities.filter((v) => group.ids.includes(v.id));
+                  let score = Number.parseFloat(group.max_severity);
+                  if (Number.isNaN(score)) {
+                    score = Math.max(0, ...vulns.map((v) => ratings[String(v.database_specific?.severity).toUpperCase()] ?? 0));
+                  }
+                  const high = score >= 7;
+                  const message = `${pkg.name} ${pkg.version}: ${group.ids.join(', ')} ${vulns[0]?.summary ?? ''} (severity ${score || 'unknown'})`;
+                  if (high) {
+                    blocking++;
+                    core.error(message, { title: 'High or critical vulnerability', file });
+                  } else {
+                    core.warning(message, { title: 'Vulnerability', file });
+                  }
+                  rows.push([file, `${pkg.name} ${pkg.version}`, group.ids.join(', '), String(score || 'unknown')]);
+                }
+              }
+            }
+            if (rows.length) {
+              await core.summary
+                .addHeading('OSV-Scanner findings', 3)
+                .addTable([['Lockfile', 'Package', 'Advisories', 'Severity'], ...rows])
+                .write();
+            }
+            const found = `${blocking} high or critical ${blocking === 1 ? 'vulnerability' : 'vulnerabilities'}`;
+            if (blocking && process.env.OSV_ENFORCE === 'true') {
+              core.setFailed(`${found}: update the packages, or record an accepted one in osv-scanner.toml`);
+            } else if (blocking) {
+              core.warning(`${found}: this fails pull requests until they're updated, as the patch pipeline may do`, { title: 'OSV scan' });
+            } else {
+              core.info(`${rows.length} found, none high or critical`);
+            }
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      # Reports only the vulnerabilities the code actually calls. It doesn't fail the checks, as the
+      # patch pipeline upgrades the vulnerable modules
+      - name: Scan with govulncheck
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        run: |
+          go tool -modfile=.forgego/govulncheck/go.mod govulncheck ./... ||
+            echo "::warning::govulncheck found vulnerabilities the code calls; the patch pipeline upgrades them on main"
+
+  test:
+    name: test
+    if: inputs.run_tests
+    needs: [lint, scan]
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Test
+        # the race detector needs cgo, which GitHub's Ubuntu runners have
+        env:
+          GOFLAGS: -race
+        run: go tool -modfile=.forgego/task/go.mod task test
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ inputs.artifact_name }}
+          path: |
+            ${{ inputs.working_directory }}/coverage.out
+            ${{ inputs.working_directory }}/junit-report.xml
+          if-no-files-found: ignore
+
+  build:
+    name: build
+    # only needs the lint and scan to pass, so it runs alongside the tests
+    needs: [lint, scan]
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.working_directory }}/public
+          if-no-files-found: ignore
+
+  # Links and accessibility, checked on the uploaded build the deploy ships
+  check:
+    name: check
+    if: inputs.check_links || inputs.check_accessibility
+    needs: [build]
+    runs-on: ${{ inputs.runs_on }}
+    # installing a browser and visiting every page takes longer than a build
+    timeout-minutes: ${{ inputs.check_accessibility && 20 || 10 }}
     permissions:
       contents: read
     steps:
-      - uses: actions/download-artifact@v8
+      - name: Download the build
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ runner.temp }}/forgego-site
@@ -215,7 +373,7 @@ jobs:
           cp -R "$BUILD/." "$root$base"
           remap=''
           if [ -n "$origin" ]; then
-            remap="--remap '^$(sed 's/[.]/\\./g' <<< "$origin")/ file://$root/'"
+            remap="--remap '^${origin//./\\.}/ file://$root/'"
           fi
           {
             echo "root=$root"
@@ -241,7 +399,8 @@ jobs:
           fail: true
           failIfEmpty: false
           jobSummary: true
-      - uses: actions/setup-node@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
         if: ${{ !cancelled() && inputs.check_accessibility && steps.site.outcome == 'success' }}
         with:
           node-version: lts/*
@@ -365,34 +524,3 @@ jobs:
           PAGES: ${{ inputs.accessibility_paths }}
           IMPACT: ${{ inputs.accessibility_impact }}
         run: node "$RUNNER_TEMP/a11y/check.mjs"
-
-  deploy:
-    runs-on: ${{ inputs.runs_on }}
-    timeout-minutes: 10
-    needs: [testing, version, release-testing, site-checks]
-    # !failure() rather than success(), so a skipped version or checks job doesn't skip the deploy
-    if: |
-      !failure() && !cancelled() &&
-      github.ref == 'refs/heads/main' &&
-      (needs.testing.result == 'success' || needs['release-testing'].result == 'success') &&
-      (needs.version.result == 'success' || needs.version.result == 'skipped') &&
-      (!inputs.enable_versioning || needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      pages: write
-      id-token: write
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ inputs.artifact_name }}
-          path: ./pages-artifact
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: ./pages-artifact
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5

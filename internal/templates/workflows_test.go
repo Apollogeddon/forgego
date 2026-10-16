@@ -1,8 +1,10 @@
 package templates
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -10,68 +12,451 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-type callerJob struct {
-	Uses string         `yaml:"uses"`
-	With map[string]any `yaml:"with"`
+var workflowsDir = filepath.Join("..", "..", ".github", "workflows")
+
+type step struct {
+	Name string            `yaml:"name"`
+	ID   string            `yaml:"id"`
+	If   string            `yaml:"if"`
+	Uses string            `yaml:"uses"`
+	Run  string            `yaml:"run"`
+	Env  map[string]string `yaml:"env"`
+	With map[string]string `yaml:"with"`
 }
 
-type reusable struct {
-	On struct {
-		WorkflowCall struct {
-			Inputs  map[string]any `yaml:"inputs"`
-			Outputs map[string]any `yaml:"outputs"`
-		} `yaml:"workflow_call"`
-	} `yaml:"on"`
-}
+type stringList []string
 
-func readReusable(t *testing.T, name string) reusable {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", name))
-	if err != nil {
-		t.Fatal(err)
+// needs is a job id or a list of them
+func (l *stringList) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		*l = []string{n.Value}
+		return nil
 	}
-	var w reusable
-	if err := yaml.Unmarshal(b, &w); err != nil {
+	var list []string
+	err := n.Decode(&list)
+	*l = list
+	return err
+}
+
+type job struct {
+	Name        string            `yaml:"name"`
+	If          string            `yaml:"if"`
+	Uses        string            `yaml:"uses"`
+	Needs       stringList        `yaml:"needs"`
+	With        map[string]any    `yaml:"with"`
+	Secrets     map[string]any    `yaml:"secrets"`
+	Permissions map[string]string `yaml:"permissions"`
+	Outputs     map[string]string `yaml:"outputs"`
+	Strategy    struct {
+		Matrix map[string]string `yaml:"matrix"`
+	} `yaml:"strategy"`
+	Steps []step `yaml:"steps"`
+}
+
+type callInput struct {
+	Default  any  `yaml:"default"`
+	Required bool `yaml:"required"`
+}
+
+type workflow struct {
+	Name string `yaml:"name"`
+	On   struct {
+		WorkflowCall *struct {
+			Inputs  map[string]callInput      `yaml:"inputs"`
+			Outputs map[string]any            `yaml:"outputs"`
+			Secrets map[string]map[string]any `yaml:"secrets"`
+		} `yaml:"workflow_call"`
+		RepositoryDispatch struct {
+			Types []string `yaml:"types"`
+		} `yaml:"repository_dispatch"`
+	} `yaml:"on"`
+	Concurrency map[string]any `yaml:"concurrency"`
+	Jobs        map[string]job `yaml:"jobs"`
+}
+
+func parse(t *testing.T, name, text string) workflow {
+	t.Helper()
+	var w workflow
+	if err := yaml.Unmarshal([]byte(text), &w); err != nil {
 		t.Fatalf("%s: %v", name, err)
 	}
 	return w
 }
 
-// The generated CI calls forgego's workflows remotely, where actionlint can't check its inputs.
-func TestGeneratedWorkflowsOnlyPassDeclaredInputs(t *testing.T) {
-	for _, mode := range []string{"backend", "library", "website"} {
-		for _, docker := range []bool{false, true} {
-			if docker && mode == "library" {
-				continue
+func readWorkflow(t *testing.T, name string) workflow {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(workflowsDir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parse(t, name, string(b))
+}
+
+func readText(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(workflowsDir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// The spec's stages: a run page reads <pipeline> / <stage>, the same words in every forge.
+var stages = map[string][]string{
+	"library": {"lint", "scan", "test", "build"},
+	"service": {"lint", "scan", "test", "test (windows)", "test (macos)", "build"},
+	"website": {"lint", "scan", "test", "build", "check"},
+	"docker":  {"build", "test", "push"},
+	"version": {"release"},
+	"publish": {"package", "assets", "attest"},
+	"pages":   {"deploy", "check"},
+	"patch":   {"update"},
+	"merge":   {"review", "squash"},
+}
+
+var variant = regexp.MustCompile(` \([^)]+\)$`)
+
+func pipelineFiles(t *testing.T) (pipelines, roots []string) {
+	t.Helper()
+	entries, err := os.ReadDir(workflowsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			roots = append(roots, e.Name())
+		} else {
+			pipelines = append(pipelines, e.Name())
+		}
+	}
+	return pipelines, roots
+}
+
+func TestThePipelinesAndOneRootWorkflow(t *testing.T) {
+	pipelines, roots := pipelineFiles(t)
+	var names []string
+	for _, p := range pipelines {
+		names = append(names, strings.TrimSuffix(p, ".yml"))
+	}
+	if want := slices.Sorted(maps.Keys(stages)); !slices.Equal(names, want) {
+		t.Errorf("pipelines = %v, want %v", names, want)
+	}
+	if !slices.Equal(roots, []string{".index.yml"}) || readWorkflow(t, ".index.yml").Name != "index" {
+		t.Errorf("root workflows = %v, want .index.yml named index", roots)
+	}
+}
+
+// A pipeline is only ever called, and calls no other: that would add a third level to the run page's names.
+// Each job is named with a stage from the spec, its id the stage in kebab case.
+func TestPipelinesAreFlatAndNamedByStage(t *testing.T) {
+	pipelines, _ := pipelineFiles(t)
+	for _, file := range pipelines {
+		pipeline := strings.TrimSuffix(file, ".yml")
+		text := readText(t, file)
+		var on map[string]any
+		var raw struct {
+			On map[string]any `yaml:"on"`
+		}
+		if err := yaml.Unmarshal([]byte(text), &raw); err != nil {
+			t.Fatal(err)
+		}
+		on = raw.On
+		if len(on) != 1 || on["workflow_call"] == nil {
+			t.Errorf("%s: triggered by %v, want workflow_call alone", file, slices.Collect(maps.Keys(on)))
+		}
+		w := parse(t, file, text)
+		if w.Name != pipeline {
+			t.Errorf("%s: name = %q", file, w.Name)
+		}
+		for id, j := range w.Jobs {
+			if j.Uses != "" {
+				t.Errorf("%s: %s calls %s", file, id, j.Uses)
 			}
-			out := RenderWorkflow(WorkflowOptions{Mode: mode, Docker: docker})
-			var w struct {
-				Jobs map[string]callerJob `yaml:"jobs"`
+			stage := variant.ReplaceAllString(j.Name, "")
+			if !slices.Contains(stages[pipeline], j.Name) && !slices.Contains(stages[pipeline], stage) {
+				t.Errorf("%s: %s is named %q, not a stage of %s", file, id, j.Name, pipeline)
 			}
-			if err := yaml.Unmarshal([]byte(out), &w); err != nil {
-				t.Fatalf("%s: %v\n%s", mode, err, out)
+			// a skipped job shows its name unevaluated, so a name never takes a matrix's values
+			want := strings.ReplaceAll(strings.NewReplacer("(", "", ")", "").Replace(j.Name), " ", "-")
+			if strings.Contains(j.Name, "${{") {
+				t.Errorf("%s: %s's name %q is an expression", file, id, j.Name)
+			} else if id != want {
+				t.Errorf("%s: job id %s, want %s for %q", file, id, want, j.Name)
 			}
-			for name, job := range w.Jobs {
-				file := strings.TrimSuffix(strings.TrimPrefix(job.Uses, WorkflowRepo), "@main")
-				declared := readReusable(t, file).On.WorkflowCall
-				for input := range job.With {
-					if _, ok := declared.Inputs[input]; !ok {
-						t.Errorf("%s: job %s passes %s, which %s doesn't declare", mode, name, input, file)
-					}
+			for i, s := range j.Steps {
+				if s.Name == "" {
+					t.Errorf("%s: %s's step %d has no name", file, id, i+1)
 				}
 			}
 		}
 	}
 }
 
-// The docker job reads the pipeline's release outputs.
-func TestPipelinesExposeReleaseOutputs(t *testing.T) {
-	for _, file := range []string{"service.yml", "library.yml", "website.yml"} {
-		outputs := readReusable(t, file).On.WorkflowCall.Outputs
-		for _, want := range []string{"new_release_published", "version", "tag_name"} {
-			if _, ok := outputs[want]; !ok {
-				t.Errorf("%s has no %s output", file, want)
+var levels = map[string]int{"": 0, "none": 0, "read": 1, "write": 2}
+
+// expectWiring checks a root workflow's calls: each passes only inputs the pipeline declares, and all it
+// requires; grants every permission the pipeline's jobs ask for, as GitHub refuses the whole run otherwise; and
+// reads only outputs the pipeline declares.
+func expectWiring(t *testing.T, caller string, w workflow, resolve func(uses string) (string, bool)) {
+	t.Helper()
+	for id, j := range w.Jobs {
+		if j.Uses == "" {
+			if id != "changes" {
+				t.Errorf("%s: %s is a job of its own; only changes may be", caller, id)
 			}
+			continue
+		}
+		file, ok := resolve(j.Uses)
+		if !ok {
+			t.Errorf("%s: %s calls %s", caller, id, j.Uses)
+			continue
+		}
+		pipeline := strings.TrimSuffix(file, ".yml")
+		// the root job's id is the pipeline's name, and a variant names itself in brackets
+		if id == pipeline {
+			if j.Name != "" {
+				t.Errorf("%s: %s is named %q", caller, id, j.Name)
+			}
+		} else if !regexp.MustCompile(`^` + pipeline + ` \([^)]+\)$`).MatchString(j.Name) {
+			t.Errorf("%s: %s calls %s but is named %q", caller, id, file, j.Name)
+		}
+		called := readWorkflow(t, file)
+		declared := called.On.WorkflowCall.Inputs
+		for in := range j.With {
+			if _, ok := declared[in]; !ok {
+				t.Errorf("%s: %s passes %s, which %s doesn't declare", caller, id, in, file)
+			}
+		}
+		for in, spec := range declared {
+			if _, ok := j.With[in]; spec.Required && !ok {
+				t.Errorf("%s: %s misses %s's required %s", caller, id, file, in)
+			}
+		}
+		for secret := range j.Secrets {
+			if _, ok := called.On.WorkflowCall.Secrets[secret]; !ok {
+				t.Errorf("%s: %s passes secret %s, which %s doesn't declare", caller, id, secret, file)
+			}
+		}
+		for calledID, calledJob := range called.Jobs {
+			for scope, level := range calledJob.Permissions {
+				if levels[j.Permissions[scope]] < levels[level] {
+					t.Errorf("%s: %s grants %s too little %s for %s", caller, id, file, scope, calledID)
+				}
+			}
+		}
+	}
+	text, err := yaml.Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range regexp.MustCompile(`needs\.([\w-]+)\.outputs\.(\w+)`).FindAllStringSubmatch(string(text), -1) {
+		file, ok := resolve(w.Jobs[m[1]].Uses)
+		if !ok {
+			continue
+		}
+		if _, ok := readWorkflow(t, file).On.WorkflowCall.Outputs[m[2]]; !ok {
+			t.Errorf("%s reads %s.%s, which %s doesn't declare", caller, m[1], m[2], file)
+		}
+	}
+}
+
+func TestOwnIndexCallsLocalPipelines(t *testing.T) {
+	w := readWorkflow(t, ".index.yml")
+	expectWiring(t, ".index.yml", w, func(uses string) (string, bool) {
+		return strings.CutPrefix(uses, "./.github/workflows/")
+	})
+	if w.Jobs["changes"].Name != "changes" {
+		t.Errorf("changes is named %q", w.Jobs["changes"].Name)
+	}
+	if w.Jobs["service"].Uses == "" || w.Jobs["publish"].Uses == "" ||
+		w.Jobs["website"].With["working_directory"] != "docs" ||
+		w.Jobs["pages"].With["artifact_name"] != w.Jobs["website"].With["artifact_name"] {
+		t.Errorf("forgego's own CI doesn't check, release and deploy its docs: %+v", w.Jobs)
+	}
+	if !slices.Equal(w.Jobs["merge"].Needs, []string{"changes", "service", "website"}) {
+		t.Errorf("merge needs %v", w.Jobs["merge"].Needs)
+	}
+	generated := parse(t, "generated", RenderWorkflow(WorkflowOptions{Mode: "backend", Testing: true, Linting: true, Versioning: true}))
+	if !maps.Equal(w.Concurrency, generated.Concurrency) {
+		t.Errorf("concurrency = %v, want the generated %v", w.Concurrency, generated.Concurrency)
+	}
+	if w.Jobs["patch"].If != "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" {
+		t.Errorf("patch if = %q", w.Jobs["patch"].If)
+	}
+}
+
+// Every combination init can write.
+func allOptions() map[string]WorkflowOptions {
+	all := map[string]WorkflowOptions{}
+	for _, mode := range []string{"backend", "library", "website"} {
+		for _, docker := range []bool{false, true} {
+			for _, tests := range []bool{false, true} {
+				for _, linting := range []bool{false, true} {
+					for _, versioning := range []bool{false, true} {
+						o := WorkflowOptions{Mode: mode, Docker: docker, Testing: tests, Linting: linting, Versioning: versioning}
+						name := mode
+						for flag, on := range map[string]bool{" docker": docker, " no-testing": !tests, " no-linting": !linting, " no-versioning": !versioning} {
+							if on {
+								name += flag
+							}
+						}
+						all[name] = o
+					}
+				}
+			}
+		}
+	}
+	return all
+}
+
+var atMain = regexp.MustCompile(`^apollogeddon/forgego/\.github/workflows/([\w-]+\.yml)@main$`)
+
+func TestGeneratedIndexCallsForgegosPipelines(t *testing.T) {
+	sent := regexp.MustCompile(`DISPATCH_TYPE: ([\w-]+)`).FindStringSubmatch(readText(t, "merge.yml"))
+	if sent == nil {
+		t.Fatal("merge.yml sends no repository_dispatch with a DISPATCH_TYPE")
+	}
+	for name, o := range allOptions() {
+		w := parse(t, name, RenderWorkflow(o))
+		expectWiring(t, name, w, func(uses string) (string, bool) {
+			m := atMain.FindStringSubmatch(uses)
+			if m == nil {
+				return "", false
+			}
+			return m[1], true
+		})
+		// a merge made with GITHUB_TOKEN starts no push run, so merge.yml sends a dispatch the root must listen for
+		if !slices.Equal(w.On.RepositoryDispatch.Types, []string{sent[1]}) {
+			t.Errorf("%s listens for repository_dispatch %v, want [%s]", name, w.On.RepositoryDispatch.Types, sent[1])
+		}
+		// each run outside a pull request has a group of its own, so a queued run on main is never cancelled
+		if w.Concurrency["group"] != "${{ github.workflow }}-${{ github.head_ref || github.run_id }}" || w.Concurrency["cancel-in-progress"] != true {
+			t.Errorf("%s: concurrency = %v", name, w.Concurrency)
+		}
+		if w.Jobs["patch"].If != "${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}" {
+			t.Errorf("%s: patch if = %q", name, w.Jobs["patch"].If)
+		}
+		for id, j := range w.Jobs {
+			// only GitHub Pages needs an OIDC token
+			if _, ok := j.Permissions["id-token"]; ok && id != "pages" {
+				t.Errorf("%s: %s asks for id-token", name, id)
+			}
+			if j.Secrets != nil {
+				t.Errorf("%s: %s passes secrets", name, id)
+			}
+		}
+	}
+}
+
+func TestGeneratedJobsPerMode(t *testing.T) {
+	for _, c := range []struct {
+		o    WorkflowOptions
+		jobs []string
+	}{
+		{WorkflowOptions{Mode: "backend", Versioning: true}, []string{"version", "service", "publish", "patch", "merge"}},
+		{WorkflowOptions{Mode: "library", Versioning: true}, []string{"version", "library", "publish", "patch", "merge"}},
+		{WorkflowOptions{Mode: "website", Versioning: true}, []string{"version", "website", "pages", "patch", "merge"}},
+		{WorkflowOptions{Mode: "backend", Docker: true, Versioning: true}, []string{"version", "service", "docker", "publish", "patch", "merge"}},
+		{WorkflowOptions{Mode: "backend"}, []string{"service", "patch", "merge"}},
+		{WorkflowOptions{Mode: "website"}, []string{"website", "pages", "patch", "merge"}},
+	} {
+		var w yaml.Node
+		if err := yaml.Unmarshal([]byte(RenderWorkflow(c.o)), &w); err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		root := w.Content[0]
+		for i := 0; i < len(root.Content); i += 2 {
+			if root.Content[i].Value == "jobs" {
+				for k := 0; k < len(root.Content[i+1].Content); k += 2 {
+					ids = append(ids, root.Content[i+1].Content[k].Value)
+				}
+			}
+		}
+		if !slices.Equal(ids, c.jobs) {
+			t.Errorf("%+v: jobs %v, want %v", c.o, ids, c.jobs)
+		}
+	}
+}
+
+func TestGeneratedIndexGatesOnTheChecksAndTheRelease(t *testing.T) {
+	jobs := parse(t, "backend", RenderWorkflow(WorkflowOptions{Mode: "backend", Docker: true, Testing: true, Linting: true, Versioning: true})).Jobs
+	if !strings.Contains(jobs["service"].If, "github.event_name == 'pull_request' || needs.version.outputs.new_release_published == 'true'") {
+		t.Errorf("service if = %q; want it on pull requests and releases", jobs["service"].If)
+	}
+	if !strings.Contains(jobs["publish"].If, "needs.service.result == 'success'") || jobs["publish"].With["tag_name"] != "${{ needs.version.outputs.tag_name }}" {
+		t.Errorf("publish = %+v", jobs["publish"])
+	}
+	if jobs["docker"].With["push"] != "${{ needs.version.outputs.new_release_published == 'true' }}" {
+		t.Errorf("docker push = %v; want it only on a release", jobs["docker"].With["push"])
+	}
+	if !slices.Equal(jobs["merge"].Needs, []string{"service", "docker"}) ||
+		jobs["merge"].With["checks_passed"] != "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}" {
+		t.Errorf("merge = %+v; want it to wait for every check", jobs["merge"])
+	}
+
+	// a library's publish only fetches through the proxy, so its grant stays read-only
+	library := parse(t, "library", RenderWorkflow(WorkflowOptions{Mode: "library", Versioning: true})).Jobs["publish"]
+	if library.With["package"] != true || library.With["assets"] != false || !maps.Equal(library.Permissions, map[string]string{"contents": "read"}) {
+		t.Errorf("library publish = %+v", library)
+	}
+
+	disabled := parse(t, "disabled", RenderWorkflow(WorkflowOptions{Mode: "backend"})).Jobs["service"]
+	if disabled.With["run_tests"] != false || disabled.With["lint"] != false || disabled.If != "${{ github.event_name != 'schedule' }}" {
+		t.Errorf("service = %+v; want the disabled features off, and the checks on every push", disabled)
+	}
+
+	unversioned := parse(t, "website", RenderWorkflow(WorkflowOptions{Mode: "website"})).Jobs["pages"]
+	if unversioned.If != "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}" {
+		t.Errorf("pages if = %q; want every change to main deployed", unversioned.If)
+	}
+}
+
+func TestCallsForgego(t *testing.T) {
+	for content, want := range map[string]bool{
+		"uses: apollogeddon/forgego/.github/workflows/service.yml@main": true,
+		"uses: Apollogeddon/forgego/.github/workflows/library.yml@v1":   true,
+		"uses: someone/else/.github/workflows/ci.yml@v1":                false,
+		"runs-on: ubuntu-latest":                                        false,
+	} {
+		if got := CallsForgego(content); got != want {
+			t.Errorf("CallsForgego(%q) = %v", content, got)
+		}
+	}
+}
+
+func legacyFixture(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "legacy", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestLegacyWorkflowsAreKnown(t *testing.T) {
+	const old = ".github/workflows/index.yml"
+	for _, name := range []string{"main-backend.yml", "main-library.yml", "main-website.yml", "v1.0.0-backend.yml", "v1.6.1-library.yml"} {
+		if !IsLegacyWorkflow(old, legacyFixture(t, name)) {
+			t.Errorf("%s isn't known", name)
+		}
+	}
+	// line endings, trailing spaces, blank lines and the Go version an old release copied from go.mod
+	text := strings.ReplaceAll(legacyFixture(t, "v1.0.0-backend.yml"), "go_version: '1.27'", "go_version: '1.25.3'")
+	if !IsLegacyWorkflow(old, strings.ReplaceAll(text, "\n", "  \r\n\r\n")) {
+		t.Error("a reformatted old workflow isn't known")
+	}
+	changed := strings.Replace(legacyFixture(t, "main-library.yml"), "    with:\n", "    with:\n      runs_on: xerus\n", 1)
+	if changed == legacyFixture(t, "main-library.yml") {
+		t.Fatal("the fixture has no with:")
+	}
+	if IsLegacyWorkflow(old, changed) || IsLegacyWorkflow(".github/workflows/build.yml", legacyFixture(t, "main-library.yml")) {
+		t.Error("a changed workflow, or one under another name, is known")
+	}
+	// the new root workflow is never mistaken for an old one
+	for name, o := range allOptions() {
+		if IsLegacyWorkflow(old, RenderWorkflow(o)) {
+			t.Errorf("%s: the new workflow counts as an old one", name)
 		}
 	}
 }
@@ -79,373 +464,176 @@ func TestPipelinesExposeReleaseOutputs(t *testing.T) {
 // A module in a subdirectory keeps its release-please config in its own .github/, and
 // release-please prefixes its outputs with its path.
 func TestVersionUsesWorkingDirectory(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "version.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var w struct {
-		Jobs map[string]struct {
-			Outputs map[string]string `yaml:"outputs"`
-			Steps   []struct {
-				Uses string            `yaml:"uses"`
-				With map[string]string `yaml:"with"`
-			} `yaml:"steps"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(b, &w); err != nil {
-		t.Fatal(err)
-	}
-	job := w.Jobs["release-please"]
-	for _, step := range job.Steps {
-		if !strings.HasPrefix(step.Uses, "googleapis/release-please-action") {
+	release := readWorkflow(t, "version.yml").Jobs["release"]
+	for _, s := range release.Steps {
+		if !strings.HasPrefix(s.Uses, "googleapis/release-please-action") {
 			continue
 		}
 		for key, file := range map[string]string{"config-file": "release.json", "manifest-file": ".release.json"} {
-			if want := "format('{0}/.github/" + file + "', inputs.working_directory)"; !strings.Contains(step.With[key], want) {
-				t.Errorf("%s = %q, want it to contain %s", key, step.With[key], want)
+			if want := "format('{0}/.github/" + file + "', inputs.working_directory)"; !strings.Contains(s.With[key], want) {
+				t.Errorf("%s = %q, want it to contain %s", key, s.With[key], want)
 			}
 		}
 	}
 	for _, key := range []string{"release_created", "version", "tag_name"} {
-		if want := "format('{0}--" + key + "', inputs.working_directory)"; !strings.Contains(job.Outputs[key], want) {
-			t.Errorf("output %s = %q, want it to contain %s", key, job.Outputs[key], want)
+		if want := "format('{0}--" + key + "', inputs.working_directory)"; !strings.Contains(release.Outputs[key], want) {
+			t.Errorf("output %s = %q, want it to contain %s", key, release.Outputs[key], want)
 		}
 	}
 	// releases_created is true when any package is released, not just this one,
 	// so it only counts for the root package
-	_, published, _ := strings.Cut(string(b), "new_release_published:")
+	_, published, _ := strings.Cut(readText(t, "version.yml"), "new_release_published:")
 	published, _, _ = strings.Cut(published, "\n      version:")
 	beforeRoot, rootClause, found := strings.Cut(published, "inputs.working_directory == '.' && ")
 	if !found || strings.Contains(beforeRoot, "releases_created") ||
-		!strings.HasPrefix(rootClause, "(jobs.release-please.outputs.releases_created") {
+		!strings.HasPrefix(rootClause, "(jobs.release.outputs.releases_created") {
 		t.Errorf("new_release_published counts releases_created beyond the root package: %s", published)
 	}
 }
 
-type reviewJob struct {
-	If    string         `yaml:"if"`
-	Uses  string         `yaml:"uses"`
-	Needs []string       `yaml:"needs"`
-	With  map[string]any `yaml:"with"`
+func stepNamed(j job, name string) step {
+	for _, s := range j.Steps {
+		if s.Name == name {
+			return s
+		}
+	}
+	return step{}
 }
 
-func readJobs(t *testing.T, name string) map[string]reviewJob {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var w struct {
-		Jobs map[string]reviewJob `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(b, &w); err != nil {
-		t.Fatalf("%s: %v", name, err)
-	}
-	return w.Jobs
-}
-
-// CODEOWNERS requests nothing in a private repository on a free plan, so each pipeline asks
-// itself, and before the checks, so a failing update reaches the reviewer too.
+// CODEOWNERS requests nothing in a private repository on a free plan, so the release pull request and
+// Dependabot's ask themselves, and a review request never fails the pipeline.
 func TestBotPullRequestsRequestAReview(t *testing.T) {
-	for _, name := range []string{"library.yml", "service.yml", "website.yml"} {
-		jobs := readJobs(t, name)
-		review := jobs["review"]
-		if review.Uses != "./.github/workflows/review.yml" || len(review.Needs) != 0 ||
-			!strings.Contains(review.If, "github.event.pull_request.user.login == 'dependabot[bot]'") {
-			t.Errorf("%s: review = %+v", name, review)
-		}
-		if review.With["reviewers"] != "${{ inputs.reviewers }}" || jobs["version"].With["reviewers"] != "${{ inputs.reviewers }}" {
-			t.Errorf("%s: reviewers aren't passed on", name)
-		}
+	release := stepNamed(readWorkflow(t, "version.yml").Jobs["release"], "Request a review")
+	if release.If != "steps.release.outputs.pr != ''" || release.Env["REVIEWERS"] != "${{ inputs.reviewers }}" {
+		t.Errorf("version.yml's review step = %+v", release)
 	}
-	review := readJobs(t, "version.yml")["review"]
-	if len(review.Needs) != 1 || review.Needs[0] != "release-please" ||
-		review.With["pull_request"] != "${{ needs.release-please.outputs.pr_number }}" {
-		t.Errorf("version.yml: review = %+v", review)
+	review := readWorkflow(t, "merge.yml").Jobs["review"]
+	// before the checks, and whatever they found, so a failing update reaches the reviewer too
+	if len(review.Needs) != 0 || strings.Contains(review.If, "checks_passed") ||
+		!strings.Contains(review.If, "github.event.pull_request.user.login == 'dependabot[bot]'") {
+		t.Errorf("merge.yml's review = %+v", review)
 	}
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "review.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), "catch (error)") || !strings.Contains(string(b), "core.warning") {
-		t.Error("review.yml can fail the pipeline")
-	}
-}
-
-// actionlint checks a local call's inputs too, but only where it's installed.
-func TestLocalCallsOnlyPassDeclaredInputs(t *testing.T) {
-	entries, err := os.ReadDir(filepath.Join("..", "..", ".github", "workflows"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var w struct {
-			Jobs map[string]callerJob `yaml:"jobs"`
-		}
-		if err := yaml.Unmarshal(b, &w); err != nil {
-			t.Fatalf("%s: %v", entry.Name(), err)
-		}
-		for name, job := range w.Jobs {
-			file, ok := strings.CutPrefix(job.Uses, "./.github/workflows/")
-			if !ok {
-				continue
-			}
-			declared := readReusable(t, file).On.WorkflowCall.Inputs
-			for input := range job.With {
-				if _, ok := declared[input]; !ok {
-					t.Errorf("%s: job %s passes %s, which %s doesn't declare", entry.Name(), name, input, file)
-				}
-			}
+	for _, s := range []step{release, stepNamed(review, "Request a review")} {
+		if !strings.Contains(s.With["script"], "catch (error)") || !strings.Contains(s.With["script"], "core.warning") {
+			t.Error("a review request can fail the pipeline")
 		}
 	}
 }
 
-type matrixJob struct {
-	If       string   `yaml:"if"`
-	Needs    []string `yaml:"needs"`
-	Strategy struct {
-		Matrix map[string]string `yaml:"matrix"`
-	} `yaml:"strategy"`
-}
-
-func readMatrixJobs(t *testing.T, name string) map[string]matrixJob {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var w struct {
-		Jobs map[string]matrixJob `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(b, &w); err != nil {
-		t.Fatalf("%s: %v", name, err)
-	}
-	return w.Jobs
-}
-
-// The extra runners and native builds are opt-in: their defaults run nothing, and an empty
-// matrix would fail every caller's workflow, so each job is skipped before its matrix expands.
-func TestRunnerListsDefaultToNothing(t *testing.T) {
-	for _, c := range []struct{ file, job, input string }{
-		{"testing.yml", "extra", "extra_runners"},
-		{"service.yml", "native-build", "native_builds"},
-	} {
-		input, _ := readReusable(t, c.file).On.WorkflowCall.Inputs[c.input].(map[string]any)
-		if input["default"] != "[]" {
-			t.Errorf("%s: %s defaults to %v, want []", c.file, c.input, input["default"])
+// The Windows and macOS stages and the native builds are opt-in: their defaults run nothing, and an empty
+// matrix would fail every caller's workflow, so the native builds are skipped before their matrix expands.
+func TestRunnerStagesDefaultToNothing(t *testing.T) {
+	service := readWorkflow(t, "service.yml")
+	for _, system := range []string{"windows", "macos"} {
+		in := "test_" + system
+		if service.On.WorkflowCall.Inputs[in].Default != "" {
+			t.Errorf("%s defaults to %v", in, service.On.WorkflowCall.Inputs[in].Default)
 		}
-		job := readMatrixJobs(t, c.file)[c.job]
-		if !strings.Contains(job.If, "inputs."+c.input+" != '[]'") || !strings.Contains(job.If, "inputs."+c.input+" != ''") {
-			t.Errorf("%s: %s runs with an empty %s: if = %q", c.file, c.job, c.input, job.If)
+		j := service.Jobs["test-"+system]
+		if j.If != "inputs."+in+" != ''" || !slices.Equal(j.Needs, []string{"lint", "scan"}) {
+			t.Errorf("test-%s = if %q, needs %v", system, j.If, j.Needs)
 		}
-		if job.Strategy.Matrix["target"] != "${{ fromJSON(inputs."+c.input+") }}" {
-			t.Errorf("%s: %s matrix = %v", c.file, c.job, job.Strategy.Matrix)
-		}
+	}
+	publish := readWorkflow(t, "publish.yml")
+	if publish.On.WorkflowCall.Inputs["native_builds"].Default != "[]" {
+		t.Errorf("native_builds defaults to %v", publish.On.WorkflowCall.Inputs["native_builds"].Default)
+	}
+	native := publish.Jobs["assets-native"]
+	if !strings.Contains(native.If, "inputs.native_builds != '[]'") || !strings.Contains(native.If, "inputs.native_builds != ''") ||
+		native.Strategy.Matrix["target"] != "${{ fromJSON(inputs.native_builds) }}" {
+		t.Errorf("assets-native = if %q, matrix %v", native.If, native.Strategy.Matrix)
+	}
+	// a published release may be immutable, so everything is attached before assets publishes the draft
+	if assets := publish.Jobs["assets"]; !slices.Equal(assets.Needs, []string{"assets-native"}) ||
+		!strings.Contains(assets.If, "needs.assets-native.result != 'failure'") {
+		t.Errorf("assets = needs %v, if %q", assets.Needs, assets.If)
 	}
 }
 
-// A published release may be immutable, so everything is attached before the release job
-// publishes the draft, and the patch job waits for every runner's tests.
-func TestEverythingWaitsForTheRunnerLists(t *testing.T) {
-	if needs := readMatrixJobs(t, "testing.yml")["patch"].Needs; !slices.Contains(needs, "extra") {
-		t.Errorf("testing.yml: patch needs %v, want extra too", needs)
-	}
-	if needs := readMatrixJobs(t, "service.yml")["release"].Needs; !slices.Contains(needs, "native-build") {
-		t.Errorf("service.yml: release needs %v, want native-build too", needs)
-	}
-	jobs := readJobs(t, "service.yml")
-	for _, job := range []string{"testing", "release-testing"} {
-		for _, input := range []string{"extra_runners", "extra_test_task", "setup_script", "artifact_name", "artifact_path", "build_command"} {
-			if jobs[job].With[input] != "${{ inputs."+input+" }}" {
-				t.Errorf("service.yml: %s doesn't pass %s on", job, input)
-			}
+// publish's package and native builds ask for only what they need; assets asks for nothing and takes the
+// caller's grant, so a library's caller, which turns assets off, never grants contents: write.
+func TestPublishCapsItsPermissions(t *testing.T) {
+	jobs := readWorkflow(t, "publish.yml").Jobs
+	for _, id := range []string{"package", "assets-native"} {
+		if !maps.Equal(jobs[id].Permissions, map[string]string{"contents": "read"}) {
+			t.Errorf("%s permissions = %v", id, jobs[id].Permissions)
 		}
+	}
+	if jobs["assets"].Permissions != nil {
+		t.Errorf("assets permissions = %v, want the caller's", jobs["assets"].Permissions)
+	}
+	if jobs["package"].If != "inputs.package" || !strings.Contains(jobs["assets"].If, "inputs.assets") {
+		t.Errorf("package if = %q, assets if = %q", jobs["package"].If, jobs["assets"].If)
 	}
 }
 
-// The site checks are opt-in, and while they're off they mustn't skip the deploy or the merge.
+// The site checks are opt-in, and check the build the deploy ships.
 func TestSiteChecksAreOptIn(t *testing.T) {
-	inputs := readReusable(t, "website.yml").On.WorkflowCall.Inputs
+	w := readWorkflow(t, "website.yml")
 	for name, want := range map[string]any{
 		"check_links": false, "check_external_links": false, "link_check_args": "",
 		"check_accessibility": false, "accessibility_paths": "", "accessibility_impact": "serious", "base_path": "",
 	} {
-		input, _ := inputs[name].(map[string]any)
-		if input["default"] != want {
-			t.Errorf("%s defaults to %v, want %v", name, input["default"], want)
+		if got := w.On.WorkflowCall.Inputs[name].Default; got != want {
+			t.Errorf("%s defaults to %v, want %v", name, got, want)
 		}
 	}
-	jobs := readJobs(t, "website.yml")
-	if !strings.Contains(jobs["site-checks"].If, "inputs.check_links || inputs.check_accessibility") {
-		t.Errorf("site-checks runs with both checks off: if = %q", jobs["site-checks"].If)
-	}
-	for _, name := range []string{"deploy", "auto-merge"} {
-		job := jobs[name]
-		if !slices.Contains(job.Needs, "site-checks") || !strings.Contains(job.If, "!failure()") {
-			t.Errorf("%s: needs %v, if = %q; want it to wait for site-checks and run when they're skipped", name, job.Needs, job.If)
-		}
+	check := w.Jobs["check"]
+	if check.If != "inputs.check_links || inputs.check_accessibility" || !slices.Equal(check.Needs, []string{"build"}) {
+		t.Errorf("check = if %q, needs %v", check.If, check.Needs)
 	}
 }
 
-// Signing and skipping the checks are opt-in: by default the release job imports no key and
-// service.yml runs its own checks.
+// Signing is opt-in: by default assets imports no key.
 func TestReleaseSigningIsOptIn(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "service.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var w struct {
-		On struct {
-			WorkflowCall struct {
-				Inputs  map[string]map[string]any `yaml:"inputs"`
-				Secrets map[string]map[string]any `yaml:"secrets"`
-			} `yaml:"workflow_call"`
-		} `yaml:"on"`
-		Jobs map[string]struct {
-			If    string `yaml:"if"`
-			Steps []struct {
-				If   string `yaml:"if"`
-				Uses string `yaml:"uses"`
-				Run  string `yaml:"run"`
-			} `yaml:"steps"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(b, &w); err != nil {
-		t.Fatal(err)
-	}
-	call := w.On.WorkflowCall
-	if call.Inputs["gpg_sign"]["default"] != false || call.Inputs["run_checks"]["default"] != true {
-		t.Errorf("gpg_sign = %v, run_checks = %v", call.Inputs["gpg_sign"], call.Inputs["run_checks"])
+	call := readWorkflow(t, "publish.yml").On.WorkflowCall
+	if call.Inputs["gpg_sign"].Default != false {
+		t.Errorf("gpg_sign = %v", call.Inputs["gpg_sign"])
 	}
 	for _, secret := range []string{"GPG_PRIVATE_KEY", "GPG_PASSPHRASE"} {
 		if required, _ := call.Secrets[secret]["required"].(bool); call.Secrets[secret] == nil || required {
 			t.Errorf("secret %s = %v, want it declared and optional", secret, call.Secrets[secret])
 		}
 	}
-	for _, step := range w.Jobs["release"].Steps {
-		if (strings.HasPrefix(step.Uses, "crazy-max/ghaction-import-gpg") || strings.Contains(step.Run, "GPG_FINGERPRINT")) &&
-			step.If != "inputs.gpg_sign" {
-			t.Errorf("release step %q runs without gpg_sign: if = %q", step.Uses+step.Run, step.If)
-		}
-	}
-	for _, job := range []string{"testing", "release-testing"} {
-		if !strings.Contains(w.Jobs[job].If, "inputs.run_checks") {
-			t.Errorf("%s runs with run_checks off: if = %q", job, w.Jobs[job].If)
-		}
-	}
-}
-
-// A merge made with GITHUB_TOKEN starts no push run, so merge.yml sends a repository_dispatch
-// that every generated workflow, and this repository's own, must listen for.
-func TestAutoMergeDispatchIsListenedFor(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "merge.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var merge struct {
-		Jobs map[string]struct {
-			Steps []struct {
-				Env  map[string]string `yaml:"env"`
-				With struct {
-					Script string `yaml:"script"`
-				} `yaml:"with"`
-			} `yaml:"steps"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(b, &merge); err != nil {
-		t.Fatal(err)
-	}
-	var sent string
-	for _, step := range merge.Jobs["auto-merge"].Steps {
-		if strings.Contains(step.With.Script, "createDispatchEvent") {
-			sent = step.Env["DISPATCH_TYPE"]
-		}
-	}
-	if sent == "" {
-		t.Fatal("merge.yml's auto-merge job sends no repository_dispatch with a DISPATCH_TYPE")
-	}
-
-	own, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", ".index.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	workflows := map[string]string{".index.yml": string(own)}
-	for _, mode := range []string{"backend", "library", "website"} {
-		workflows[mode] = RenderWorkflow(WorkflowOptions{Mode: mode})
-	}
-	for name, workflow := range workflows {
-		var w struct {
-			On struct {
-				RepositoryDispatch struct {
-					Types []string `yaml:"types"`
-				} `yaml:"repository_dispatch"`
-			} `yaml:"on"`
-		}
-		if err := yaml.Unmarshal([]byte(workflow), &w); err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		if got := w.On.RepositoryDispatch.Types; !slices.Equal(got, []string{sent}) {
-			t.Errorf("%s listens for repository_dispatch types %v, want [%s]", name, got, sent)
+	for _, s := range readWorkflow(t, "publish.yml").Jobs["assets"].Steps {
+		if (strings.HasPrefix(s.Uses, "crazy-max/ghaction-import-gpg") || strings.Contains(s.Run, "GPG_FINGERPRINT")) &&
+			s.If != "inputs.gpg_sign" {
+			t.Errorf("assets step %q runs without gpg_sign: if = %q", s.Name, s.If)
 		}
 	}
 }
 
 // A release is built with exactly the GoReleaser the snapshot task tried it with.
 func TestReleaseRunsTheSnapshotsGoReleaser(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "service.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var w struct {
-		Jobs map[string]struct {
-			Steps []struct {
-				Uses string            `yaml:"uses"`
-				With map[string]string `yaml:"with"`
-			} `yaml:"steps"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(b, &w); err != nil {
-		t.Fatal(err)
-	}
 	found := 0
-	for _, job := range w.Jobs {
-		for _, step := range job.Steps {
-			if strings.HasPrefix(step.Uses, "goreleaser/goreleaser-action@") {
-				found++
-				if step.With["version"] != GoreleaserVersion {
-					t.Errorf("goreleaser-action version = %q, want %q", step.With["version"], GoreleaserVersion)
+	pipelines, _ := pipelineFiles(t)
+	for _, file := range pipelines {
+		for _, j := range readWorkflow(t, file).Jobs {
+			for _, s := range j.Steps {
+				if strings.HasPrefix(s.Uses, "goreleaser/goreleaser-action@") {
+					found++
+					if file != "publish.yml" || s.With["version"] != GoreleaserVersion {
+						t.Errorf("%s: goreleaser-action version = %q, want %q in publish.yml", file, s.With["version"], GoreleaserVersion)
+					}
 				}
 			}
 		}
 	}
-	if found == 0 {
-		t.Fatal("no goreleaser-action step in service.yml")
+	if found != 1 {
+		t.Fatalf("%d goreleaser-action steps, want publish.yml's one", found)
 	}
 }
 
-// The author alone would merge someone else's push to Dependabot's branch, and the actor alone
-// a pull request someone else opened that Dependabot then updated.
-func TestAutoMergeNeedsDependabotToOpenThePullRequestAndMakeItsLatestChange(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "merge.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var w struct {
-		Jobs map[string]struct {
-			If string `yaml:"if"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(b, &w); err != nil {
-		t.Fatal(err)
-	}
-	gate := w.Jobs["auto-merge"].If
-	for _, want := range []string{"github.event.pull_request.user.login == 'dependabot[bot]' && ", "github.actor == 'dependabot[bot]' && "} {
-		if !strings.Contains(gate, want) || strings.Contains(gate, "||") {
-			t.Errorf("auto-merge if = %q, want it to need %q", gate, want)
+// The author alone would merge someone else's push to Dependabot's branch, and the actor alone a pull request
+// someone else opened that Dependabot then updated; and nothing merges before the checks pass.
+func TestSquashNeedsDependabotAndPassingChecks(t *testing.T) {
+	squash := readWorkflow(t, "merge.yml").Jobs["squash"]
+	for _, want := range []string{"inputs.checks_passed && ", "github.event.pull_request.user.login == 'dependabot[bot]' && ", "github.actor == 'dependabot[bot]' && "} {
+		if !strings.Contains(squash.If, want) || strings.Contains(squash.If, "||") {
+			t.Errorf("squash if = %q, want it to need %q", squash.If, want)
 		}
+	}
+	if s := stepNamed(squash, "Enable auto-merge"); s.Env["DISPATCH_TYPE"] != "auto-merged" || !strings.Contains(s.With["script"], "createDispatchEvent") {
+		t.Errorf("squash doesn't send the auto-merged dispatch: %+v", s)
 	}
 }

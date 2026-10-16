@@ -2,6 +2,8 @@ package core
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -89,7 +91,7 @@ func TestBackend(t *testing.T) {
 		".forgego/task/go.mod", ".forgego/task/go.sum", ".forgego/golangci-lint/go.mod", ".forgego/gotestsum/go.mod",
 		".forgego/govulncheck/go.mod", ".forgego/lefthook/go.mod", ".forgego/golangci.yml",
 		".golangci.yml", ".golangci.local.yml", "lefthook.yml", ".goreleaser.yaml",
-		".github/release.json", ".github/.release.json", ".github/workflows/index.yml", "Taskfile.yml",
+		".github/release.json", ".github/.release.json", ".github/workflows/.index.yml", "Taskfile.yml",
 	)
 	refuteFiles(t, fs, ".forgego/hugo/go.mod", "Dockerfile", "hugo.toml")
 	if got := read(t, fs, "go.mod"); got != "module billing-api\n\ngo 1.27.0\n" {
@@ -277,10 +279,10 @@ func TestDebianRunsTheServiceAsItsOwnUser(t *testing.T) {
 }
 
 type workflow struct {
-	Concurrency map[string]string `yaml:"concurrency"`
+	Concurrency map[string]any `yaml:"concurrency"`
 	Jobs        map[string]struct {
 		Uses        string            `yaml:"uses"`
-		Needs       string            `yaml:"needs"`
+		Needs       any               `yaml:"needs"`
 		Secrets     any               `yaml:"secrets"`
 		Permissions map[string]string `yaml:"permissions"`
 		With        map[string]any    `yaml:"with"`
@@ -298,25 +300,26 @@ func TestGeneratedWorkflowIsLeastPrivilegeAndNeverCancelsMain(t *testing.T) {
 		fs := fsys.NewMemory(nil)
 		run(t, fs, edit)
 		var w workflow
-		if err := yaml.Unmarshal([]byte(read(t, fs, ".github/workflows/index.yml")), &w); err != nil {
+		if err := yaml.Unmarshal([]byte(read(t, fs, templates.IndexWorkflow)), &w); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if !strings.Contains(w.Concurrency["cancel-in-progress"], "refs/heads/main") {
-			t.Errorf("%s: cancels runs on main", name)
+		// a run outside a pull request has a group of its own, so one on main is never cancelled
+		if group, _ := w.Concurrency["group"].(string); !strings.Contains(group, "github.head_ref || github.run_id") {
+			t.Errorf("%s: concurrency group %q can cancel runs on main", name, group)
 		}
 		for job, j := range w.Jobs {
 			if j.Secrets != nil {
 				t.Errorf("%s: %s passes secrets", name, job)
 			}
-			if _, ok := j.Permissions["id-token"]; ok && job != "website" {
+			if _, ok := j.Permissions["id-token"]; ok && job != "pages" {
 				t.Errorf("%s: %s asks for id-token", name, job)
 			}
-			if !strings.HasPrefix(j.Uses, "apollogeddon/forgego/.github/workflows/") {
+			if !strings.HasPrefix(j.Uses, "apollogeddon/forgego/.github/workflows/"+job+".yml@main") {
 				t.Errorf("%s: %s uses %s", name, job, j.Uses)
 			}
 		}
-		if edit != nil && strings.Contains(name, "docker") && w.Jobs["docker"].Needs == "" {
-			t.Errorf("%s: no docker job after the pipeline", name)
+		if strings.Contains(name, "docker") && w.Jobs["docker"].Needs == nil {
+			t.Errorf("%s: no docker job after the checks", name)
 		}
 	}
 }
@@ -325,12 +328,80 @@ func TestDisabledFeaturesBecomeWorkflowInputs(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, func(c *config.Init) { c.Testing, c.Versioning, c.Linting = false, false, false })
 	var w workflow
-	if err := yaml.Unmarshal([]byte(read(t, fs, ".github/workflows/index.yml")), &w); err != nil {
+	if err := yaml.Unmarshal([]byte(read(t, fs, templates.IndexWorkflow)), &w); err != nil {
 		t.Fatal(err)
 	}
 	with := w.Jobs["service"].With
-	if with["run_tests"] != false || with["enable_versioning"] != false || with["lint"] != false || with["go_version"] != nil {
+	if with["run_tests"] != false || with["lint"] != false || with["go_version"] != nil {
 		t.Errorf("with = %v", with)
+	}
+	// without versioning there's no release to wait for, so no version job and nothing to publish
+	if _, ok := w.Jobs["version"]; ok {
+		t.Error("--no-versioning still has a version job")
+	}
+	if _, ok := w.Jobs["publish"]; ok {
+		t.Error("--no-versioning still publishes")
+	}
+}
+
+const oldWorkflow = ".github/workflows/index.yml"
+
+// what main generated for a backend before the root .index.yml replaced it
+func legacyBackend(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "templates", "testdata", "legacy", "main-backend.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func initOutput(t *testing.T, fs *fsys.Memory, edit func(*config.Init)) string {
+	t.Helper()
+	var out strings.Builder
+	console.SetOutput(&out, &out)
+	defer console.SetOutput(io.Discard, io.Discard)
+	run(t, fs, edit)
+	return out.String()
+}
+
+func TestAnOldGeneratedWorkflowIsReplaced(t *testing.T) {
+	legacy := legacyBackend(t)
+	changed := strings.Replace(legacy, "    with:\n", "    with:\n      runs_on: xerus\n", 1)
+	own := "jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go test ./...\n"
+	for _, c := range []struct {
+		name, content string
+		existing      bool // .index.yml is already there, and kept
+		edit          func(*config.Init)
+		kept          bool
+		says          string
+	}{
+		{name: "unchanged", content: legacy, says: "Removed " + oldWorkflow},
+		{name: "changed", content: changed, kept: true, says: "has been changed since init wrote it"},
+		{name: "changed, with --force", content: changed, edit: func(c *config.Init) { c.Force = true }},
+		{name: "dry run", content: legacy, edit: func(c *config.Init) { c.DryRun = true }, kept: true, says: "Would remove " + oldWorkflow},
+		// without a new workflow written, removing the old one would leave the project with no CI
+		{name: ".index.yml kept", content: legacy, existing: true, kept: true},
+		{name: "the project's own", content: own, edit: func(c *config.Init) { c.Force = true }, kept: true, says: "Left " + oldWorkflow},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			files := map[string]string{dir + "/" + oldWorkflow: c.content}
+			if c.existing {
+				files[dir+"/"+templates.IndexWorkflow] = "name: own\n"
+			}
+			fs := fsys.NewMemory(files)
+			out := initOutput(t, fs, c.edit)
+			content, err := fs.ReadFile(dir + "/" + oldWorkflow)
+			if kept := err == nil; kept != c.kept || (kept && content != c.content) {
+				t.Errorf("kept = %v, want %v", kept, c.kept)
+			}
+			if !strings.Contains(out, c.says) {
+				t.Errorf("output doesn't say %q:\n%s", c.says, out)
+			}
+			if c.existing && read(t, fs, templates.IndexWorkflow) != "name: own\n" {
+				t.Error("overwrote the kept .index.yml")
+			}
+		})
 	}
 }
 
@@ -483,7 +554,7 @@ func TestAnExistingGoModsGoVersionDrivesCIUnlessGoIsGiven(t *testing.T) {
 	fs := fsys.NewMemory(map[string]string{dir + "/go.mod": "module example.com/api\n\ngo 1.25.3\n"})
 	run(t, fs, func(c *config.Init) { c.Go = ""; c.Docker = true })
 	// CI reads go.mod itself, so the generated workflow names no version
-	if strings.Contains(read(t, fs, ".github/workflows/index.yml"), "go_version") {
+	if strings.Contains(read(t, fs, templates.IndexWorkflow), "go_version") {
 		t.Error("the generated workflow pins a Go version instead of reading go.mod")
 	}
 	if !strings.Contains(read(t, fs, "Dockerfile"), "golang:1.25 AS build") {

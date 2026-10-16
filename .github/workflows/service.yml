@@ -1,4 +1,6 @@
-name: Go Service
+name: service
+
+# A service's checks: lint, scan, test (with Windows and macOS when asked) and build. publish.yml ships the release.
 
 on:
   workflow_call:
@@ -8,25 +10,11 @@ on:
         required: false
         type: string
         default: 'ubuntu-latest'
-      test_on_push:
-        description: "Run the checks on pushes too; false runs them on pull requests (and scheduled runs) only"
+      working_directory:
+        description: "Directory holding go.mod"
         required: false
-        type: boolean
-        default: true
-      test_release_prs:
-        description: "Run the checks on release-please's release pull requests"
-        required: false
-        type: boolean
-        default: true
-      run_checks:
-        description: "Run testing.yml's checks and build here; false skips them, for a caller that runs its own checks and calls this workflow after them with needs"
-        required: false
-        type: boolean
-        default: true
-      enable_secrets:
-        required: false
-        type: boolean
-        default: true
+        type: string
+        default: '.'
       go_version:
         description: "Go version; empty reads the project's go.mod, else Go 1.27"
         required: false
@@ -37,207 +25,74 @@ on:
         required: false
         type: string
         default: ''
-      working_directory:
-        required: false
-        type: string
-        default: '.'
-      enable_versioning:
-        required: false
-        type: boolean
-        default: true
-      auto_patch:
-        description: "On main, upgrade the modules govulncheck finds vulnerable and commit the result"
-        required: false
-        type: boolean
-        default: true
-      run_tests:
+      enable_secrets:
+        description: "Scan for secrets with Gitleaks"
         required: false
         type: boolean
         default: true
       lint:
-        description: "Run golangci-lint; false for a project scaffolded with --no-linting"
+        description: "Run golangci-lint and check go.mod is tidy; init --no-linting sets it to false"
         required: false
         type: boolean
         default: true
-      release_binaries:
-        description: "Build the release binaries with GoReleaser and attach them to the release"
+      run_tests:
+        description: "Run the test suite; init --no-testing sets it to false"
         required: false
         type: boolean
         default: true
-      reviewers:
-        description: "Comma-separated logins to request a review of Dependabot's and release-please's pull requests from; empty means the repository's owner"
-        required: false
-        type: string
-        default: ''
       artifact_name:
+        description: "The build artifact's name"
         required: false
         type: string
         default: 'dist'
       artifact_path:
-        description: "What the build writes, relative to working_directory; native builds attach every file in it"
+        description: "What the build writes, relative to working_directory"
         required: false
         type: string
         default: 'dist'
       build_command:
+        description: "The command the build stage runs"
         required: false
         type: string
         default: 'go tool -modfile=.forgego/task/go.mod task build'
-      extra_runners:
-        description: 'JSON list of more runners to test and build on, each a label or {"runs_on", "name", "env"}'
+      test_windows:
+        description: "Test and build on Windows too: a runner label, or a JSON object {\"runs_on\", \"env\"} whose env is set for both, e.g. {\"runs_on\": \"windows-latest\", \"env\": {\"CGO_ENABLED\": \"0\"}}; empty skips it"
         required: false
         type: string
-        default: '[]'
+        default: ''
+      test_macos:
+        description: "Test and build on macOS too: a runner label, or a JSON object {\"runs_on\", \"env\"} whose env is set for both; empty skips it"
+        required: false
+        type: string
+        default: ''
       extra_test_task:
-        description: "The Task task the extra runners test with, e.g. a shorter test:short"
+        description: "The Task task the Windows and macOS stages test with, e.g. a shorter test:short"
         required: false
         type: string
         default: 'test'
       setup_script:
-        description: "A script, relative to working_directory, run with bash before compiling on the extra runners and native builds"
+        description: "A script, relative to working_directory, run with bash before compiling on Windows and macOS and in native builds; RUNNER_OS says where, and it can export through GITHUB_ENV and GITHUB_PATH"
         required: false
         type: string
         default: ''
-      native_builds:
-        description: 'JSON list of runners that build release binaries natively with build_command, each a label or {"runs_on", "name", "env"}; their artifact_path files are attached to the draft before it is published'
-        required: false
-        type: string
-        default: '[]'
-      release_files:
-        description: "Files to attach beside the native builds, relative to working_directory, one per line, e.g. LICENSE; with release_binaries off"
-        required: false
-        type: string
-        default: ''
-      checksums:
-        description: "Name of the SHA-256 checksum file of the native builds and release_files; empty attaches none; with release_binaries off"
-        required: false
-        type: string
-        default: 'checksums.txt'
-      gpg_sign:
-        description: "Import the GPG_PRIVATE_KEY secret before GoReleaser runs and export its fingerprint as GPG_FINGERPRINT, for a signs section in .goreleaser.yaml; with release_binaries"
-        required: false
-        type: boolean
-        default: false
-    secrets:
-      GPG_PRIVATE_KEY:
-        description: "ASCII-armored private key GoReleaser signs with; with gpg_sign"
-        required: false
-      GPG_PASSPHRASE:
-        description: "The key's passphrase, if it has one; with gpg_sign"
-        required: false
-    outputs:
-      new_release_published:
-        description: "Whether a new release was published"
-        value: ${{ jobs.version.outputs.new_release_published }}
-      version:
-        description: "Released version (e.g. 1.2.3); empty when nothing was released"
-        value: ${{ jobs.version.outputs.version }}
-      tag_name:
-        description: "Released tag (e.g. v1.2.3); empty when nothing was released"
-        value: ${{ jobs.version.outputs.tag_name }}
 
 jobs:
-  testing:
-    # With test_on_push false, a push checks only when a release is made, in release-testing.
-    if: >-
-      inputs.run_checks &&
-      (github.event_name != 'push' || inputs.test_on_push) &&
-      (inputs.test_release_prs || !startsWith(github.head_ref, 'release-please--'))
-    uses: ./.github/workflows/testing.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      working_directory: ${{ inputs.working_directory }}
-      go_version: ${{ inputs.go_version }}
-      enable_secrets: ${{ inputs.enable_secrets }}
-      auto_patch: ${{ inputs.auto_patch }}
-      run_tests: ${{ inputs.run_tests }}
-      lint: ${{ inputs.lint }}
-      apt_packages: ${{ inputs.apt_packages }}
-      artifact_name: ${{ inputs.artifact_name }}
-      artifact_path: ${{ inputs.artifact_path }}
-      build_command: ${{ inputs.build_command }}
-      extra_runners: ${{ inputs.extra_runners }}
-      extra_test_task: ${{ inputs.extra_test_task }}
-      setup_script: ${{ inputs.setup_script }}
-
-  # Dependabot's pull requests ask for a review as they open, before the checks, so a failing
-  # update reaches the reviewer too
-  review:
-    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
-    uses: ./.github/workflows/review.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      reviewers: ${{ inputs.reviewers }}
-    permissions:
-      pull-requests: write
-
-  auto-merge:
-    uses: ./.github/workflows/merge.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-    needs: [testing]
-    permissions:
-      contents: write
-      pull-requests: write
-
-  version:
-    # Runs when the checks were skipped, as on a push to main with test_on_push false, but not when they failed.
-    if: ${{ !failure() && !cancelled() && inputs.enable_versioning }}
-    uses: ./.github/workflows/version.yml
-    needs: [testing]
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      working_directory: ${{ inputs.working_directory }}
-      reviewers: ${{ inputs.reviewers }}
-
-  release-testing:
-    # With test_on_push false, a push to main is checked and built only when release-please made a release.
-    needs: [version]
-    if: >-
-      !cancelled() && inputs.run_checks && github.event_name == 'push' && !inputs.test_on_push &&
-      (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
-    uses: ./.github/workflows/testing.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      working_directory: ${{ inputs.working_directory }}
-      go_version: ${{ inputs.go_version }}
-      enable_secrets: ${{ inputs.enable_secrets }}
-      auto_patch: ${{ inputs.auto_patch }}
-      run_tests: ${{ inputs.run_tests }}
-      lint: ${{ inputs.lint }}
-      apt_packages: ${{ inputs.apt_packages }}
-      artifact_name: ${{ inputs.artifact_name }}
-      artifact_path: ${{ inputs.artifact_path }}
-      build_command: ${{ inputs.build_command }}
-      extra_runners: ${{ inputs.extra_runners }}
-      extra_test_task: ${{ inputs.extra_test_task }}
-      setup_script: ${{ inputs.setup_script }}
-
-  # Release binaries GoReleaser can't cross-compile, such as a cgo build for macOS, each built on
-  # its own runner and attached to the draft by the release job before it is published.
-  native-build:
-    runs-on: ${{ matrix.target.runs_on || matrix.target }}
-    timeout-minutes: 30
-    needs: [testing, version, release-testing]
-    # an empty matrix fails the workflow, so the job is skipped instead
-    if: ${{ !failure() && !cancelled() && (!inputs.run_checks || needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) && inputs.native_builds != '' && inputs.native_builds != '[]' }}
+  lint:
+    name: lint
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJSON(inputs.native_builds) }}
     defaults:
       run:
-        shell: bash
         working-directory: ${{ inputs.working_directory }}
     steps:
-      # the whole history, so the build can name the release's tag
-      - uses: actions/checkout@v7
+      - name: Check out
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-          fetch-depth: 0
       - name: Install apt packages
-        if: runner.os == 'Linux' && inputs.apt_packages != ''
+        if: inputs.apt_packages != ''
         env:
           PACKAGES: ${{ inputs.apt_packages }}
         run: |
@@ -255,69 +110,138 @@ jobs:
           elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-go@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
-          # no module cache in a job that builds a release
-          cache: false
-      - name: Set the entry's environment
-        if: matrix.target.env
-        env:
-          TARGET_ENV: ${{ toJSON(matrix.target.env) }}
-        run: jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$TARGET_ENV" >> "$GITHUB_ENV"
-      - name: Setup script
-        if: inputs.setup_script != ''
-        env:
-          SCRIPT: ${{ inputs.setup_script }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bash "$SCRIPT"
-      - name: Build
-        run: ${{ inputs.build_command }}
-      - uses: actions/upload-artifact@v7
-        with:
-          name: forgego-native-${{ strategy.job-index }}
-          path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
-          if-no-files-found: error
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Check forgego's files are current
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.actor != 'dependabot[bot]'
+        run: go tool -modfile=.forgego/task/go.mod task sync-check
+      # a Dependabot bump of forgego changes the files it manages: lint against them refreshed, and the
+      # patch pipeline commits them
+      - name: Refresh forgego's files
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.actor == 'dependabot[bot]'
+        run: go tool -modfile=.forgego/task/go.mod task sync
+      - name: Check go.mod is tidy
+        if: inputs.lint
+        run: go mod tidy -diff
+      - name: Check formatting
+        if: inputs.lint
+        run: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint fmt --diff
+      - name: Lint
+        if: inputs.lint
+        run: go tool -modfile=.forgego/golangci-lint/go.mod golangci-lint run
 
-  release:
+  scan:
+    name: scan
     runs-on: ${{ inputs.runs_on }}
-    timeout-minutes: 20
-    needs: [testing, version, release-testing, native-build]
-    if: ${{ !failure() && !cancelled() && (!inputs.run_checks || needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) }}
+    timeout-minutes: 10
     permissions:
-      contents: write
+      contents: read
+      # Gitleaks reads a pull request's commits and comments on the one it finds a secret in
+      pull-requests: write
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
-    env:
-      NATIVE: ${{ inputs.native_builds != '' && inputs.native_builds != '[]' }}
     steps:
-      # GoReleaser reads the release tag from the history
-      - uses: actions/checkout@v7
-        if: inputs.release_binaries || env.NATIVE == 'true' || inputs.release_files != ''
+      - name: Check out
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 0
-      # inside the project, where GoReleaser's extra_files can glob it, but kept out of git so
-      # GoReleaser doesn't count the checkout as dirty
-      - uses: actions/download-artifact@v8
-        if: env.NATIVE == 'true'
-        with:
-          pattern: forgego-native-*
-          merge-multiple: true
-          path: ${{ inputs.working_directory }}/.forgego-native
-      - name: Keep the native builds out of git
-        if: env.NATIVE == 'true'
+      - name: Scan with Gitleaks
+        if: inputs.enable_secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # A high or critical finding (CVSS 7 or more) fails a pull request; elsewhere it's annotated
+      # instead, so releases and the patch pipeline that fixes it still run. Accept one with an
+      # IgnoredVulns entry in an osv-scanner.toml beside the go.mod
+      - name: Scan with OSV
+        id: osv
         run: |
-          exclude="$(git rev-parse --git-path info/exclude)"
-          mkdir -p "$(dirname "$exclude")"
-          echo '.forgego-native/' >> "$exclude"
+          curl -sL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          # 0: nothing found, 1: vulnerabilities found, 128: no lockfile, anything else: no scan
+          status=0
+          "$RUNNER_TEMP/osv-scanner" scan source -r --format json --output-file "$RUNNER_TEMP/osv.json" . || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          rm "$RUNNER_TEMP/osv-scanner"
+      - name: Report OSV findings
+        uses: actions/github-script@v9
+        env:
+          OSV_STATUS: ${{ steps.osv.outputs.status }}
+          OSV_REPORT: ${{ runner.temp }}/osv.json
+          OSV_ENFORCE: ${{ github.event_name == 'pull_request' }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const status = Number(process.env.OSV_STATUS);
+            if (status === 128) {
+              core.info('No lockfiles to scan');
+              return;
+            }
+            if ((status !== 0 && status !== 1) || !fs.existsSync(process.env.OSV_REPORT)) {
+              core.warning(`OSV-Scanner couldn't finish (exit ${status}), so dependencies weren't checked; see the scan step's log`, { title: 'OSV scan incomplete' });
+              return;
+            }
+            const report = JSON.parse(fs.readFileSync(process.env.OSV_REPORT, 'utf8'));
+            // a GitHub advisory's rating when an advisory has no CVSS score
+            const ratings = { CRITICAL: 9, HIGH: 7, MODERATE: 4, MEDIUM: 4, LOW: 1 };
+            const rows = [];
+            let blocking = 0;
+            for (const result of report.results ?? []) {
+              const file = path.relative(process.env.GITHUB_WORKSPACE, result.source.path);
+              for (const { package: pkg, vulnerabilities = [], groups = [] } of result.packages ?? []) {
+                for (const group of groups) {
+                  const vulns = vulnerabilities.filter((v) => group.ids.includes(v.id));
+                  let score = Number.parseFloat(group.max_severity);
+                  if (Number.isNaN(score)) {
+                    score = Math.max(0, ...vulns.map((v) => ratings[String(v.database_specific?.severity).toUpperCase()] ?? 0));
+                  }
+                  const high = score >= 7;
+                  const message = `${pkg.name} ${pkg.version}: ${group.ids.join(', ')} ${vulns[0]?.summary ?? ''} (severity ${score || 'unknown'})`;
+                  if (high) {
+                    blocking++;
+                    core.error(message, { title: 'High or critical vulnerability', file });
+                  } else {
+                    core.warning(message, { title: 'Vulnerability', file });
+                  }
+                  rows.push([file, `${pkg.name} ${pkg.version}`, group.ids.join(', '), String(score || 'unknown')]);
+                }
+              }
+            }
+            if (rows.length) {
+              await core.summary
+                .addHeading('OSV-Scanner findings', 3)
+                .addTable([['Lockfile', 'Package', 'Advisories', 'Severity'], ...rows])
+                .write();
+            }
+            const found = `${blocking} high or critical ${blocking === 1 ? 'vulnerability' : 'vulnerabilities'}`;
+            if (blocking && process.env.OSV_ENFORCE === 'true') {
+              core.setFailed(`${found}: update the packages, or record an accepted one in osv-scanner.toml`);
+            } else if (blocking) {
+              core.warning(`${found}: this fails pull requests until they're updated, as the patch pipeline may do`, { title: 'OSV scan' });
+            } else {
+              core.info(`${rows.length} found, none high or critical`);
+            }
+      - name: Install apt packages
+        if: inputs.apt_packages != '' && hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        env:
+          PACKAGES: ${{ inputs.apt_packages }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # one word per package
+          sudo apt-get install -y --no-install-recommends $PACKAGES
       # the input if set, else the project's go.mod, else forgego's default
       - name: Resolve the Go version
         id: go
-        if: inputs.release_binaries
-        working-directory: ${{ inputs.working_directory }}
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         env:
           INPUT: ${{ inputs.go_version }}
           DIR: ${{ inputs.working_directory }}
@@ -326,93 +250,258 @@ jobs:
           elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-go@v7
-        if: inputs.release_binaries
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
-          # no module cache in a job that publishes
-          cache: false
-      # GoReleaser attaches the native builds only through its own config, so check it lists them
-      # rather than publish a release without them
-      - name: Check GoReleaser attaches the native builds
-        if: inputs.release_binaries && env.NATIVE == 'true'
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      # Reports only the vulnerabilities the code actually calls. It doesn't fail the checks, as the
+      # patch pipeline upgrades the vulnerable modules
+      - name: Scan with govulncheck
+        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         run: |
-          if ! grep -qs '\.forgego-native/' .goreleaser.yaml .goreleaser.yml goreleaser.yaml goreleaser.yml; then
-            echo "::error::native_builds with GoReleaser needs '.forgego-native/*' in release.extra_files and checksum.extra_files of .goreleaser.yaml"
-            exit 1
-          fi
-      - name: Check the signing setup
-        if: inputs.gpg_sign
-        working-directory: .
-        env:
-          KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          BINARIES: ${{ inputs.release_binaries }}
-        run: |
-          if [ "$BINARIES" != true ]; then
-            echo "::error::gpg_sign signs through the signs section of .goreleaser.yaml, so it needs release_binaries"
-            exit 1
-          fi
-          if [ -z "$KEY" ]; then
-            echo "::error::gpg_sign needs the GPG_PRIVATE_KEY secret"
-            exit 1
-          fi
-      - uses: crazy-max/ghaction-import-gpg@v7.0.0
-        id: gpg
-        if: inputs.gpg_sign
+          go tool -modfile=.forgego/govulncheck/go.mod govulncheck ./... ||
+            echo "::warning::govulncheck found vulnerabilities the code calls; the patch pipeline upgrades them on main"
+
+  test:
+    name: test
+    if: inputs.run_tests
+    needs: [lint, scan]
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
         with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
-      # set only when signing, so a project that doesn't sign sees no new variable
-      - name: Export the key's fingerprint
-        if: inputs.gpg_sign
-        working-directory: .
+          persist-credentials: false
+      - name: Install apt packages
+        if: inputs.apt_packages != ''
         env:
-          FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}
-        run: echo "GPG_FINGERPRINT=$FINGERPRINT" >> "$GITHUB_ENV"
-      # release-please created the release as a draft; GoReleaser attaches the binaries,
-      # checksums and any .deb, then publishes it
-      # the GoReleaser the generated snapshot task runs (templates.GoreleaserVersion); a test keeps them in step
-      - uses: goreleaser/goreleaser-action@v7
-        if: inputs.release_binaries
+          PACKAGES: ${{ inputs.apt_packages }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # one word per package
+          sudo apt-get install -y --no-install-recommends $PACKAGES
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
-          version: 'v2.18.2'
-          args: release --clean
-          workdir: ${{ inputs.working_directory }}
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Test
+        # the race detector needs cgo, which GitHub's Ubuntu runners have
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # without GoReleaser, attach the native builds, release_files and their checksums to the
-      # draft here, as a published release may be immutable
-      - name: Attach the native builds and release files
-        if: ${{ !inputs.release_binaries && (env.NATIVE == 'true' || inputs.release_files != '') }}
+          GOFLAGS: -race
+        run: go tool -modfile=.forgego/task/go.mod task test
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ inputs.artifact_name }}
+          path: |
+            ${{ inputs.working_directory }}/coverage.out
+            ${{ inputs.working_directory }}/junit-report.xml
+          if-no-files-found: ignore
+
+  # The tests and the build on Windows and macOS, each when asked, so a test runs the build it ships with
+  test-windows:
+    name: test (windows)
+    if: inputs.test_windows != ''
+    needs: [lint, scan]
+    runs-on: ${{ startsWith(inputs.test_windows, '{') && (fromJSON(inputs.test_windows).runs_on || 'windows-latest') || inputs.test_windows }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.version.outputs.tag_name }}
-          FILES: ${{ inputs.release_files }}
-          CHECKSUMS: ${{ inputs.checksums }}
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
         run: |
-          staging="$RUNNER_TEMP/forgego-release"
-          mkdir -p "$staging"
-          if [ -d .forgego-native ]; then cp -R .forgego-native/. "$staging/"; fi
-          while IFS= read -r file; do
-            if [ -n "$file" ]; then cp "$file" "$staging/"; fi
-          done <<< "$FILES"
-          cd "$staging"
-          if [ -n "$CHECKSUMS" ]; then
-            # the format GoReleaser writes: sha256, two spaces, the file name, sorted by name
-            find . -maxdepth 1 -type f ! -name "$CHECKSUMS" -printf '%f\n' | LC_ALL=C sort | xargs -r -d '\n' sha256sum > "$RUNNER_TEMP/$CHECKSUMS"
-            mv "$RUNNER_TEMP/$CHECKSUMS" .
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
-          # --clobber, so a re-run replaces what an earlier attempt attached
-          find . -maxdepth 1 -type f -print0 | xargs -0 gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber
-      # publish release-please's draft once everything is attached
-      - name: Publish the draft release
-        if: ${{ !inputs.release_binaries }}
-        working-directory: .
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Set the runner's environment
+        if: startsWith(inputs.test_windows, '{')
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.version.outputs.tag_name }}
+          TARGET: ${{ inputs.test_windows }}
+        run: jq -r '(.env // {}) | to_entries[] | "\(.key)=\(.value)"' <<< "$TARGET" >> "$GITHUB_ENV"
+      - name: Run the setup script
+        if: inputs.setup_script != ''
+        env:
+          SCRIPT: ${{ inputs.setup_script }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash "$SCRIPT"
+      - name: Test
+        if: inputs.run_tests
+        env:
+          TASK: ${{ inputs.extra_test_task }}
+        # the race detector needs cgo, so it's on wherever cgo is
         run: |
-          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true" ]; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          if [ "$(go env CGO_ENABLED)" = "1" ]; then export GOFLAGS="${GOFLAGS:+$GOFLAGS }-race"; fi
+          go tool -modfile=.forgego/task/go.mod task "$TASK"
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}-windows
+          path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
+          if-no-files-found: ignore
+
+  test-macos:
+    name: test (macos)
+    if: inputs.test_macos != ''
+    needs: [lint, scan]
+    runs-on: ${{ startsWith(inputs.test_macos, '{') && (fromJSON(inputs.test_macos).runs_on || 'macos-latest') || inputs.test_macos }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Set the runner's environment
+        if: startsWith(inputs.test_macos, '{')
+        env:
+          TARGET: ${{ inputs.test_macos }}
+        run: jq -r '(.env // {}) | to_entries[] | "\(.key)=\(.value)"' <<< "$TARGET" >> "$GITHUB_ENV"
+      - name: Run the setup script
+        if: inputs.setup_script != ''
+        env:
+          SCRIPT: ${{ inputs.setup_script }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash "$SCRIPT"
+      - name: Test
+        if: inputs.run_tests
+        env:
+          TASK: ${{ inputs.extra_test_task }}
+        # the race detector needs cgo, so it's on wherever cgo is
+        run: |
+          if [ "$(go env CGO_ENABLED)" = "1" ]; then export GOFLAGS="${GOFLAGS:+$GOFLAGS }-race"; fi
+          go tool -modfile=.forgego/task/go.mod task "$TASK"
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}-macos
+          path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
+          if-no-files-found: ignore
+
+  build:
+    name: build
+    # only needs the lint and scan to pass, so it runs alongside the tests
+    needs: [lint, scan]
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install apt packages
+        if: inputs.apt_packages != ''
+        env:
+          PACKAGES: ${{ inputs.apt_packages }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # one word per package
+          sudo apt-get install -y --no-install-recommends $PACKAGES
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
+          if-no-files-found: ignore

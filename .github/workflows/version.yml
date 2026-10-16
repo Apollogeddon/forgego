@@ -1,4 +1,6 @@
-name: Go Version
+name: version
+
+# release-please: opens or updates the release pull request, and cuts the release when it merges.
 
 on:
   workflow_call:
@@ -9,6 +11,7 @@ on:
         type: string
         default: 'ubuntu-latest'
       working_directory:
+        description: "Directory holding go.mod; release-please's config is in its .github/"
         required: false
         type: string
         default: '.'
@@ -20,16 +23,17 @@ on:
     outputs:
       new_release_published:
         description: "Whether a new release was published"
-        value: ${{ format('{0}', jobs.release-please.outputs.release_created == 'true' || jobs.release-please.outputs.release_created == true || (inputs.working_directory == '.' && (jobs.release-please.outputs.releases_created == 'true' || jobs.release-please.outputs.releases_created == true))) }}
+        value: ${{ format('{0}', jobs.release.outputs.release_created == 'true' || jobs.release.outputs.release_created == true || (inputs.working_directory == '.' && (jobs.release.outputs.releases_created == 'true' || jobs.release.outputs.releases_created == true))) }}
       version:
         description: "Released version (e.g. 1.2.3); empty when nothing was released"
-        value: ${{ jobs.release-please.outputs.version }}
+        value: ${{ jobs.release.outputs.version }}
       tag_name:
         description: "Released tag (e.g. v1.2.3); empty when nothing was released"
-        value: ${{ jobs.release-please.outputs.tag_name }}
+        value: ${{ jobs.release.outputs.tag_name }}
 
 jobs:
-  release-please:
+  release:
+    name: release
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     if: github.ref == 'refs/heads/main'
@@ -47,10 +51,9 @@ jobs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       version: ${{ inputs.working_directory != '.' && steps.release.outputs[format('{0}--version', inputs.working_directory)] || steps.release.outputs.version }}
       tag_name: ${{ inputs.working_directory != '.' && steps.release.outputs[format('{0}--tag_name', inputs.working_directory)] || steps.release.outputs.tag_name }}
-      # the release pull request release-please opened or updated, if any
-      pr_number: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
     steps:
-      - uses: googleapis/release-please-action@v5
+      - name: Release
+        uses: googleapis/release-please-action@v5
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -58,13 +61,29 @@ jobs:
           config-file: ${{ inputs.working_directory != '.' && format('{0}/.github/release.json', inputs.working_directory) || '.github/release.json' }}
           manifest-file: ${{ inputs.working_directory != '.' && format('{0}/.github/.release.json', inputs.working_directory) || '.github/.release.json' }}
 
-  review:
-    needs: [release-please]
-    if: needs.release-please.outputs.pr_number != ''
-    uses: ./.github/workflows/review.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      pull_request: ${{ needs.release-please.outputs.pr_number }}
-      reviewers: ${{ inputs.reviewers }}
-    permissions:
-      pull-requests: write
+      # CODEOWNERS only requests reviews in a private repository on a paid plan, so the release
+      # pull request asks for one here instead, on any plan
+      - name: Request a review
+        if: steps.release.outputs.pr != ''
+        uses: actions/github-script@v9
+        env:
+          PULL_REQUEST: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
+          REVIEWERS: ${{ inputs.reviewers }}
+        with:
+          script: |
+            const number = Number(process.env.PULL_REQUEST || context.payload.pull_request?.number);
+            if (!number) return core.notice('No pull request to request a review on');
+            let reviewers = process.env.REVIEWERS.split(',').map((login) => login.trim()).filter(Boolean);
+            if (reviewers.length === 0) {
+              // an organisation can't be requested, and names its reviewers through the input instead
+              const { data: repo } = await github.rest.repos.get(context.repo);
+              if (repo.owner.type !== 'User') return core.notice('The owner is an organisation; set reviewers to request one');
+              reviewers = [repo.owner.login];
+            }
+            // a review request is a courtesy, never a check: a failure here mustn't fail the pipeline
+            try {
+              await github.rest.pulls.requestReviewers({ ...context.repo, pull_number: number, reviewers });
+              core.info(`Requested a review from ${reviewers.join(', ')} on #${number}`);
+            } catch (error) {
+              core.warning(`Couldn't request a review on #${number}: ${error.message}`);
+            }

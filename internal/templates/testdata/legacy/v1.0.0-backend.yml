@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # never cancel a run on main mid-release, or the release is created but never published
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  service:
+    uses: apollogeddon/forgego/.github/workflows/service.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      go_version: '1.27'
+      auto_patch: true

@@ -1,0 +1,47 @@
+name: pages
+
+# Deploys a built website, the artifact website.yml uploaded earlier in the run, to GitHub Pages.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      artifact_name:
+        description: "The build artifact to deploy, as website.yml's artifact_name"
+        required: false
+        type: string
+        default: 'dist'
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    # one deploy at a time, and a waiting one is replaced by a newer one rather than overtaking a running
+    # one; not named pages, which a caller copying GitHub's starter workflow uses, as a shared group deadlocks
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Download the build
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ./pages-artifact
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./pages-artifact
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
