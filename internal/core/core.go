@@ -6,14 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/apollogeddon/forgego/internal/config"
-	"github.com/apollogeddon/forgego/internal/console"
-	"github.com/apollogeddon/forgego/internal/features"
-	"github.com/apollogeddon/forgego/internal/fsys"
-	"github.com/apollogeddon/forgego/internal/gomod"
-	"github.com/apollogeddon/forgego/internal/project"
-	"github.com/apollogeddon/forgego/internal/taskfile"
-	"github.com/apollogeddon/forgego/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/config"
+	"github.com/apollogeddon/forgego/v2/internal/console"
+	"github.com/apollogeddon/forgego/v2/internal/features"
+	"github.com/apollogeddon/forgego/v2/internal/fsys"
+	"github.com/apollogeddon/forgego/v2/internal/gomod"
+	"github.com/apollogeddon/forgego/v2/internal/project"
+	"github.com/apollogeddon/forgego/v2/internal/taskfile"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
 // ExitInvalidConfig is returned when the options can't be combined.

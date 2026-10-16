@@ -1,4 +1,4 @@
-module github.com/apollogeddon/forgego
+module github.com/apollogeddon/forgego/v2
 
 go 1.26.0
 

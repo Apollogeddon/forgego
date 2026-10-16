@@ -5,7 +5,7 @@ package taskfile
 import (
 	"go.yaml.in/yaml/v3"
 
-	"github.com/apollogeddon/forgego/internal/yamlx"
+	"github.com/apollogeddon/forgego/v2/internal/yamlx"
 )
 
 // Task is one entry under tasks:.

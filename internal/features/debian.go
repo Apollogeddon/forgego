@@ -1,8 +1,8 @@
 package features
 
 import (
-	"github.com/apollogeddon/forgego/internal/config"
-	"github.com/apollogeddon/forgego/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/config"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
 // Debian adds the systemd unit and install scripts the .goreleaser.yaml nfpms section

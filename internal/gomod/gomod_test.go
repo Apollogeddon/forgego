@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/apollogeddon/forgego/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
 func TestToolsGoIsTheNewestToolRequirement(t *testing.T) {
@@ -61,10 +61,11 @@ func TestTidyKeepsTheProjectOutOfTheSelfPin(t *testing.T) {
 	t.Setenv("GOFLAGS", "")
 	dir := t.TempDir()
 	files := map[string]string{
-		"go.mod":              "module example.com/proj\n\ngo 1.26.0\n\nrequire github.com/google/go-cmp v0.7.0\n",
-		"main.go":             "package main\n\nimport (\n\t\"example.com/proj/sub\"\n\t\"github.com/google/go-cmp/cmp\"\n)\n\nfunc main() { _ = cmp.Diff(sub.X, 2) }\n",
-		"sub/sub.go":          "package sub\n\nconst X = 1\n",
-		templates.SelfModPath: templates.SelfModFile("v1.5.0"),
+		"go.mod":     "module example.com/proj\n\ngo 1.26.0\n\nrequire github.com/google/go-cmp v0.7.0\n",
+		"main.go":    "package main\n\nimport (\n\t\"example.com/proj/sub\"\n\t\"github.com/google/go-cmp/cmp\"\n)\n\nfunc main() { _ = cmp.Diff(sub.X, 2) }\n",
+		"sub/sub.go": "package sub\n\nconst X = 1\n",
+		// a v1 pin, as Tidy needs a release published at the path it requires
+		templates.SelfModPath: strings.ReplaceAll(templates.SelfModFile("v1.5.0"), "forgego/v2", "forgego"),
 	}
 	for rel, content := range files {
 		path := filepath.Join(dir, rel)

@@ -7,13 +7,17 @@ import (
 )
 
 // Module is forgego's module path.
-const Module = "github.com/apollogeddon/forgego"
+const Module = "github.com/apollogeddon/forgego/v2"
+
+// LegacyModule is the path forgego v1 was published at, which a project scaffolded by v1
+// still pins and runs.
+const LegacyModule = "github.com/apollogeddon/forgego"
 
 // override lets tests pin a version.
 var override string
 
 // injected is set by release builds:
-// -ldflags "-X github.com/apollogeddon/forgego/internal/version.injected=v1.2.3".
+// -ldflags "-X github.com/apollogeddon/forgego/v2/internal/version.injected=v1.2.3".
 var injected string
 
 // Set pins the reported version, for tests.
@@ -39,8 +43,12 @@ func Current() string {
 	return v
 }
 
-// runPrefix starts every command that runs a published forgego.
-const runPrefix = "go run " + Module + "/cmd/forgego@"
+// runPrefix starts every command that runs a published forgego, and legacyRunPrefix one
+// that runs a v1 release.
+const (
+	runPrefix       = "go run " + Module + "/cmd/forgego@"
+	legacyRunPrefix = "go run " + LegacyModule + "/cmd/forgego@"
+)
 
 // RunCommand runs this forgego version without installing it.
 func RunCommand() string {
@@ -50,7 +58,7 @@ func RunCommand() string {
 // IsPublishedRun reports whether command runs a published forgego, rather than one the
 // project chose itself, such as a local build.
 func IsPublishedRun(command string) bool {
-	return strings.HasPrefix(command, runPrefix)
+	return strings.HasPrefix(command, runPrefix) || strings.HasPrefix(command, legacyRunPrefix)
 }
 
 // Released reports whether this forgego is a published version a project can pin.

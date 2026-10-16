@@ -3,8 +3,8 @@
 package golangci
 
 import (
-	"github.com/apollogeddon/forgego/internal/templates"
-	"github.com/apollogeddon/forgego/internal/yamlx"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/yamlx"
 )
 
 const (

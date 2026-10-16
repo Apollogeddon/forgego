@@ -15,7 +15,7 @@ import (
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/apollogeddon/forgego/internal/fsys"
+	"github.com/apollogeddon/forgego/v2/internal/fsys"
 )
 
 // Info describes the project forgego is scaffolding into.

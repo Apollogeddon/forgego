@@ -3,7 +3,7 @@ package features
 import (
 	"strings"
 
-	"github.com/apollogeddon/forgego/internal/templates"
+	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
 // toolVar is the Taskfile var that runs a tool: GOLANGCI_LINT for golangci-lint.

@@ -8,7 +8,7 @@ hero:
   start: docs/getting-started
   github: https://github.com/apollogeddon/forgego
   terminal:
-    - $ go install github.com/apollogeddon/forgego/cmd/forgego@latest
+    - $ go install github.com/apollogeddon/forgego/v2/cmd/forgego@latest
     - $ forgego init
     - ✓ Configuration files created
     - ✓ Taskfile tasks added
@@ -43,7 +43,7 @@ release-please derives versions and changelogs from Conventional Commits, and Go
 Install Forge.go from GitHub with `go install`.
 
 ```bash
-go install github.com/apollogeddon/forgego/cmd/forgego@latest
+go install github.com/apollogeddon/forgego/v2/cmd/forgego@latest
 ```
 {{< /fg-step >}}
 {{< fg-step n="02" title="Initialise" >}}

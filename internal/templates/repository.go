@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/apollogeddon/forgego/internal/version"
+	"github.com/apollogeddon/forgego/v2/internal/version"
 )
 
 // Editorconfig matches what gofmt writes: tabs in Go files, two spaces elsewhere.

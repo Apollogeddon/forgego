@@ -36,7 +36,7 @@ tasks:
   build:
     desc: Build the binary into dist/
     cmds:
-      - go build -trimpath -ldflags "-X github.com/apollogeddon/forgego/internal/version.injected={{.VERSION}}" -o dist/forgego{{exeExt}} ./cmd/forgego
+      - go build -trimpath -ldflags "-X github.com/apollogeddon/forgego/v2/internal/version.injected={{.VERSION}}" -o dist/forgego{{exeExt}} ./cmd/forgego
   start:
     desc: Run the service
     cmds:

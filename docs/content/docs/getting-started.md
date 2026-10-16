@@ -18,13 +18,13 @@ This page covers installing Forge.go, scaffolding a project, and the reference f
 Install Forge.go with `go install`:
 
 ```bash
-go install github.com/apollogeddon/forgego/cmd/forgego@latest
+go install github.com/apollogeddon/forgego/v2/cmd/forgego@latest
 ```
 
 Or run it once without installing:
 
 ```bash
-go run github.com/apollogeddon/forgego/cmd/forgego@latest init
+go run github.com/apollogeddon/forgego/v2/cmd/forgego@latest init
 ```
 
 Generated projects don't need Forge.go installed: their `Taskfile.yml` runs the same version with `go run` (see [`sync`](#keeping-up-to-date)).
@@ -159,10 +159,21 @@ The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -mo
 A project scaffolded by an earlier Forge.go runs it with `go run …/forgego@<version>`. Run a newer version's `sync` once to move it to the pin:
 
 ```bash
-go run github.com/apollogeddon/forgego/cmd/forgego@latest sync
+go run github.com/apollogeddon/forgego/v2/cmd/forgego@latest sync
 ```
 
 A `FORGEGO` var that runs Forge.go some other way, such as a local build, is left alone.
+
+#### Upgrading from Forge.go v1
+
+Forge.go v2 is published as `github.com/apollogeddon/forgego/v2`, as Go requires of a module's second major version. A project scaffolded by v1 pins `github.com/apollogeddon/forgego` in `.forgego/forgego/go.mod`, which no v2 release can be required at, so Dependabot never proposes v2 there. Move it once by running v2's `sync`:
+
+```bash
+go run github.com/apollogeddon/forgego/v2/cmd/forgego@latest sync
+task sync-check
+```
+
+`sync` rewrites `.forgego/forgego/go.mod` to require `github.com/apollogeddon/forgego/v2` at the version it is, with its `tool` line naming `github.com/apollogeddon/forgego/v2/cmd/forgego`, replaces its `go.sum`, and refreshes the other managed files for v2. It also points the Forge.go entry in `.github/dependabot.yml` at the `/v2` module, and a `FORGEGO` var that still runs `go run github.com/apollogeddon/forgego/cmd/forgego@<version>` moves to the pin. Commit the result; Dependabot proposes each v2 release from then on.
 
 ### Commit message checks
 

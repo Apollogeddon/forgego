@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/apollogeddon/forgego/internal/yamlx"
+	"github.com/apollogeddon/forgego/v2/internal/yamlx"
 )
 
 func TestRenderOfTheStarterIsTheBaseConfig(t *testing.T) {
