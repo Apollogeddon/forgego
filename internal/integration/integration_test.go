@@ -19,7 +19,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	forgego = filepath.Join(dir, "forgego")
-	if out, err := exec.Command("go", "build", "-o", forgego, "../../cmd/forgego").CombinedOutput(); err != nil {
+	// without VCS stamping it's a development build: under /v2, CI's merge commit would
+	// stamp a pseudo-version that forgego would try to pin, though no proxy can fetch it
+	if out, err := exec.Command("go", "build", "-buildvcs=false", "-o", forgego, "../../cmd/forgego").CombinedOutput(); err != nil {
 		panic(string(out))
 	}
 	code := m.Run()
