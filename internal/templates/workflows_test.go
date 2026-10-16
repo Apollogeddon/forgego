@@ -393,3 +393,59 @@ func TestAutoMergeDispatchIsListenedFor(t *testing.T) {
 		}
 	}
 }
+
+// A release is built with exactly the GoReleaser the snapshot task tried it with.
+func TestReleaseRunsTheSnapshotsGoReleaser(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "service.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Uses string            `yaml:"uses"`
+				With map[string]string `yaml:"with"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &w); err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, job := range w.Jobs {
+		for _, step := range job.Steps {
+			if strings.HasPrefix(step.Uses, "goreleaser/goreleaser-action@") {
+				found++
+				if step.With["version"] != GoreleaserVersion {
+					t.Errorf("goreleaser-action version = %q, want %q", step.With["version"], GoreleaserVersion)
+				}
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("no goreleaser-action step in service.yml")
+	}
+}
+
+// The author alone would merge someone else's push to Dependabot's branch, and the actor alone
+// a pull request someone else opened that Dependabot then updated.
+func TestAutoMergeNeedsDependabotToOpenThePullRequestAndMakeItsLatestChange(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "merge.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Jobs map[string]struct {
+			If string `yaml:"if"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &w); err != nil {
+		t.Fatal(err)
+	}
+	gate := w.Jobs["auto-merge"].If
+	for _, want := range []string{"github.event.pull_request.user.login == 'dependabot[bot]' && ", "github.actor == 'dependabot[bot]' && "} {
+		if !strings.Contains(gate, want) || strings.Contains(gate, "||") {
+			t.Errorf("auto-merge if = %q, want it to need %q", gate, want)
+		}
+	}
+}

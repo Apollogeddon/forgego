@@ -372,10 +372,11 @@ jobs:
         run: echo "GPG_FINGERPRINT=$FINGERPRINT" >> "$GITHUB_ENV"
       # release-please created the release as a draft; GoReleaser attaches the binaries,
       # checksums and any .deb, then publishes it
+      # the GoReleaser the generated snapshot task runs (templates.GoreleaserVersion); a test keeps them in step
       - uses: goreleaser/goreleaser-action@v7
         if: inputs.release_binaries
         with:
-          version: '~> v2'
+          version: 'v2.18.2'
           args: release --clean
           workdir: ${{ inputs.working_directory }}
         env:
