@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.0.0](https://github.com/Apollogeddon/forgego/compare/v1.6.1...v2.0.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* the old pipelines are gone; call the split pipelines from a root .index.yml.
+
+### Features
+
+* **ci:** run main's pipeline after a dependabot auto-merge, through a repository_dispatch ([#47](https://github.com/Apollogeddon/forgego/issues/47)) ([cb9376b](https://github.com/Apollogeddon/forgego/commit/cb9376b2aae4f8f93829599bee877a3aa6e15215))
+* split the pipelines by role, with a root .index.yml and two-level job names ([#51](https://github.com/Apollogeddon/forgego/issues/51)) ([8445804](https://github.com/Apollogeddon/forgego/commit/84458040a72506d291d683f616b6c7670ded0d1a))
+
+
+### Bug Fixes
+
+* **deps:** bump golang.org/x/mod ([#46](https://github.com/Apollogeddon/forgego/issues/46)) ([d6c6c81](https://github.com/Apollogeddon/forgego/commit/d6c6c816fcac4cda3a50c0237e46733284a0c4e9))
+* make each subdirectory a valid module path element and refuse a path that isn't valid ([#50](https://github.com/Apollogeddon/forgego/issues/50)) ([774868b](https://github.com/Apollogeddon/forgego/commit/774868b7c52c817a7c43fcb9f26a87c79432c078))
+* review 4 findings (worktree module detection, GoReleaser pin, OSV gate, auto-merge author) ([#48](https://github.com/Apollogeddon/forgego/issues/48)) ([6667cbc](https://github.com/Apollogeddon/forgego/commit/6667cbc22f78534049759e8c5763035d1cfef802))
+
 ## [1.6.1](https://github.com/Apollogeddon/forgego/compare/v1.6.0...v1.6.1) (2026-10-11)
 
 
