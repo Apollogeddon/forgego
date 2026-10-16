@@ -438,42 +438,6 @@ func TestSyncFindsAndFixesDrift(t *testing.T) {
 	}
 }
 
-func TestSyncMovesToolsPinnedAtTheOldPaths(t *testing.T) {
-	fs := fsys.NewMemory(nil)
-	run(t, fs, nil)
-	// an earlier forgego pinned each tool as .forgego/<tool>.mod and .sum
-	for _, rel := range []string{"Taskfile.yml", "lefthook.yml"} {
-		_ = fs.WriteFile(dir+"/"+rel, strings.NewReplacer(
-			"/task/go.mod", "/task.mod", "/lefthook/go.mod", "/lefthook.mod", "/golangci-lint/go.mod", "/golangci-lint.mod",
-		).Replace(read(t, fs, rel)))
-	}
-	for _, tool := range []string{"task", "lefthook", "golangci-lint"} {
-		_ = fs.WriteFile(dir+"/.forgego/"+tool+".mod", read(t, fs, ".forgego/"+tool+"/go.mod"))
-		_ = fs.WriteFile(dir+"/.forgego/"+tool+".sum", read(t, fs, ".forgego/"+tool+"/go.sum"))
-		_ = fs.Remove(dir + "/.forgego/" + tool + "/go.mod")
-		_ = fs.Remove(dir + "/.forgego/" + tool + "/go.sum")
-	}
-	if code := sync.Run(fs, dir, true); code != 1 {
-		t.Fatalf("sync --check didn't report the old paths")
-	}
-
-	if code := sync.Run(fs, dir, false); code != 0 {
-		t.Fatalf("sync returned %d", code)
-	}
-	if code := sync.Run(fs, dir, true); code != 0 {
-		t.Errorf("drift remains after sync")
-	}
-	assertFiles(t, fs, ".forgego/task/go.mod", ".forgego/task/go.sum", ".forgego/lefthook/go.mod", ".forgego/golangci-lint/go.sum")
-	refuteFiles(t, fs, ".forgego/task.mod", ".forgego/task.sum", ".forgego/lefthook.mod", ".forgego/golangci-lint.sum")
-	for _, rel := range []string{"Taskfile.yml", "lefthook.yml"} {
-		for _, tool := range []string{"task", "lefthook", "golangci-lint"} {
-			if content := read(t, fs, rel); strings.Contains(content, ".forgego/"+tool+".mod") {
-				t.Errorf("%s still runs %s from its old path:\n%s", rel, tool, content)
-			}
-		}
-	}
-}
-
 func TestTheStarterTestOnlyGoesNextToTheStarter(t *testing.T) {
 	fs := fsys.NewMemory(map[string]string{dir + "/cmd/billing-api/main.go": "package main\n\nfunc main() {}\n"})
 	run(t, fs, nil)
@@ -491,15 +455,21 @@ func TestTheStarterTestOnlyGoesNextToTheStarter(t *testing.T) {
 	assertFiles(t, fs, "cmd/billing-api/main_test.go")
 }
 
+// A Taskfile that runs forgego some other way keeps it, even a release before v1.5's go run
 func TestSyncLeavesAForgegoTheProjectChoseAlone(t *testing.T) {
-	fs := fsys.NewMemory(nil)
-	run(t, fs, nil)
-	taskfile := strings.Replace(read(t, fs, "Taskfile.yml"),
-		templates.SelfCommand, "go run ./cmd/forgego", 1)
-	_ = fs.Remove(dir + "/.forgego/forgego/go.mod")
-	_ = fs.WriteFile(dir+"/Taskfile.yml", taskfile)
-	if code := sync.Run(fs, dir, true); code != 0 {
-		t.Errorf("a local forgego counted as drift")
+	for _, command := range []string{"go run ./cmd/forgego", "go run github.com/apollogeddon/forgego/cmd/forgego@v1.4.0"} {
+		fs := fsys.NewMemory(nil)
+		run(t, fs, nil)
+		taskfile := strings.Replace(read(t, fs, "Taskfile.yml"), templates.SelfCommand, command, 1)
+		_ = fs.Remove(dir + "/.forgego/forgego/go.mod")
+		_ = fs.WriteFile(dir+"/Taskfile.yml", taskfile)
+		if code := sync.Run(fs, dir, true); code != 0 {
+			t.Errorf("%q counted as drift", command)
+		}
+		if code := sync.Run(fs, dir, false); code != 0 || read(t, fs, "Taskfile.yml") != taskfile {
+			t.Errorf("sync changed a Taskfile that runs %q", command)
+		}
+		refuteFiles(t, fs, ".forgego/forgego/go.mod")
 	}
 }
 
@@ -639,37 +609,6 @@ func TestCodeownersNamesTheGitHubOwner(t *testing.T) {
 	run(t, fs, nil)
 	if got := read(t, fs, ".github/CODEOWNERS"); !strings.Contains(got, "* @acme\n") {
 		t.Errorf("CODEOWNERS = %q", got)
-	}
-}
-
-func TestSyncMovesAGoRunForgegoToThePin(t *testing.T) {
-	fs := fsys.NewMemory(nil)
-	run(t, fs, nil)
-	// an earlier forgego ran itself with go run, at the version in the Taskfile
-	_ = fs.WriteFile(dir+"/Taskfile.yml", strings.Replace(read(t, fs, "Taskfile.yml"),
-		templates.SelfCommand, "go run github.com/apollogeddon/forgego/cmd/forgego@v1.2.0", 1))
-	_ = fs.Remove(dir + "/.forgego/forgego/go.mod")
-	if code := sync.Run(fs, dir, true); code != 1 {
-		t.Fatal("sync --check didn't report the go run forgego")
-	}
-	if fs.Exists(dir + "/.forgego/forgego/go.mod") {
-		t.Error("sync --check pinned forgego")
-	}
-
-	version.Set("v2.2.0")
-	defer version.Set("v2.1.0")
-	if code := sync.Run(fs, dir, false); code != 0 {
-		t.Fatalf("sync returned %d", code)
-	}
-	if !strings.Contains(read(t, fs, "Taskfile.yml"), "FORGEGO: "+templates.SelfCommand) {
-		t.Error("the Taskfile still runs forgego with go run")
-	}
-	// the forgego doing the sync is the one the project moved to
-	if !strings.Contains(read(t, fs, ".forgego/forgego/go.mod"), "forgego/v2 v2.2.0\n") {
-		t.Error("sync didn't pin the forgego it is")
-	}
-	if code := sync.Run(fs, dir, true); code != 0 {
-		t.Error("drift remains after sync")
 	}
 }
 

@@ -156,13 +156,7 @@ The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -mo
 - a new release usually changes the files Forge.go manages, so on Dependabot's pull requests the `lint` stage runs `task sync` instead of `task sync-check`, and checks the refreshed files;
 - once the update merges, the `merge` pipeline's `auto-merged` dispatch runs the `patch` pipeline, which runs `task sync` on `main` and commits the refreshed files, so `task sync-check` keeps passing on other pull requests.
 
-A project scaffolded by an earlier Forge.go runs it with `go run …/forgego@<version>`. Run a newer version's `sync` once to move it to the pin:
-
-```bash
-go run github.com/apollogeddon/forgego/v2/cmd/forgego@latest sync
-```
-
-A `FORGEGO` var that runs Forge.go some other way, such as a local build, is left alone.
+`sync` never changes the `FORGEGO` var, so one that runs Forge.go some other way, such as a local build, is left alone.
 
 #### Upgrading from Forge.go v1
 
@@ -173,7 +167,12 @@ go run github.com/apollogeddon/forgego/v2/cmd/forgego@latest sync
 task sync-check
 ```
 
-`sync` rewrites `.forgego/forgego/go.mod` to require `github.com/apollogeddon/forgego/v2` at the version it is, with its `tool` line naming `github.com/apollogeddon/forgego/v2/cmd/forgego`, replaces its `go.sum`, and refreshes the other managed files for v2. It also points the Forge.go entry in `.github/dependabot.yml` at the `/v2` module, and a `FORGEGO` var that still runs `go run github.com/apollogeddon/forgego/cmd/forgego@<version>` moves to the pin. Commit the result; Dependabot proposes each v2 release from then on.
+`sync` rewrites `.forgego/forgego/go.mod` to require `github.com/apollogeddon/forgego/v2` at the version it is, with its `tool` line naming `github.com/apollogeddon/forgego/v2/cmd/forgego`, replaces its `go.sum`, and refreshes the other managed files for v2. It also points the Forge.go entry in `.github/dependabot.yml` at the `/v2` module. Commit the result; Dependabot proposes each v2 release from then on.
+
+A project scaffolded before v1.5 needs two changes by hand first, as `sync` no longer makes them:
+
+- **Tool pins at `.forgego/<tool>.mod` and `.sum`** (before v1.0.6): move each pair to `.forgego/<tool>/go.mod` and `go.sum`, change every `-modfile=.forgego/<tool>.mod` in `Taskfile.yml` and `lefthook.yml` to `-modfile=.forgego/<tool>/go.mod`, and run `task hooks` to reinstall the Git hooks at the new path.
+- **A `FORGEGO` var that runs `go run github.com/apollogeddon/forgego/cmd/forgego@<version>`** (before v1.5): set it to `go tool -modfile=.forgego/forgego/go.mod forgego`. The `sync` above then pins Forge.go in `.forgego/forgego/go.mod`. For Dependabot to propose each release, add the `/.forgego/forgego` entry from a new project's `.github/dependabot.yml`.
 
 ### Commit message checks
 

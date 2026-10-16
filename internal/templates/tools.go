@@ -42,11 +42,6 @@ func (t Tool) ModPath() string { return ".forgego/" + t.Name + "/go.mod" }
 // SumPath is the checksum file `go tool -modfile` reads next to ModPath.
 func (t Tool) SumPath() string { return ".forgego/" + t.Name + "/go.sum" }
 
-// LegacyModPath and LegacySumPath are where forgego pinned the tool before it had a
-// directory of its own; `forgego sync` moves them.
-func (t Tool) LegacyModPath() string { return ".forgego/" + t.Name + ".mod" }
-func (t Tool) LegacySumPath() string { return ".forgego/" + t.Name + ".sum" }
-
 // Command is how a Taskfile or hook runs the tool.
 func (t Tool) Command() string {
 	return "go tool -modfile=" + t.ModPath() + " " + t.Name
