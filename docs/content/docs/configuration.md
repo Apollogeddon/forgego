@@ -35,9 +35,8 @@ task sync
 - `.forgego/golangci.yml` and `.golangci.yml`, when the project has `.forgego/golangci.yml` (linting on, not a website), using `.golangci.local.yml` if it exists;
 - a website's vendored FlexSearch in `assets/forgego/flexsearch/`, when the project pins Hugo (see [Websites](#websites));
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
-- the `FORGEGO` var in `Taskfile.yml`, when it runs a published Forge.go with `go run`: it moves to `go tool -modfile=.forgego/forgego/go.mod forgego`, and `.forgego/forgego/go.mod` pins the version doing the sync. `sync` writes that pin only when it's missing, as Dependabot proposes the next version from then on, and writes its `go.sum` with `go mod tidy` in `.forgego/forgego/`;
-- a pin Forge.go v1 made, which requires `github.com/apollogeddon/forgego` without `/v2`: `sync` moves it to `github.com/apollogeddon/forgego/v2` at the version doing the sync, with a new `go.sum`, and points `.github/dependabot.yml`'s `dependency-name` at the `/v2` module (see [Upgrading from Forge.go v1]({{< relref "getting-started.md#upgrading-from-forgego-v1" >}}));
-- tools pinned by an earlier Forge.go as `.forgego/<tool>.mod` and `.sum`, which it moves to `.forgego/<tool>/` and repoints `Taskfile.yml` and `lefthook.yml` at. Run `task hooks` afterwards, as the installed Git hooks still name the old path.
+- `.forgego/forgego/go.mod`, when `Taskfile.yml`'s `FORGEGO` var runs `go tool -modfile=.forgego/forgego/go.mod forgego` and the pin is missing: it pins the version doing the sync, and writes its `go.sum` with `go mod tidy` in `.forgego/forgego/`. An existing pin is left alone, as Dependabot proposes the next version from then on;
+- a pin Forge.go v1 made, which requires `github.com/apollogeddon/forgego` without `/v2`: `sync` moves it to `github.com/apollogeddon/forgego/v2` at the version doing the sync, with a new `go.sum`, and points `.github/dependabot.yml`'s `dependency-name` at the `/v2` module (see [Upgrading from Forge.go v1]({{< relref "getting-started.md#upgrading-from-forgego-v1" >}})).
 
 `task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It runs in the lefthook pre-commit hook and in the CI linting job, so a stale file fails the checks.
 

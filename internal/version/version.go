@@ -43,22 +43,9 @@ func Current() string {
 	return v
 }
 
-// runPrefix starts every command that runs a published forgego, and legacyRunPrefix one
-// that runs a v1 release.
-const (
-	runPrefix       = "go run " + Module + "/cmd/forgego@"
-	legacyRunPrefix = "go run " + LegacyModule + "/cmd/forgego@"
-)
-
 // RunCommand runs this forgego version without installing it.
 func RunCommand() string {
-	return runPrefix + Current()
-}
-
-// IsPublishedRun reports whether command runs a published forgego, rather than one the
-// project chose itself, such as a local build.
-func IsPublishedRun(command string) bool {
-	return strings.HasPrefix(command, runPrefix) || strings.HasPrefix(command, legacyRunPrefix)
+	return "go run " + Module + "/cmd/forgego@" + Current()
 }
 
 // Released reports whether this forgego is a published version a project can pin.
