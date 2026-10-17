@@ -126,9 +126,9 @@ The other modes differ only in their jobs:
 
 The workflow names no Go version: CI reads it from `go.mod`, which `init` writes with the `--go` version.
 
-### Upgrading from `index.yml`
+### An existing `index.yml`
 
-A project `init` set up before `.index.yml` has a `.github/workflows/index.yml`, which calls `service.yml`, `library.yml` or `website.yml` as one job. Once `init` has written `.index.yml`, it removes such a file when it's exactly as `init` generated it, ignoring line endings, trailing spaces, blank lines and a `go_version` copied from `go.mod`. One you've changed since, say to set `runs_on`, is kept with a warning until you run `init --force`: move your changes to `.index.yml` first. An `index.yml` that calls none of Forge.go's workflows is your own and is never removed; check it doesn't repeat `.index.yml`'s jobs. Nothing is removed when `init` kept an existing `.index.yml`. See [Inputs that moved]({{< relref "reference.md#inputs-that-moved" >}}) for a hand-written caller.
+If `.github/workflows/index.yml` calls Forge.go's pipelines, `init` removes it once it has written `.index.yml`, so the same checks don't run twice. It removes the file only when it's exactly as `init` generated it, ignoring line endings, trailing spaces, blank lines and a `go_version` copied from `go.mod`. One you've changed, say to set `runs_on`, is kept with a warning until you run `init --force`: move your changes to `.index.yml` first. A workflow that calls none of Forge.go's pipelines is your own and is never removed; check it doesn't repeat `.index.yml`'s jobs. Nothing is removed when `init` kept an existing `.index.yml`.
 
 `forgego sync` never touches `.index.yml`: like the other generated configs, it's yours once written.
 

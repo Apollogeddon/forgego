@@ -145,7 +145,7 @@ Choose at most one mode. An invalid combination — more than one mode, a featur
 
 `--go` sets the `go` line of a new `go.mod` (a minor release gets a `.0` patch) and the `golang` image the `Dockerfile` builds with. CI reads its Go version from `go.mod`, so the generated workflow passes no `go_version`. Without `--go`, an existing project's `go.mod` decides both. `init` never changes an existing `go.mod`'s `go` line, so to move such a project to another Go, edit `go.mod` (CI follows it) and pass the same `--go` with `--force` to rewrite the `Dockerfile`.
 
-`--no-testing`, `--no-linting` and `--no-versioning` also switch off the matching stages and jobs in the generated `.github/workflows/.index.yml`: see [Generated workflow]({{< relref "workflows/_index.md#generated-workflow" >}}). Run over a project with the `.github/workflows/index.yml` `init` used to write, `init` removes it: see [Upgrading from index.yml]({{< relref "workflows/_index.md#upgrading-from-indexyml" >}}).
+`--no-testing`, `--no-linting` and `--no-versioning` also switch off the matching stages and jobs in the generated `.github/workflows/.index.yml`: see [Generated workflow]({{< relref "workflows/_index.md#generated-workflow" >}}). If `.github/workflows/index.yml` calls Forge.go's pipelines, `init` removes it: see [An existing index.yml]({{< relref "workflows/_index.md#an-existing-indexyml" >}}).
 
 ### Keeping up to date
 
@@ -158,9 +158,9 @@ The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -mo
 
 `sync` never changes the `FORGEGO` var, so one that runs Forge.go some other way, such as a local build, is left alone.
 
-#### Moving an old pin
+#### A pin without `/v2`
 
-Forge.go is published as `github.com/apollogeddon/forgego/v2`. A `.forgego/forgego/go.mod` that requires `github.com/apollogeddon/forgego`, without `/v2`, can't be moved to a newer release, so Dependabot never proposes one there. Move it once by running the current `sync`:
+Forge.go is published as `github.com/apollogeddon/forgego/v2`. If `.forgego/forgego/go.mod` requires `github.com/apollogeddon/forgego` without `/v2`, Dependabot can't propose a release there. Fix it once with `sync`:
 
 ```bash
 go run github.com/apollogeddon/forgego/v2/cmd/forgego@latest sync
@@ -169,7 +169,7 @@ task sync-check
 
 `sync` rewrites `.forgego/forgego/go.mod` to require `github.com/apollogeddon/forgego/v2` at the version it is, with its `tool` line naming `github.com/apollogeddon/forgego/v2/cmd/forgego`, replaces its `go.sum`, and refreshes the other managed files. It also points the Forge.go entry in `.github/dependabot.yml` at the `/v2` module. Commit the result; Dependabot proposes each release from then on.
 
-Two older layouts need changing by hand first, as `sync` doesn't change them:
+Two other layouts need changing by hand first, as `sync` doesn't change them:
 
 - **Tool pins at `.forgego/<tool>.mod` and `.sum`**: move each pair to `.forgego/<tool>/go.mod` and `go.sum`, change every `-modfile=.forgego/<tool>.mod` in `Taskfile.yml` and `lefthook.yml` to `-modfile=.forgego/<tool>/go.mod`, and run `task hooks` to reinstall the Git hooks at the new path.
 - **A `FORGEGO` var that runs `go run github.com/apollogeddon/forgego/cmd/forgego@<version>`**: set it to `go tool -modfile=.forgego/forgego/go.mod forgego`. The `sync` above then pins Forge.go in `.forgego/forgego/go.mod`. For Dependabot to propose each release, add the `/.forgego/forgego` entry from a new project's `.github/dependabot.yml`.

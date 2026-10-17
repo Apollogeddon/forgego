@@ -4,7 +4,7 @@ layout: hextra-home
 hero:
   badge: Go · go tool · forgego
   title: Quality tooling,<br>zero configuration drift.
-  subtitle: Reusable GitHub Actions workflows and tooling configurations for Go projects. Keep your golangci-lint, govulncheck and gotestsum setup in one place, and scaffold projects with one command.
+  subtitle: Reusable GitHub Actions workflows and tooling configurations for Go projects. Keep your lint, vulnerability-check and test setup in one place, and scaffold projects with one command.
   start: docs/getting-started
   github: https://github.com/apollogeddon/forgego
   terminal:

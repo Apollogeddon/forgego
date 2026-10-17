@@ -36,7 +36,7 @@ task sync
 - a website's vendored FlexSearch in `assets/forgego/flexsearch/`, when the project pins Hugo (see [Websites](#websites));
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
 - `.forgego/forgego/go.mod`, when `Taskfile.yml`'s `FORGEGO` var runs `go tool -modfile=.forgego/forgego/go.mod forgego` and the pin is missing: it pins the version doing the sync, and writes its `go.sum` with `go mod tidy` in `.forgego/forgego/`. An existing pin is left alone, as Dependabot proposes the next version from then on;
-- a pin that requires `github.com/apollogeddon/forgego` without `/v2`: `sync` moves it to `github.com/apollogeddon/forgego/v2` at the version doing the sync, with a new `go.sum`, and points `.github/dependabot.yml`'s `dependency-name` at the `/v2` module (see [Moving an old pin]({{< relref "getting-started.md#moving-an-old-pin" >}})).
+- a pin that requires `github.com/apollogeddon/forgego` without `/v2`: `sync` moves it to `github.com/apollogeddon/forgego/v2` at the version doing the sync, with a new `go.sum`, and points `.github/dependabot.yml`'s `dependency-name` at the `/v2` module (see [A pin without /v2]({{< relref "getting-started.md#a-pin-without-v2" >}})).
 
 `task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It runs in the lefthook pre-commit hook and in the check pipelines' `lint` stage, so a stale file fails the checks.
 

@@ -335,27 +335,3 @@ Dependabot's GitHub Actions updates (branches starting `dependabot/github_action
 | `runs_on` | `'ubuntu-latest'` | Runner label |
 | `reviewers` | `''` | Comma-separated logins to request a review from; empty means the repository's owner |
 | `checks_passed` | `false` | Whether the pull request's checks passed in this run, e.g. `${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}` from a job that needs them all |
-
-## Inputs that moved
-
-`service.yml`, `library.yml` and `website.yml` used to each run a whole pipeline: checks, review requests, the Dependabot merge, release-please and delivery. Each is now one part, and `.index.yml` decides when each part runs, so a hand-written caller moves these inputs:
-
-| Old input | Now |
-| :--- | :--- |
-| `test_on_push`, `test_release_prs`, `run_checks` | Gone: the root job's `if` decides (see [Checking a release](#checking-a-release)) |
-| `enable_versioning` | Gone: call `version.yml`, or leave it out |
-| `auto_patch` | Gone: call `patch.yml` from a scheduled, manual or `auto-merged` run |
-| `auto_merge` (`website.yml`) | Gone: call `merge.yml` once per run |
-| `reviewers` | `version.yml`'s and `merge.yml`'s `reviewers` |
-| `publish` (`library.yml`) | `publish.yml` with `package: true` and `assets: false` |
-| `release_binaries`, `native_builds`, `release_files`, `checksums`, `gpg_sign`, the GPG secrets (`service.yml`) | `publish.yml`'s, with `tag_name` from `version.yml` |
-| `extra_runners` (`service.yml`, `testing.yml`) | `test_windows` and `test_macos`, a runner label or `{"runs_on", "env"}` each; the build artifacts are now `<artifact_name>-windows` and `-macos` |
-| `run_tests`, `lint`, `enable_secrets`, `go_version`, `apt_packages`, `working_directory`, `artifact_name`, `artifact_path`, `build_command`, `extra_test_task`, `setup_script`, `runs_on` | Unchanged, on the check pipelines (`setup_script`, `build_command`, `artifact_path` and `apt_packages` on `publish.yml` too, for native builds) |
-| The site-check inputs (`website.yml`) | Unchanged |
-| `docker.yml`'s | Unchanged |
-
-| Old output | Now |
-| :--- | :--- |
-| `new_release_published`, `version`, `tag_name` (`service.yml`, `library.yml`, `website.yml`) | `version.yml`'s |
-
-`testing.yml`, `quality.yml` and `review.yml` are gone: their jobs are the check pipelines' stages, `patch.yml`, and `merge.yml`'s and `version.yml`'s review requests.
