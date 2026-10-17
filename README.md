@@ -22,11 +22,11 @@
 
 <br />
 
-Forge.go (`forgego`) is a project-scaffolding CLI for Go. Its `init` command sets up a backend, library or website with a standard toolchain (golangci-lint, govulncheck, gotestsum, lefthook, release-please, GoReleaser) and a GitHub Actions pipeline built from reusable workflows. It keeps your golangci-lint, govulncheck and gotestsum setup in one place: each tool is pinned in its own module, and `forgego sync` brings every project up to the configs and versions of a newer Forge.go.
+Forge.go (`forgego`) is a project-scaffolding CLI for Go. Its `init` command sets up a backend, library or website with a standard toolchain and a GitHub Actions pipeline built from reusable workflows. It keeps your lint, vulnerability-check and test setup in one place: each tool is pinned in its own module, and `forgego sync` brings every project up to the configs and versions of a newer Forge.go.
 
 ## Requirements
 
-- [Go](https://go.dev/dl/) 1.26 or later; the pinned tools need Go 1.27, which `go` downloads through the `toolchain` line in `go.mod`
+- [Go](https://go.dev/dl/); when the pinned tools need a newer Go, `go` downloads it through the `toolchain` line in `go.mod`
 - Git, for the generated lefthook hooks
 - Docker, only for the `docker:build` and `docker:run` tasks that `--docker` adds
 
@@ -72,20 +72,6 @@ go tool -modfile=.forgego/task/go.mod task hooks
 `init` is safe to re-run: existing files are left alone unless you pass `--force`. Run `forgego init --help` for every flag, or see the [flag reference](https://apollogeddon.github.io/forgego/docs/getting-started/#init-options).
 
 Every generated task runs through a pinned copy of [Task](https://taskfile.dev/): `go tool -modfile=.forgego/task/go.mod task <name>`. Alias that command, or install Task and run `task <name>`.
-
-## The toolchain
-
-| Category | Tool | What it does |
-| :--- | :--- | :--- |
-| Linting and formatting | [golangci-lint](https://golangci-lint.run/) | Runs a shared set of linters and the gofumpt and goimports formatters in one pass. |
-| Security scanning | [govulncheck](https://go.dev/doc/security/vuln/), plus [Gitleaks](https://github.com/gitleaks/gitleaks) and [OSV-Scanner](https://osv.dev/) in CI | Reports the vulnerabilities your code calls, leaked secrets and vulnerable dependencies. |
-| Testing | [gotestsum](https://github.com/gotestyourself/gotestsum) | Runs `go test` with readable output, coverage and a JUnit report. |
-| Task running | [Task](https://taskfile.dev/) | Runs the project's tasks from `Taskfile.yml`. |
-| Git hooks | [lefthook](https://github.com/evilmartians/lefthook) | Formats on commit, lints on push and checks commit messages against Conventional Commits. |
-| Releases | [release-please](https://github.com/googleapis/release-please) and [GoReleaser](https://goreleaser.com/) | Versions and changelogs from Conventional Commits, with release binaries and `.deb` packages attached. |
-| CI/CD | [GitHub Actions](https://github.com/features/actions) | Reusable workflows for quality checks, tests, releases and deployment. |
-| Containers | [Docker Buildx](https://docs.docker.com/build/) | With `--docker`, CI builds the image for `linux/amd64` and `linux/arm64` on every pull request and pushes it to GHCR on release. |
-| Websites | [Hugo](https://gohugo.io/) and [Hextra](https://imfing.github.io/hextra/) | With `--website`, a documentation site whose theme is versioned in `go.mod`. |
 
 ## Keeping projects up to date
 

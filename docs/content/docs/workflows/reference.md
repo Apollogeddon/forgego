@@ -39,7 +39,7 @@ Every stage asks for `contents: read`; `scan` also asks for `pull-requests: writ
 | :--- | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | all | Runner label |
 | `working_directory` | `'.'` | all | Directory containing `go.mod` |
-| `go_version` | `''` | all | Go version; empty reads the project's `go.mod`, else Go 1.27 |
+| `go_version` | `''` | all | Go version; empty reads the project's `go.mod`, else Forge.go's default |
 | `enable_secrets` | `true` | all | Run the Gitleaks scan |
 | `run_tests` | `true` (`false` for `website.yml`) | all | Run the `test` stages — `forgego init --no-testing` sets it to `false` |
 | `artifact_name` | `'dist'` | all | Name of the build artifact |
@@ -124,8 +124,8 @@ Both checks run in one `check` stage on the artifact the build uploaded, so they
 | Output | Description |
 | :--- | :--- |
 | `new_release_published` | Whether a new release was published |
-| `version` | Released version, e.g. `1.2.3`; empty when nothing was released |
-| `tag_name` | Released tag, e.g. `v1.2.3`; empty when nothing was released |
+| `version` | Released version, e.g. `X.Y.Z`; empty when nothing was released |
+| `tag_name` | Released tag, e.g. `vX.Y.Z`; empty when nothing was released |
 
 ### Checking a release
 
@@ -145,7 +145,7 @@ release-please tags the release before the release's checks run. If they fail, t
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label |
 | `working_directory` | `'.'` | Directory containing `go.mod` |
-| `go_version` | `''` | Go version; empty reads the project's `go.mod`, else Go 1.27 |
+| `go_version` | `''` | Go version; empty reads the project's `go.mod`, else Forge.go's default |
 | `tag_name` | `''` | The release, as `version.yml`'s `tag_name`; `package` and the attachments without GoReleaser need it |
 | `package` | `false` | Fetch the release through the Go module proxy; a library's caller turns it on |
 | `assets` | `true` | Attach the release's files and publish the draft; a library's caller turns it off |
@@ -318,7 +318,7 @@ The generated `.index.yml` runs it weekly, on a manual run, and on the `auto-mer
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label |
 | `working_directory` | `'.'` | Directory containing `go.mod` |
-| `go_version` | `''` | Go version; empty reads the project's `go.mod`, else Go 1.27 |
+| `go_version` | `''` | Go version; empty reads the project's `go.mod`, else Forge.go's default |
 | `apt_packages` | `''` | apt packages to install before compiling |
 
 ## merge.yml
@@ -338,7 +338,7 @@ Dependabot's GitHub Actions updates (branches starting `dependabot/github_action
 
 ## Inputs that moved
 
-Before 2.0, `service.yml`, `library.yml` and `website.yml` each ran a whole pipeline: checks, review requests, the Dependabot merge, release-please and delivery. Each is now one part, and `.index.yml` decides when each part runs, so a hand-written caller moves these inputs:
+`service.yml`, `library.yml` and `website.yml` used to each run a whole pipeline: checks, review requests, the Dependabot merge, release-please and delivery. Each is now one part, and `.index.yml` decides when each part runs, so a hand-written caller moves these inputs:
 
 | Old input | Now |
 | :--- | :--- |
