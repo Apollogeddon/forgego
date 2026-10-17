@@ -91,7 +91,7 @@ tasks:
 A backend's `build` task stamps the `VERSION` var into `main.version`. Override it from the command line:
 
 ```bash
-task build VERSION=1.4.0
+task build VERSION=$(git describe --tags)
 ```
 
 ### Running the tests with the race detector
@@ -162,8 +162,8 @@ Call a check pipeline once more with another `go_version` to run its stages on t
 
 ```yaml
 jobs:
-  service-go126:
-    name: service (go 1.26)
+  service-oldstable:
+    name: service (oldstable)
     needs: version
     if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.version.outputs.new_release_published == 'true') }}
     uses: apollogeddon/forgego/.github/workflows/service.yml@main
@@ -171,14 +171,14 @@ jobs:
       contents: read
       pull-requests: write
     with:
-      go_version: '1.26'
+      go_version: 'oldstable'
       # artifact names must be unique per run
-      artifact_name: dist-go1.26
+      artifact_name: dist-oldstable
 ```
 
 Add it to `merge`'s `needs` so a Dependabot merge waits for it too.
 
-The pinned tools need Go 1.27, so on an older `go_version` the `toolchain` line in `go.mod` decides which Go actually runs the tools.
+On an older `go_version`, the `toolchain` line in `go.mod` still decides which Go runs the pinned tools.
 
 ### Custom build steps
 

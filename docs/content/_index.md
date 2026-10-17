@@ -2,9 +2,9 @@
 title: Forge.go
 layout: hextra-home
 hero:
-  badge: Go 1.27 · go tool · forgego
+  badge: Go · go tool · forgego
   title: Quality tooling,<br>zero configuration drift.
-  subtitle: Reusable GitHub Actions workflows and tooling configurations for Go projects. Keep your golangci-lint, govulncheck and gotestsum setup in one place, and scaffold projects with one command.
+  subtitle: Reusable GitHub Actions workflows and tooling configurations for Go projects. Keep your lint, vulnerability-check and test setup in one place, and scaffold projects with one command.
   start: docs/getting-started
   github: https://github.com/apollogeddon/forgego
   terminal:
@@ -67,18 +67,3 @@ linters:
 {{< /fg-steps >}}
 
 {{< fg-more href="docs/getting-started" label="Full documentation" >}}
-
-## The toolchain
-
-{{< fg-section >}}Fast tools, pinned by Forge.go and run through Task.{{< /fg-section >}}
-
-{{< fg-cards cols="4" >}}
-{{< fg-tool name="golangci-lint" lang="Go" >}}Replaces gofmt, go vet, staticcheck{{< /fg-tool >}}
-{{< fg-tool name="gotestsum" lang="Go" >}}Replaces go test, go-junit-report{{< /fg-tool >}}
-{{< fg-tool name="govulncheck" lang="Go" >}}Replaces manual dependency audits{{< /fg-tool >}}
-{{< fg-tool name="lefthook" lang="Go" >}}Replaces hand-written Git hooks{{< /fg-tool >}}
-{{< fg-tool name="release-please" lang="JS" >}}Replaces manual tagging{{< /fg-tool >}}
-{{< fg-tool name="GoReleaser" lang="Go" >}}Replaces release build scripts{{< /fg-tool >}}
-{{< fg-tool name="Task" lang="Go" >}}Replaces Makefiles{{< /fg-tool >}}
-{{< fg-tool name="Hugo" lang="Go" >}}Replaces hand-built docs sites{{< /fg-tool >}}
-{{< /fg-cards >}}

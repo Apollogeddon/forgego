@@ -4,7 +4,7 @@ linkTitle: Workflows
 weight: 7
 ---
 
-Forge.go ships reusable GitHub Actions pipelines that give every project the same checks, release process and delivery. `forgego init` generates a root workflow, `.github/workflows/.index.yml`, whose jobs each call one pipeline. This page covers the generated workflow, when each pipeline runs, and the permissions they need; the [Job reference]({{< relref "reference.md" >}}) describes each pipeline's stages and inputs.
+Forge.go ships reusable GitHub Actions pipelines that give every project the same checks, release process and delivery. `forgego init` generates a root workflow, `.github/workflows/.index.yml`, whose jobs each call one pipeline. This page covers the generated workflow, when each pipeline runs, and the permissions they need; the [pipeline reference]({{< relref "reference.md" >}}) describes each pipeline's stages and inputs.
 
 ## Names on the run page
 
@@ -21,7 +21,7 @@ A root job's id is the pipeline's name. A second call to the same pipeline names
 | `website.yml` | lint, scan, test, build, check | A Hugo website's checks, the build, and optional link and accessibility checks of it |
 | `docker.yml` | build, push | A multi-platform image: built on pull requests, pushed to GHCR on a release |
 | `version.yml` | release | release-please: the release pull request, then the tag and the draft GitHub release |
-| `publish.yml` | package, assets | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively |
+| `publish.yml` | package, assets (native), assets | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively |
 | `pages.yml` | deploy | The built website, to GitHub Pages |
 | `patch.yml` | update | `task sync` and govulncheck's module upgrades, committed to `main` |
 | `merge.yml` | review, squash | A review request on Dependabot's pull requests, and their squash merge once the checks pass |
@@ -126,9 +126,9 @@ The other modes differ only in their jobs:
 
 The workflow names no Go version: CI reads it from `go.mod`, which `init` writes with the `--go` version.
 
-### Upgrading from `index.yml`
+### An existing `index.yml`
 
-Up to 1.6, `init` generated `.github/workflows/index.yml`, which called `service.yml`, `library.yml` or `website.yml` as one job. Once `init` has written `.index.yml`, it removes such a file when it's exactly as an earlier release generated it, ignoring line endings, trailing spaces, blank lines and the `go_version` releases before 1.4 copied from `go.mod`. One you've changed since, say to set `runs_on`, is kept with a warning until you run `init --force`: move your changes to `.index.yml` first. An `index.yml` that calls none of Forge.go's workflows is your own and is never removed; check it doesn't repeat `.index.yml`'s jobs. Nothing is removed when `init` kept an existing `.index.yml`. See [Inputs that moved]({{< relref "reference.md#inputs-that-moved" >}}) for a hand-written caller.
+If `.github/workflows/index.yml` calls Forge.go's pipelines, `init` removes it once it has written `.index.yml`, so the same checks don't run twice. It removes the file only when it's exactly as `init` generated it, ignoring line endings, trailing spaces, blank lines and a `go_version` copied from `go.mod`. One you've changed, say to set `runs_on`, is kept with a warning until you run `init --force`: move your changes to `.index.yml` first. A workflow that calls none of Forge.go's pipelines is your own and is never removed; check it doesn't repeat `.index.yml`'s jobs. Nothing is removed when `init` kept an existing `.index.yml`.
 
 `forgego sync` never touches `.index.yml`: like the other generated configs, it's yours once written.
 

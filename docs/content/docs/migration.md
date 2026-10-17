@@ -86,7 +86,7 @@ release:
   use_existing_draft: true
 ```
 
-`init` keeps an existing `.github/release.json` too. A project scaffolded by an earlier Forge.go needs `"draft": true` and `"force-tag-creation": true` added to it (see [Configuration]({{< relref "configuration.md#release-please-versioning" >}})) if the repository has immutable releases turned on.
+`init` keeps an existing `.github/release.json` too. A `release.json` without `"draft": true` and `"force-tag-creation": true` needs them added (see [Configuration]({{< relref "configuration.md#release-please-versioning" >}})) if the repository has immutable releases turned on.
 
 To pick up Forge.go's config instead, run `forgego init --force` (adding `--debian` if you package a `.deb`), then copy back anything specific to your project.
 
@@ -96,7 +96,7 @@ release-please starts from the version in `.github/.release.json`, which Forge.g
 
 ```json
 {
-  ".": "1.4.2"
+  ".": "X.Y.Z"
 }
 ```
 

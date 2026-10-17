@@ -36,9 +36,9 @@ task sync
 - a website's vendored FlexSearch in `assets/forgego/flexsearch/`, when the project pins Hugo (see [Websites](#websites));
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
 - `.forgego/forgego/go.mod`, when `Taskfile.yml`'s `FORGEGO` var runs `go tool -modfile=.forgego/forgego/go.mod forgego` and the pin is missing: it pins the version doing the sync, and writes its `go.sum` with `go mod tidy` in `.forgego/forgego/`. An existing pin is left alone, as Dependabot proposes the next version from then on;
-- a pin Forge.go v1 made, which requires `github.com/apollogeddon/forgego` without `/v2`: `sync` moves it to `github.com/apollogeddon/forgego/v2` at the version doing the sync, with a new `go.sum`, and points `.github/dependabot.yml`'s `dependency-name` at the `/v2` module (see [Upgrading from Forge.go v1]({{< relref "getting-started.md#upgrading-from-forgego-v1" >}})).
+- a pin that requires `github.com/apollogeddon/forgego` without `/v2`: `sync` moves it to `github.com/apollogeddon/forgego/v2` at the version doing the sync, with a new `go.sum`, and points `.github/dependabot.yml`'s `dependency-name` at the `/v2` module (see [A pin without /v2]({{< relref "getting-started.md#a-pin-without-v2" >}})).
 
-`task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It runs in the lefthook pre-commit hook and in the CI linting job, so a stale file fails the checks.
+`task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It runs in the lefthook pre-commit hook and in the check pipelines' `lint` stage, so a stale file fails the checks.
 
 ## Pinned tools
 
@@ -48,18 +48,7 @@ Each tool lives in its own module, a `go.mod` and `go.sum` under `.forgego/<tool
 go tool -modfile=.forgego/<tool>/go.mod <tool>
 ```
 
-Keeping one module per tool means no two tools' dependencies are ever resolved together, so a tool can't force another onto an incompatible version — and none of them touch your project's `go.mod` or `go.sum`. `go` downloads and caches a tool the first time it runs.
-
-| Tool | Module | Pinned version | Needs Go | Used for |
-| :--- | :--- | :--- | :--- | :--- |
-| `task` | `github.com/go-task/task/v3` | `v3.54.0` | 1.26.4 | Running every task (all modes) |
-| `lefthook` | `github.com/evilmartians/lefthook/v2` | `v2.2.0` | 1.27.0 | Git hooks (linting on) |
-| `golangci-lint` | `github.com/golangci/golangci-lint/v2` | `v2.14.0` | 1.26.0 | Linting and formatting (linting on, not websites) |
-| `govulncheck` | `golang.org/x/vuln` | `v1.8.0` | 1.26.0 | Vulnerability checks (not websites) |
-| `gotestsum` | `gotest.tools/gotestsum` | `v1.13.0` | 1.26.0 | Tests (testing on, not websites) |
-| `hugo` | `github.com/gohugoio/hugo` | `v0.167.0` | 1.27.0 | Building the site (websites) |
-
-These are the versions this release of Forge.go pins; `sync` moves a project to the versions of the Forge.go that runs it.
+Keeping one module per tool means no two tools' dependencies are ever resolved together, so a tool can't force another onto an incompatible version — and none of them touch your project's `go.mod` or `go.sum`. `go` downloads and caches a tool the first time it runs. `sync` moves a project to the tool versions of the Forge.go that runs it.
 
 ### The `toolchain` line
 
@@ -104,7 +93,7 @@ The base config uses golangci-lint's config `version: "2"`:
 
 ### govulncheck: vulnerabilities
 
-`task security` runs `govulncheck ./...`, which reports only the known vulnerabilities your code actually calls. In CI it warns rather than fails, and the `patch` pipeline upgrades the vulnerable modules on `main` — see [Job reference]({{< relref "workflows/reference.md#patchyml" >}}).
+`task security` runs `govulncheck ./...`, which reports only the known vulnerabilities your code actually calls. In CI it warns rather than fails, and the `patch` pipeline upgrades the vulnerable modules on `main` — see [Pipeline reference]({{< relref "workflows/reference.md#patchyml" >}}).
 
 ### gotestsum: testing
 
@@ -146,7 +135,7 @@ A library's `build` task runs `go build ./...` as a compile check; a library shi
 
 A backend gets a `.goreleaser.yaml` that builds `./cmd/<name>` with `CGO_ENABLED=0`, `-trimpath` and `-s -w -X main.version={{ .Version }}` for Linux, macOS and Windows on `amd64` and `arm64`. It packages them as `.tar.gz` (`.zip` on Windows) with a `checksums.txt`.
 
-release-please creates each release and writes its notes, so GoReleaser's changelog is disabled and it uses `release.mode: keep-existing` with `use_existing_draft: true`. release-please creates a backend's release as a draft; GoReleaser attaches the binaries and checksums to it, then publishes it. Files can't be added to a published release once a repository turns on immutable releases, so the release is only published once it's complete. Try it locally with `task release:snapshot`, which runs GoReleaser `v2.18.2` with `--snapshot --clean` and publishes nothing. CI's release job runs the same version.
+release-please creates each release and writes its notes, so GoReleaser's changelog is disabled and it uses `release.mode: keep-existing` with `use_existing_draft: true`. release-please creates a backend's release as a draft; GoReleaser attaches the binaries and checksums to it, then publishes it. Files can't be added to a published release once a repository turns on immutable releases, so the release is only published once it's complete. Try it locally with `task release:snapshot`, which runs GoReleaser with `--snapshot --clean` and publishes nothing. CI's `assets` stage runs the same GoReleaser.
 
 ### release-please: versioning
 
@@ -176,16 +165,16 @@ A backend's release CI attaches binaries, so its config makes the release a draf
 }
 ```
 
-`.github/.release.json` is the release-please manifest, starting at `0.0.0`. The first release is `v0.1.0` if it includes a `feat` commit, or `v0.0.1` if it only has fixes.
+`.github/.release.json` is the release-please manifest, starting at `0.0.0`. The first release is a minor release if it includes a `feat` commit, or a patch release if it only has fixes.
 
 ### Docker
 
 `--docker` adds a multi-stage `Dockerfile` and a `.dockerignore` that keeps `.git`, `.github`, build output and test reports out of the build context.
 
-- **Backend:** builds on the `golang` image for your `--go` minor version (such as `golang:1.27`) on the build platform and cross-compiles for each target platform with `GOOS`/`GOARCH` and `CGO_ENABLED=0`, so a multi-platform image needs no emulation. The binary runs on `gcr.io/distroless/static-debian12:nonroot` as the non-root `nonroot` user. Pass `--build-arg VERSION=<version>` to set `main.version`; CI passes the release version.
+- **Backend:** builds on the `golang` image for your `--go` minor version on the build platform and cross-compiles for each target platform with `GOOS`/`GOARCH` and `CGO_ENABLED=0`, so a multi-platform image needs no emulation. The binary runs on `gcr.io/distroless/static-debian12:nonroot` as the non-root `nonroot` user. Pass `--build-arg VERSION=<version>` to set `main.version`; CI passes the release version.
 - **Website:** builds the site once with the pinned Hugo on the build host, then serves `public/` with `nginx:stable-alpine` on port 80.
 
-CI builds the image for every configured platform — see [Job reference]({{< relref "workflows/reference.md#dockeryml" >}}).
+CI builds the image for every configured platform — see [Pipeline reference]({{< relref "workflows/reference.md#dockeryml" >}}).
 
 ### Debian packaging
 
@@ -225,7 +214,7 @@ Hextra loads its search library, FlexSearch, from a CDN at build time unless the
   js = "forgego/flexsearch/flexsearch.bundle.min.js"
 ```
 
-so, once Go has downloaded Hugo and the theme, the site builds with no network access. The copy is a managed file: `task sync` replaces it when Forge.go moves to a Hextra that loads a different FlexSearch, and `task sync-check` fails if it's edited. A site scaffolded by an earlier Forge.go gets the file from `task sync`; add the `[params.search.flexsearch]` lines to its `hugo.toml` yourself, as `hugo.toml` is the site's own. Older Hextra releases, such as v0.12.0, ignore that setting and still use the CDN.
+so, once Go has downloaded Hugo and the theme, the site builds with no network access. The copy is a managed file: `task sync` replaces it when Forge.go moves to a Hextra that loads a different FlexSearch, and `task sync-check` fails if it's edited. A site without the copy gets it from `task sync`; add the `[params.search.flexsearch]` lines to its `hugo.toml` yourself, as `hugo.toml` is the site's own. Some older Hextra releases ignore that setting and still use the CDN.
 
 ## Repository files
 

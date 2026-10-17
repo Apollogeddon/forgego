@@ -7,19 +7,6 @@ Forge.go is a command-line tool, `forgego`, that scaffolds tooling into Go proje
 
 One command, `forgego init`, writes the configuration, the tasks and a GitHub Actions workflow that calls Forge.go's reusable workflows. `forgego sync` keeps the files Forge.go manages up to date afterwards.
 
-## What you get
-
-| Area | Tools |
-| :--- | :--- |
-| Tasks | [Task](https://taskfile.dev/) — a `Taskfile.yml` with `lint`, `test`, `build` and friends |
-| Linting | [golangci-lint](https://golangci-lint.run/) with a shared base config |
-| Security | [govulncheck](https://go.dev/doc/security/vuln/), which reports only the vulnerabilities the code calls, plus Gitleaks and OSV-Scanner in CI |
-| Testing | `go test` through [gotestsum](https://github.com/gotestyourself/gotestsum), with coverage and a JUnit report |
-| Git hooks | [lefthook](https://lefthook.dev/) — format on commit, lint on push, check commit messages |
-| Releases | [release-please](https://github.com/googleapis/release-please) for versions and changelogs, [GoReleaser](https://goreleaser.com/) for binaries and `.deb` packages |
-| Websites | [Hugo](https://gohugo.io/) with the [Hextra](https://github.com/imfing/hextra) theme |
-| CI/CD | Reusable GitHub Actions workflows for quality, testing, releases, publishing and Docker images |
-
 ## Project modes
 
 | Mode | Flag | What it is |
