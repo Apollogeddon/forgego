@@ -27,7 +27,7 @@ Or run it once without installing:
 go run github.com/apollogeddon/forgego/v2/cmd/forgego@latest init
 ```
 
-Generated projects don't need Forge.go installed: their `Taskfile.yml` runs the same version with `go run` (see [`sync`](#keeping-up-to-date)).
+Generated projects don't need Forge.go installed: their `Taskfile.yml` runs the version pinned in `.forgego/forgego/go.mod` with `go tool` (see [`sync`](#keeping-up-to-date)).
 
 ### 2. Initialise a project
 

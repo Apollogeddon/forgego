@@ -1,5 +1,5 @@
 ---
-title: Job reference
+title: Pipeline reference
 weight: 1
 ---
 
@@ -344,7 +344,7 @@ Before 2.0, `service.yml`, `library.yml` and `website.yml` each ran a whole pipe
 | :--- | :--- |
 | `test_on_push`, `test_release_prs`, `run_checks` | Gone: the root job's `if` decides (see [Checking a release](#checking-a-release)) |
 | `enable_versioning` | Gone: call `version.yml`, or leave it out |
-| `auto_patch` | Gone: call `patch.yml` from a scheduled or manual run |
+| `auto_patch` | Gone: call `patch.yml` from a scheduled, manual or `auto-merged` run |
 | `auto_merge` (`website.yml`) | Gone: call `merge.yml` once per run |
 | `reviewers` | `version.yml`'s and `merge.yml`'s `reviewers` |
 | `publish` (`library.yml`) | `publish.yml` with `package: true` and `assets: false` |

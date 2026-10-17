@@ -38,7 +38,7 @@ task sync
 - `.forgego/forgego/go.mod`, when `Taskfile.yml`'s `FORGEGO` var runs `go tool -modfile=.forgego/forgego/go.mod forgego` and the pin is missing: it pins the version doing the sync, and writes its `go.sum` with `go mod tidy` in `.forgego/forgego/`. An existing pin is left alone, as Dependabot proposes the next version from then on;
 - a pin Forge.go v1 made, which requires `github.com/apollogeddon/forgego` without `/v2`: `sync` moves it to `github.com/apollogeddon/forgego/v2` at the version doing the sync, with a new `go.sum`, and points `.github/dependabot.yml`'s `dependency-name` at the `/v2` module (see [Upgrading from Forge.go v1]({{< relref "getting-started.md#upgrading-from-forgego-v1" >}})).
 
-`task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It runs in the lefthook pre-commit hook and in the CI linting job, so a stale file fails the checks.
+`task sync-check` (`forgego sync --check`) reports what has drifted without writing anything, and exits `1` if anything is out of date. It runs in the lefthook pre-commit hook and in the check pipelines' `lint` stage, so a stale file fails the checks.
 
 ## Pinned tools
 
@@ -104,7 +104,7 @@ The base config uses golangci-lint's config `version: "2"`:
 
 ### govulncheck: vulnerabilities
 
-`task security` runs `govulncheck ./...`, which reports only the known vulnerabilities your code actually calls. In CI it warns rather than fails, and the `patch` pipeline upgrades the vulnerable modules on `main` — see [Job reference]({{< relref "workflows/reference.md#patchyml" >}}).
+`task security` runs `govulncheck ./...`, which reports only the known vulnerabilities your code actually calls. In CI it warns rather than fails, and the `patch` pipeline upgrades the vulnerable modules on `main` — see [Pipeline reference]({{< relref "workflows/reference.md#patchyml" >}}).
 
 ### gotestsum: testing
 
@@ -185,7 +185,7 @@ A backend's release CI attaches binaries, so its config makes the release a draf
 - **Backend:** builds on the `golang` image for your `--go` minor version (such as `golang:1.27`) on the build platform and cross-compiles for each target platform with `GOOS`/`GOARCH` and `CGO_ENABLED=0`, so a multi-platform image needs no emulation. The binary runs on `gcr.io/distroless/static-debian12:nonroot` as the non-root `nonroot` user. Pass `--build-arg VERSION=<version>` to set `main.version`; CI passes the release version.
 - **Website:** builds the site once with the pinned Hugo on the build host, then serves `public/` with `nginx:stable-alpine` on port 80.
 
-CI builds the image for every configured platform — see [Job reference]({{< relref "workflows/reference.md#dockeryml" >}}).
+CI builds the image for every configured platform — see [Pipeline reference]({{< relref "workflows/reference.md#dockeryml" >}}).
 
 ### Debian packaging
 

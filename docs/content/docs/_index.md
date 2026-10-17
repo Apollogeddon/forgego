@@ -18,7 +18,7 @@ One command, `forgego init`, writes the configuration, the tasks and a GitHub Ac
 | Git hooks | [lefthook](https://lefthook.dev/) — format on commit, lint on push, check commit messages |
 | Releases | [release-please](https://github.com/googleapis/release-please) for versions and changelogs, [GoReleaser](https://goreleaser.com/) for binaries and `.deb` packages |
 | Websites | [Hugo](https://gohugo.io/) with the [Hextra](https://github.com/imfing/hextra) theme |
-| CI/CD | Reusable GitHub Actions workflows for quality, testing, releases, publishing and Docker images |
+| CI/CD | Reusable GitHub Actions pipelines for checks, releases, publishing, GitHub Pages and Docker images |
 
 ## Project modes
 

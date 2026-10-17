@@ -4,7 +4,7 @@ linkTitle: Workflows
 weight: 7
 ---
 
-Forge.go ships reusable GitHub Actions pipelines that give every project the same checks, release process and delivery. `forgego init` generates a root workflow, `.github/workflows/.index.yml`, whose jobs each call one pipeline. This page covers the generated workflow, when each pipeline runs, and the permissions they need; the [Job reference]({{< relref "reference.md" >}}) describes each pipeline's stages and inputs.
+Forge.go ships reusable GitHub Actions pipelines that give every project the same checks, release process and delivery. `forgego init` generates a root workflow, `.github/workflows/.index.yml`, whose jobs each call one pipeline. This page covers the generated workflow, when each pipeline runs, and the permissions they need; the [pipeline reference]({{< relref "reference.md" >}}) describes each pipeline's stages and inputs.
 
 ## Names on the run page
 
@@ -21,7 +21,7 @@ A root job's id is the pipeline's name. A second call to the same pipeline names
 | `website.yml` | lint, scan, test, build, check | A Hugo website's checks, the build, and optional link and accessibility checks of it |
 | `docker.yml` | build, push | A multi-platform image: built on pull requests, pushed to GHCR on a release |
 | `version.yml` | release | release-please: the release pull request, then the tag and the draft GitHub release |
-| `publish.yml` | package, assets | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively |
+| `publish.yml` | package, assets (native), assets | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively |
 | `pages.yml` | deploy | The built website, to GitHub Pages |
 | `patch.yml` | update | `task sync` and govulncheck's module upgrades, committed to `main` |
 | `merge.yml` | review, squash | A review request on Dependabot's pull requests, and their squash merge once the checks pass |
