@@ -309,17 +309,7 @@ func allOptions() map[string]WorkflowOptions {
 	return all
 }
 
-var atMain = regexp.MustCompile(`^apollogeddon/forgego/\.github/workflows/([\w-]+\.yml)@(main|v\d+\.\d+\.\d+)$`)
-
-// A generated workflow calls the pipelines at the release that wrote it, and at main from any other build.
-func TestGeneratedIndexCallsTheRunningRelease(t *testing.T) {
-	for v, want := range map[string]string{"v2.1.0": "v2.1.0", "latest": "main", "v2.2.0-rc.1": "main", "": "main", "v2.1.0+dirty": "main"} {
-		text := RenderWorkflow(WorkflowOptions{Mode: "backend", Versioning: true, Version: v})
-		if n := strings.Count(text, ".yml@"+want+"\n"); n == 0 || n != strings.Count(text, "uses:") {
-			t.Errorf("version %q: %d of %d calls at %s", v, n, strings.Count(text, "uses:"), want)
-		}
-	}
-}
+var atMain = regexp.MustCompile(`^apollogeddon/forgego/\.github/workflows/([\w-]+\.yml)@main$`)
 
 var pinned = regexp.MustCompile(`^[\w.-]+/[\w./-]+@[0-9a-f]{40}$`)
 

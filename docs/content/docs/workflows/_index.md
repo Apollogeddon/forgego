@@ -45,7 +45,7 @@ A project without versioning has no release to wait for: its checks run on every
 
 `forgego init` writes `.github/workflows/.index.yml` for the selected mode. Every one starts with the same triggers, concurrency rule and permissions: a newer push to a pull request cancels the run it replaces, and every other run has a concurrency group of its own, so a run on `main`, running or queued, is never cancelled and a release is never created without being published. The workflow grants nothing by default, and each job grants what its pipeline needs.
 
-It calls the pipelines at the tag of the Forge.go release that wrote it, such as `@v2.0.2`, so they change only when you update them; a development build or a pre-release calls them at `@main`. Dependabot proposes each new release's tag, with the project's other GitHub Actions updates, and as a release is immutable, a tag always names the same pipelines. Every action the pipelines use is pinned to a commit.
+It calls the pipelines at `@main`, so a project follows them as they change, and Dependabot leaves them out of its GitHub Actions updates. Every action the pipelines use is pinned to a commit.
 
 ```yaml
 name: index
@@ -74,7 +74,7 @@ permissions: {}
 jobs:
   version:
     if: ${{ github.event_name != 'pull_request' && github.event_name != 'schedule' }}
-    uses: apollogeddon/forgego/.github/workflows/version.yml@v2.0.2
+    uses: apollogeddon/forgego/.github/workflows/version.yml@main
     with:
       app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}
     secrets:
@@ -86,7 +86,7 @@ jobs:
   library:
     needs: version
     if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.version.outputs.new_release_published == 'true') }}
-    uses: apollogeddon/forgego/.github/workflows/library.yml@v2.0.2
+    uses: apollogeddon/forgego/.github/workflows/library.yml@main
     permissions:
       contents: read
       pull-requests: write
@@ -94,7 +94,7 @@ jobs:
   publish:
     needs: [version, library]
     if: ${{ !cancelled() && needs.library.result == 'success' && needs.version.outputs.new_release_published == 'true' }}
-    uses: apollogeddon/forgego/.github/workflows/publish.yml@v2.0.2
+    uses: apollogeddon/forgego/.github/workflows/publish.yml@main
     with:
       tag_name: ${{ needs.version.outputs.tag_name }}
       package: true
@@ -104,7 +104,7 @@ jobs:
 
   patch:
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}
-    uses: apollogeddon/forgego/.github/workflows/patch.yml@v2.0.2
+    uses: apollogeddon/forgego/.github/workflows/patch.yml@main
     permissions:
       contents: write
       pull-requests: write
@@ -112,7 +112,7 @@ jobs:
   merge:
     needs: library
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' }}
-    uses: apollogeddon/forgego/.github/workflows/merge.yml@v2.0.2
+    uses: apollogeddon/forgego/.github/workflows/merge.yml@main
     with:
       checks_passed: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     permissions:

@@ -6,7 +6,6 @@ import (
 	"github.com/apollogeddon/forgego/v2/internal/config"
 	"github.com/apollogeddon/forgego/v2/internal/console"
 	"github.com/apollogeddon/forgego/v2/internal/templates"
-	"github.com/apollogeddon/forgego/v2/internal/version"
 )
 
 // Workflow generates the project's CI, which calls forgego's pipelines.
@@ -31,7 +30,6 @@ func (Workflow) Apply(ctx *Context) bool {
 		Testing:    ctx.Cfg.Testing,
 		Linting:    ctx.Cfg.Linting,
 		Versioning: ctx.Cfg.Versioning,
-		Version:    version.Current(),
 	}))
 	if written && replacing {
 		removeOldWorkflows(ctx)
