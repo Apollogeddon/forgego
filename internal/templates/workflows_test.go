@@ -773,28 +773,17 @@ func TestSquashNeedsDependabotAndPassingChecks(t *testing.T) {
 	}
 }
 
-// Only a minor or patch update merges unseen, and only at the commit whose checks passed.
-func TestSquashMergesOnlyMinorUpdatesAtTheCheckedCommit(t *testing.T) {
+// Any update whose checks passed merges, whatever its size, and only at the commit those checks ran on.
+func TestSquashMergesAnyUpdateAtTheCheckedCommit(t *testing.T) {
 	squash := readWorkflow(t, "merge.yml").Jobs["squash"]
-	if first := squash.Steps[0]; first.ID != "metadata" || !strings.HasPrefix(first.Uses, "dependabot/fetch-metadata@") ||
-		first.With["github-token"] != "${{ secrets.GITHUB_TOKEN }}" {
-		t.Errorf("squash's first step = %+v, want dependabot/fetch-metadata", first)
+	if len(squash.Steps) != 1 || squash.Steps[0].Name != "Enable auto-merge" {
+		t.Errorf("squash steps = %+v, want only Enable auto-merge", squash.Steps)
 	}
-	merge := stepNamed(squash, "Enable auto-merge")
-	script := merge.With["script"]
-	if merge.Env["UPDATE_TYPE"] != "${{ steps.metadata.outputs.update-type }}" {
-		t.Errorf("UPDATE_TYPE = %q", merge.Env["UPDATE_TYPE"])
-	}
-	for _, want := range []string{
-		"'version-update:semver-minor', 'version-update:semver-patch'", "core.notice(",
-		"sha: pr.head.sha", "expectedHeadOid: $oid", "oid: pr.head.sha",
-	} {
+	script := stepNamed(squash, "Enable auto-merge").With["script"]
+	for _, want := range []string{"sha: pr.head.sha", "expectedHeadOid: $oid", "oid: pr.head.sha"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("the squash script doesn't contain %q", want)
 		}
-	}
-	if notice, merges := strings.Index(script, "core.notice("), strings.Index(script, "enablePullRequestAutoMerge"); notice > merges {
-		t.Error("the squash script merges before it checks the update type")
 	}
 }
 
