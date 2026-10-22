@@ -46,6 +46,10 @@ jobs:
 
 const released = "needs.version.outputs.new_release_published == 'true'"
 
+// public is true only for a public repository: the field is missing on a scheduled run, which then falls back
+// to what a private repository on GitHub Free can do.
+const public = "github.event.repository.private == false"
+
 // input is one `with:` entry, kept in order.
 type input struct{ key, value string }
 
@@ -156,23 +160,26 @@ func RenderWorkflow(o WorkflowOptions) string {
 			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}, {"package", "true"}, {"assets", "false"}}
 			publish.permissions = []string{"contents: read"}
 		} else {
-			publish.comment = "the release's binaries, built by GoReleaser and attached to the GitHub release"
-			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}}
-			publish.permissions = []string{"contents: write"}
+			// GitHub Free attests only a public repository's builds
+			publish.comment = "the release's binaries, built by GoReleaser, attached to the GitHub release and attested"
+			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}, {"attest", expr(public)}}
+			publish.permissions = []string{"contents: write", "id-token: write", "attestations: write"}
 		}
 		jobs = append(jobs, publish)
 	}
 
 	if o.Mode == "website" {
 		pages := pipelineJob{
-			id: "pages", pipeline: "pages", comment: "every change to main, to GitHub Pages",
-			needs: []string{checks}, cond: "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'",
+			id: "pages", pipeline: "pages",
+			comment:     "every change to main, to GitHub Pages, which GitHub Free serves only from a public repository: a paid plan can drop that check",
+			needs:       []string{checks},
+			cond:        "github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && " + public,
 			permissions: []string{"pages: write", "id-token: write"},
 		}
 		if o.Versioning {
-			pages.comment = "a release, to GitHub Pages"
+			pages.comment = "a release, to GitHub Pages, which GitHub Free serves only from a public repository: a paid plan can drop that check"
 			pages.needs = []string{"version", checks}
-			pages.cond = afterChecks + " && " + released
+			pages.cond = afterChecks + " && " + released + " && " + public
 		}
 		jobs = append(jobs, pages)
 	}

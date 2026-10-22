@@ -21,12 +21,12 @@ A root job's id is the pipeline's name. A second call to the same pipeline names
 | `website.yml` | lint, scan, test, build, check | A Hugo website's checks, the build, and optional link and accessibility checks of it |
 | `docker.yml` | build, push | A multi-platform image: built on pull requests, pushed to GHCR on a release |
 | `version.yml` | release | release-please: the release pull request, then the tag and the draft GitHub release |
-| `publish.yml` | package, assets (native), assets | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively |
+| `publish.yml` | package, assets (native), assets, attest | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively, and their build provenance attested |
 | `pages.yml` | deploy | The built website, to GitHub Pages |
 | `patch.yml` | update | `task sync` and govulncheck's module upgrades, committed to `main` |
 | `merge.yml` | review, squash | A review request on Dependabot's pull requests, and their squash merge once the checks pass |
 
-The stages are `lint` (`forgego sync --check`, `go mod tidy -diff` and golangci-lint), `scan` (Gitleaks, OSV-Scanner and govulncheck), `test`, `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `deploy`, `update`, `review` and `squash`.
+The stages are `lint` (`forgego sync --check`, `go mod tidy -diff` and golangci-lint), `scan` (Gitleaks, OSV-Scanner and govulncheck), `test`, `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `attest`, `deploy`, `update`, `review` and `squash`.
 
 There is no separate packaging pipeline: a `--debian` project uses `service.yml`, and GoReleaser builds the `.deb` in `publish.yml`'s `assets` stage.
 
@@ -115,9 +115,9 @@ The other modes differ only in their jobs:
 
 | Mode | Jobs |
 | :--- | :--- |
-| `--backend` | `version`, `service`, `publish` (GoReleaser, with `contents: write`), `patch`, `merge` |
+| `--backend` | `version`, `service`, `publish` (GoReleaser, with `contents: write`, and attestations from a public repository), `patch`, `merge` |
 | `--library` | `version`, `library`, `publish` (the Go module proxy), `patch`, `merge` |
-| `--website` | `version`, `website`, `pages`, `patch`, `merge` |
+| `--website` | `version`, `website`, `pages` (from a public repository), `patch`, `merge` |
 | `--debian` | As `--backend`: GoReleaser builds the `.deb` from the `nfpms` section of `.goreleaser.yaml` |
 
 - `--docker` adds a `docker` job after the checks: it builds on pull requests, and builds and pushes on a release. `merge` waits for it, so a broken image stops a Dependabot merge.
@@ -147,11 +147,20 @@ Each root job grants what its pipeline's stages need, and nothing else:
 | `library`, `service`, `website` | `contents: read`, `pull-requests: write` | Gitleaks reads a pull request's commits and comments on one it finds a secret in |
 | `docker` | `contents: read`, `packages: write` | Pushing to GHCR |
 | `version` | `contents: write`, `pull-requests: write` | release-please's tags, releases and release pull requests |
-| `publish` | `contents: read`; `contents: write` for `assets` | The proxy fetch; attaching the release's files and publishing the draft |
+| `publish` | `contents: read`; `contents: write` for `assets`; `id-token: write` and `attestations: write` for `attest` | The proxy fetch; attaching the release's files and publishing the draft; their build provenance |
 | `pages` | `pages: write`, `id-token: write` | GitHub Pages |
 | `patch` | `contents: write` | Committing the refreshed files and patches |
 | `merge` | `contents: write`, `pull-requests: write` | The review request, the merge and the dispatch |
 
-GitHub checks a called workflow's permissions against the caller's before running anything, even a job that would be skipped. So a caller grants the union of what a pipeline's stages ask for. In `publish.yml`, `package` and the native builds ask for exactly `contents: read`, and `assets` asks for nothing and takes the caller's grant, so only a caller that turns `assets` on, a service's, grants `contents: write`.
+GitHub checks a called workflow's permissions against the caller's before running anything, even a job that would be skipped. So a caller grants the union of what a pipeline's stages ask for. In `publish.yml`, `package` and the native builds ask for exactly `contents: read`, and `assets` asks for nothing and takes the caller's grant, so only a caller that turns `assets` on, a service's, grants `contents: write`. `attest` takes the caller's grant too, so only a caller that turns it on grants `id-token: write` and `attestations: write`.
+
+## GitHub Free
+
+Everything works in a private repository on GitHub Free. Two things GitHub offers there only to public repositories switch on by themselves once the repository is public, as each job checks `github.event.repository.private == false`:
+
+- **Artifact attestations**: a service's `publish` job passes `attest`, so the release's files get a build provenance attestation, checked with `gh attestation verify`.
+- **GitHub Pages**: a website's `pages` job deploys only from a public repository. On a paid plan, which serves Pages from a private repository too, drop that check from the job's `if`.
+
+A scheduled run has no `repository.private`, and the check reads that as private, which always works.
 
 For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions**. For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**. Auto-merge squash-merges, so release-please lists each update once: a merge commit repeats the pull request's title, and release-please reads that as a second change. Merge your own pull requests the same way, with **Squash and merge**. Dependabot's GitHub Actions updates are never auto-merged: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge, so merge those pull requests yourself.

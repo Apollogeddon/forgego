@@ -337,8 +337,8 @@ func TestGeneratedIndexCallsForgegosPipelines(t *testing.T) {
 			t.Errorf("%s: patch if = %q", name, w.Jobs["patch"].If)
 		}
 		for id, j := range w.Jobs {
-			// only GitHub Pages needs an OIDC token
-			if _, ok := j.Permissions["id-token"]; ok && id != "pages" {
+			// only GitHub Pages and a service's attestations need an OIDC token
+			if _, ok := j.Permissions["id-token"]; ok && id != "pages" && (id != "publish" || o.Mode != "backend") {
 				t.Errorf("%s: %s asks for id-token", name, id)
 			}
 			if j.Secrets != nil {
@@ -407,8 +407,36 @@ func TestGeneratedIndexGatesOnTheChecksAndTheRelease(t *testing.T) {
 	}
 
 	unversioned := parse(t, "website", RenderWorkflow(WorkflowOptions{Mode: "website"})).Jobs["pages"]
-	if unversioned.If != "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}" {
-		t.Errorf("pages if = %q; want every change to main deployed", unversioned.If)
+	if unversioned.If != "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event.repository.private == false }}" {
+		t.Errorf("pages if = %q; want every change to a public repository's main deployed", unversioned.If)
+	}
+}
+
+// GitHub Free attests builds and serves Pages only for a public repository. A scheduled run has no
+// repository.private, and `== false` reads that as private, which always works; `!private` wouldn't.
+func TestFreePlanExtrasNeedAPublicRepository(t *testing.T) {
+	const public = "github.event.repository.private == false"
+	own := readWorkflow(t, ".index.yml").Jobs
+	backend := parse(t, "backend", RenderWorkflow(WorkflowOptions{Mode: "backend", Versioning: true})).Jobs
+	for name, publish := range map[string]job{".index.yml": own["publish"], "backend": backend["publish"]} {
+		if publish.With["attest"] != "${{ "+public+" }}" ||
+			publish.Permissions["id-token"] != "write" || publish.Permissions["attestations"] != "write" {
+			t.Errorf("%s: publish = %+v; want it to attest a public repository's release", name, publish)
+		}
+	}
+	website := parse(t, "website", RenderWorkflow(WorkflowOptions{Mode: "website", Versioning: true})).Jobs
+	for name, pages := range map[string]job{".index.yml": own["pages"], "website": website["pages"]} {
+		if !strings.Contains(pages.If, " && "+public) {
+			t.Errorf("%s: pages if = %q; want it only from a public repository", name, pages.If)
+		}
+	}
+	for name, o := range allOptions() {
+		if text := RenderWorkflow(o); strings.Contains(text, "!github.event.repository.private") {
+			t.Errorf("%s reads a missing repository.private as public", name)
+		}
+	}
+	if strings.Contains(readText(t, ".index.yml"), "!github.event.repository.private") {
+		t.Error(".index.yml reads a missing repository.private as public")
 	}
 }
 
@@ -550,8 +578,8 @@ func TestRunnerStagesDefaultToNothing(t *testing.T) {
 	}
 }
 
-// publish's package and native builds ask for only what they need; assets asks for nothing and takes the
-// caller's grant, so a library's caller, which turns assets off, never grants contents: write.
+// publish's package and native builds ask for only what they need; assets and attest ask for nothing and take the
+// caller's grant, so a library's caller, which turns both off, never grants contents: write or an OIDC token.
 func TestPublishCapsItsPermissions(t *testing.T) {
 	jobs := readWorkflow(t, "publish.yml").Jobs
 	for _, id := range []string{"package", "assets-native"} {
@@ -559,8 +587,13 @@ func TestPublishCapsItsPermissions(t *testing.T) {
 			t.Errorf("%s permissions = %v", id, jobs[id].Permissions)
 		}
 	}
-	if jobs["assets"].Permissions != nil {
-		t.Errorf("assets permissions = %v, want the caller's", jobs["assets"].Permissions)
+	for _, id := range []string{"assets", "attest"} {
+		if jobs[id].Permissions != nil {
+			t.Errorf("%s permissions = %v, want the caller's", id, jobs[id].Permissions)
+		}
+	}
+	if !strings.Contains(jobs["attest"].If, "inputs.attest") || !slices.Equal(jobs["attest"].Needs, []string{"assets"}) {
+		t.Errorf("attest = if %q, needs %v", jobs["attest"].If, jobs["attest"].Needs)
 	}
 	if jobs["package"].If != "inputs.package" || !strings.Contains(jobs["assets"].If, "inputs.assets") {
 		t.Errorf("package if = %q, assets if = %q", jobs["package"].If, jobs["assets"].If)

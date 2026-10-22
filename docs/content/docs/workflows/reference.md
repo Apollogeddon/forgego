@@ -140,6 +140,7 @@ release-please tags the release before the release's checks run. If they fail, t
 1. **`package`** — With `package: true`, fetches `tag_name` through `proxy.golang.org` with `go mod download`. A Go module is published by its tag; this makes the proxy and pkg.go.dev pick the release up straight away rather than on first use. From `v2` on, the stage fails if the module path doesn't end in the matching major version suffix (such as `/v2`), as Go can't fetch that release. Needs `contents: read`.
 2. **`assets (native)`** — Only with `native_builds` set: on each runner it lists, runs the [setup script](#setup-scripts) and `build_command`, and uploads the files `artifact_path` holds. See [Native release builds](#native-release-builds). Needs `contents: read`.
 3. **`assets`** — With `assets` on (the default), runs GoReleaser through `goreleaser-action`, pinned to the version the generated `release:snapshot` task runs, with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the draft release release-please created, then publishes it. With `gpg_sign: true` it first imports the signing key for GoReleaser. With `release_binaries: false` it attaches the native builds and `release_files`, if any, and publishes the draft. It asks for no permissions of its own and takes the caller's grant, which needs `contents: write`. *(Needs: assets (native))*
+4. **`attest`** — With `attest: true`, downloads the release's `checksums` file and attests the build provenance of every file it lists with [attest-build-provenance](https://github.com/actions/attest-build-provenance), so a download can be checked with `gh attestation verify <file> --repo <owner>/<repo>`. GitHub Free attests only a public repository's builds, so the generated job passes `attest: ${{ github.event.repository.private == false }}`. Like `assets`, it takes the caller's grant, which needs `id-token: write` and `attestations: write`. *(Needs: assets)*
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
@@ -156,7 +157,8 @@ release-please tags the release before the release's checks run. If they fail, t
 | `setup_script` | `''` | A [setup script](#setup-scripts) for the native builds |
 | `native_builds` | `'[]'` | JSON list of runners that build release binaries natively; see below |
 | `release_files` | `''` | Files to attach beside the native builds, one per line, relative to `working_directory`, e.g. `LICENSE`; with `release_binaries: false` |
-| `checksums` | `'checksums.txt'` | The checksum file written for the native builds and `release_files`; empty attaches none; with `release_binaries: false` |
+| `checksums` | `'checksums.txt'` | The checksum file written for the native builds and `release_files`, empty attaching none, with `release_binaries: false`; and the checksum file `attest` reads, which with GoReleaser is its `checksum.name_template` (`checksums.txt` as `forgego init` writes it) |
+| `attest` | `false` | Attest the build provenance of the release's files; needs a public repository on GitHub Free |
 | `gpg_sign` | `false` | Import the `GPG_PRIVATE_KEY` secret and give GoReleaser its fingerprint as `GPG_FINGERPRINT`; see [Signed releases](#signed-releases) |
 
 And these secrets, both optional:
@@ -261,7 +263,7 @@ jobs:
 
 *Deploys a built website to GitHub Pages.*
 
-1. **`deploy`** — Downloads the `artifact_name` artifact `website.yml` uploaded earlier in the run and deploys it, in the `github-pages` environment. One deploy runs at a time, in the `pages-deploy` concurrency group. Needs `pages: write` and `id-token: write`.
+1. **`deploy`** — Downloads the `artifact_name` artifact `website.yml` uploaded earlier in the run and deploys it, in the `github-pages` environment. One deploy runs at a time, in the `pages-deploy` concurrency group. Needs `pages: write` and `id-token: write`. GitHub Free serves Pages only from a public repository, so the generated `pages` job runs only there; on a paid plan, drop the `github.event.repository.private == false` check from its `if`.
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |

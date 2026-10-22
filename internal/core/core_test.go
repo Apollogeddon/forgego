@@ -311,7 +311,8 @@ func TestGeneratedWorkflowIsLeastPrivilegeAndNeverCancelsMain(t *testing.T) {
 			if j.Secrets != nil {
 				t.Errorf("%s: %s passes secrets", name, job)
 			}
-			if _, ok := j.Permissions["id-token"]; ok && job != "pages" {
+			// GitHub Pages and a service's release attestations sign in with an OIDC token
+			if _, ok := j.Permissions["id-token"]; ok && job != "pages" && (job != "publish" || strings.HasPrefix(name, "library")) {
 				t.Errorf("%s: %s asks for id-token", name, job)
 			}
 			if !strings.HasPrefix(j.Uses, "apollogeddon/forgego/.github/workflows/"+job+".yml@main") {

@@ -101,8 +101,12 @@ jobs:
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
       tag_name: ${{ needs.version.outputs.tag_name }}
+      # GitHub Free attests only a public repository's builds
+      attest: ${{ github.event.repository.private == false }}
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
   # the docs site isn't versioned, so it's checked on every change that touches it, and deployed from main
   website:
@@ -119,9 +123,10 @@ jobs:
       contents: read
       pull-requests: write
 
+  # GitHub Free serves Pages only from a public repository; a paid plan can drop the visibility check
   pages:
     needs: website
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event.repository.private == false
     uses: ./.github/workflows/pages.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
