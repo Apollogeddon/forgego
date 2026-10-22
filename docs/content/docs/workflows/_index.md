@@ -24,7 +24,7 @@ A root job's id is the pipeline's name. A second call to the same pipeline names
 | `publish.yml` | package, assets (native), assets, attest | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively, and their build provenance attested |
 | `pages.yml` | deploy | The built website, to GitHub Pages |
 | `patch.yml` | update | `task sync`, proposed through a pull request |
-| `merge.yml` | review, squash | A review request on Dependabot's pull requests, and the squash merge of a minor or patch update once the checks pass |
+| `merge.yml` | review, squash | A review request on Dependabot's pull requests, and their squash merge once the checks pass, majors included |
 
 The stages are `lint` (`forgego sync --check`, `go mod tidy -diff` and golangci-lint), `scan` (Gitleaks, OSV-Scanner and govulncheck), `test`, `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `attest`, `deploy`, `update`, `review` and `squash`.
 

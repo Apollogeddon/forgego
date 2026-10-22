@@ -153,7 +153,7 @@ Choose at most one mode. An invalid combination — more than one mode, a featur
 
 `forgego sync` refreshes the files Forge.go manages; `forgego sync --check` reports drift and exits `1` without writing anything. Both also accept `-C DIR`. See [Configuration]({{< relref "configuration.md#managed-files" >}}).
 
-The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -modfile=.forgego/forgego/go.mod forgego`, from a pin in `.forgego/forgego/go.mod` set to the version that scaffolded the project. Dependabot proposes each new Forge.go release there, like any other module update, and a minor or patch release's pull request auto-merges once CI passes (a major one waits for you):
+The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -modfile=.forgego/forgego/go.mod forgego`, from a pin in `.forgego/forgego/go.mod` set to the version that scaffolded the project. Dependabot proposes each new Forge.go release there, like any other module update, and its pull request auto-merges once CI passes, a major release's included:
 
 - a new release usually changes the files Forge.go manages, so on a pull request Dependabot opened and last pushed to, the `lint` stage runs `task sync` instead of `task sync-check`, and checks the refreshed files;
 - once the update merges, the `merge` pipeline's `auto-merged` dispatch runs the `patch` pipeline, which runs `task sync` on `main` and opens a pull request with the refreshed files from the `forgego/sync` branch; merge it so `task sync-check` passes again on other pull requests.
