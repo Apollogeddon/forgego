@@ -27,8 +27,9 @@ on:
         type: string
         default: ''
 
-# every job asks for what it needs
-permissions: {}
+# No permissions of its own: the job takes its caller's grant, so a caller that grants contents: write but not
+# pull-requests: write still starts (GitHub refuses a whole run whose called job asks for more), and only the
+# pull request step warns.
 
 jobs:
   update:
@@ -36,9 +37,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
-    permissions:
-      contents: write
-      pull-requests: write
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
@@ -111,12 +109,18 @@ jobs:
             const { BRANCH: head, BASE: base } = process.env;
             const { data: open } = await github.rest.pulls.list({ ...context.repo, head: `${context.repo.owner}:${head}`, base, state: 'open' });
             if (open.length) return core.info(`#${open[0].number} already proposes ${head}, now updated`);
-            const { data: pr } = await github.rest.pulls.create({
-              ...context.repo,
-              head,
-              base,
-              title: 'chore(deps): refresh the files forgego manages',
-              // a pull request opened with GITHUB_TOKEN starts no workflow
-              body: 'The files `forgego sync` manages, refreshed after a forgego update.\n\nOpened with `GITHUB_TOKEN`, so its checks don\'t start on their own: close and reopen it to run them.',
-            });
-            core.info(`Opened #${pr.number}`);
+            try {
+              const { data: pr } = await github.rest.pulls.create({
+                ...context.repo,
+                head,
+                base,
+                title: 'chore(deps): refresh the files forgego manages',
+                // a pull request opened with GITHUB_TOKEN starts no workflow
+                body: 'The files `forgego sync` manages, refreshed after a forgego update.\n\nOpened with `GITHUB_TOKEN`, so its checks don\'t start on their own: close and reopen it to run them.',
+              });
+              core.info(`Opened #${pr.number}`);
+            } catch (error) {
+              // a caller generated before patch opened pull requests grants contents: write alone
+              if (error.status !== 403) throw error;
+              core.warning(`Pushed ${head}, but couldn't open a pull request for it: grant this job pull-requests: write in .index.yml, or open one from the branch`);
+            }

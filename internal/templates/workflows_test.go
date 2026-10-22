@@ -356,7 +356,8 @@ func TestWorkflowsStartWithNoPermissions(t *testing.T) {
 			t.Fatal(err)
 		}
 		empty := raw.Permissions != nil && len(raw.Permissions.(map[string]any)) == 0
-		if want := file != "publish.yml"; empty != want {
+		// publish and patch take their callers' grants on purpose
+		if want := file != "publish.yml" && file != "patch.yml"; empty != want {
 			t.Errorf("%s: top-level permissions %v, want empty %v", file, raw.Permissions, want)
 		}
 	}
@@ -838,8 +839,12 @@ func TestPatchProposesTheRefreshedFiles(t *testing.T) {
 			t.Errorf("patch.yml still has %q", gone)
 		}
 	}
-	if !maps.Equal(update.Permissions, map[string]string{"contents": "write", "pull-requests": "write"}) {
-		t.Errorf("update permissions = %v", update.Permissions)
+	// the caller's grant, so a caller from before patch opened pull requests still starts
+	if update.Permissions != nil {
+		t.Errorf("update permissions = %v, want the caller's", update.Permissions)
+	}
+	if !strings.Contains(text, "error.status !== 403") || !strings.Contains(text, "grant this job pull-requests: write") {
+		t.Error("patch.yml fails, rather than warns, when its caller grants no pull-requests: write")
 	}
 }
 
