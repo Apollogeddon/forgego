@@ -71,6 +71,10 @@ jobs:
   version:
     if: ${{ github.event_name != 'pull_request' && github.event_name != 'schedule' }}
     uses: apollogeddon/forgego/.github/workflows/version.yml@main
+    with:
+      app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
     permissions:
       contents: write
       pull-requests: write
@@ -135,9 +139,26 @@ If `.github/workflows/index.yml` calls Forge.go's pipelines, `init` removes it o
 
 ## Secrets
 
-No secrets need passing. The pipelines only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. A library is published by its Git tag, so it needs no registry credentials either. `publish.yml` takes two optional secrets for [signed releases]({{< relref "reference.md#signed-releases" >}}); pass them by name.
+No secrets need passing. The pipelines only use the `GITHUB_TOKEN` that every called workflow receives, unless you set up a [release app](#release-pull-requests-that-run-the-checks), so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. A library is published by its Git tag, so it needs no registry credentials either. `publish.yml` takes two optional secrets for [signed releases]({{< relref "reference.md#signed-releases" >}}), and `version.yml` one for the release app; pass them by name.
 
-GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request, and `patch` proposes the files a Forge.go update refreshes. The event runs on the default branch. The pull request `patch` opens is made with `GITHUB_TOKEN` too, so close and reopen it to run its checks.
+GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for a push to the branch, or a [release app](#release-pull-requests-that-run-the-checks)), and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request, and `patch` proposes the files a Forge.go update refreshes. The event runs on the default branch. The pull request `patch` opens is made with `GITHUB_TOKEN` too, so close and reopen it to run its checks.
+
+### Release pull requests that run the checks
+
+A pull request release-please opens with a GitHub App's token runs the checks like any other. The generated `version` job passes the app's client ID from the `RELEASE_APP_CLIENT_ID` repository variable and its private key from the `RELEASE_APP_PRIVATE_KEY` secret; both are empty until you set them, and release-please uses `GITHUB_TOKEN`. To set it up:
+
+1. Create a GitHub App (**Settings → Developer settings → GitHub Apps → New GitHub App**) with no webhook and two repository permissions: **Contents: Read and write** and **Pull requests: Read and write**.
+2. Install it on the repository, and generate a private key for it.
+3. In the repository's **Settings → Secrets and variables → Actions**, add the app's client ID as the variable `RELEASE_APP_CLIENT_ID` and the private key as the secret `RELEASE_APP_PRIVATE_KEY`.
+
+```yaml
+  version:
+    uses: apollogeddon/forgego/.github/workflows/version.yml@main
+    with:
+      app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+```
 
 ## Required permissions
 

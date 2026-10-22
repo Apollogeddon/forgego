@@ -341,9 +341,45 @@ func TestGeneratedIndexCallsForgegosPipelines(t *testing.T) {
 			if _, ok := j.Permissions["id-token"]; ok && id != "pages" && (id != "publish" || o.Mode != "backend") {
 				t.Errorf("%s: %s asks for id-token", name, id)
 			}
-			if j.Secrets != nil {
-				t.Errorf("%s: %s passes secrets", name, id)
+			// only the release GitHub App's key, which is empty unless the repository sets it
+			if j.Secrets != nil && (id != "version" || !maps.Equal(j.Secrets, map[string]any{"APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"})) {
+				t.Errorf("%s: %s passes secrets %v", name, id, j.Secrets)
 			}
+		}
+	}
+}
+
+// release-please opens its pull request with a GitHub App's token when the repository sets one, as one opened
+// with GITHUB_TOKEN runs no checks, and with GITHUB_TOKEN otherwise; and the release pull request's checks run.
+func TestVersionReleasesWithAnOptionalAppToken(t *testing.T) {
+	w := readWorkflow(t, "version.yml")
+	if in := w.On.WorkflowCall.Inputs["app_client_id"]; in.Default != "" || in.Required {
+		t.Errorf("app_client_id = %+v", in)
+	}
+	if secret := w.On.WorkflowCall.Secrets["APP_PRIVATE_KEY"]; secret == nil || secret["required"] != false {
+		t.Errorf("APP_PRIVATE_KEY = %v, want it declared and optional", secret)
+	}
+	release := w.Jobs["release"]
+	app := stepNamed(release, "Create the GitHub App's token")
+	if app.ID != "app" || app.If != "inputs.app_client_id != ''" || !strings.HasPrefix(app.Uses, "actions/create-github-app-token@") ||
+		app.With["client-id"] != "${{ inputs.app_client_id }}" || app.With["private-key"] != "${{ secrets.APP_PRIVATE_KEY }}" {
+		t.Errorf("the app token step = %+v", app)
+	}
+	if token := stepNamed(release, "Release").With["token"]; token != "${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}" {
+		t.Errorf("release-please's token = %q", token)
+	}
+	generated := parse(t, "backend", RenderWorkflow(WorkflowOptions{Mode: "backend", Versioning: true})).Jobs["version"]
+	for name, j := range map[string]job{".index.yml": readWorkflow(t, ".index.yml").Jobs["version"], "generated": generated} {
+		if j.With["app_client_id"] != "${{ vars.RELEASE_APP_CLIENT_ID }}" || j.Secrets["APP_PRIVATE_KEY"] != "${{ secrets.RELEASE_APP_PRIVATE_KEY }}" {
+			t.Errorf("%s: version = %+v", name, j)
+		}
+	}
+	if strings.Contains(readText(t, ".index.yml"), "release-please--") {
+		t.Error(".index.yml still skips the release pull request's checks")
+	}
+	for name, o := range allOptions() {
+		if strings.Contains(RenderWorkflow(o), "release-please--") {
+			t.Errorf("%s skips the release pull request's checks", name)
 		}
 	}
 }

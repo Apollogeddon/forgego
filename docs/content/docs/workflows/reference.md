@@ -120,6 +120,13 @@ Both checks run in one `check` stage on the artifact the build uploaded, so they
 | `runs_on` | `'ubuntu-latest'` | Runner label |
 | `working_directory` | `'.'` | Directory of the project |
 | `reviewers` | `''` | Comma-separated logins to request a review of the release pull request from; empty means the repository's owner |
+| `app_client_id` | `''` | A GitHub App's client ID: release-please opens its pull request with the app's token, so the pull request runs the checks; empty uses `GITHUB_TOKEN` |
+
+And one secret, optional:
+
+| Secret | Purpose |
+| :--- | :--- |
+| `APP_PRIVATE_KEY` | The GitHub App's private key; with `app_client_id`. See [Release pull requests that run the checks]({{< relref "_index.md#release-pull-requests-that-run-the-checks" >}}) |
 
 | Output | Description |
 | :--- | :--- |
@@ -129,7 +136,7 @@ Both checks run in one `check` stage on the artifact the build uploaded, so they
 
 ### Checking a release
 
-The generated `.index.yml` checks each change on its pull request, and on `main` runs `version` first. Only when release-please makes a release does it run the checks again and then the job that ships what they built: `publish`, the `docker` push or the Pages deploy. Release pull requests (branches starting `release-please--`) run the checks too: they're the one place every change since the last release is checked together. Skipped jobs count as passed for required status checks, and with checks only on pull requests, turn off **Require branches to be up to date before merging**, or every PR is checked again before merge.
+The generated `.index.yml` checks each change on its pull request, and on `main` runs `version` first. Only when release-please makes a release does it run the checks again and then the job that ships what they built: `publish`, the `docker` push or the Pages deploy. Release pull requests (branches starting `release-please--`) run the checks too, once something starts them: one opened with `GITHUB_TOKEN` starts no workflow, so set up a [release app]({{< relref "_index.md#release-pull-requests-that-run-the-checks" >}}) or push to the branch. They're the one place every change since the last release is checked together. Skipped jobs count as passed for required status checks, and with checks only on pull requests, turn off **Require branches to be up to date before merging**, or every PR is checked again before merge.
 
 release-please tags the release before the release's checks run. If they fail, the tag and the draft release exist with nothing shipped, and need putting right by hand, which is why release pull requests are checked with exactly what their merge ships.
 

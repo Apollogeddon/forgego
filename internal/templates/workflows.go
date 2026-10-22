@@ -57,7 +57,7 @@ type input struct{ key, value string }
 type pipelineJob struct {
 	id, comment, cond, pipeline string
 	needs                       []string
-	with                        []input
+	with, secrets               []input
 	permissions                 []string
 }
 
@@ -85,6 +85,12 @@ func (j pipelineJob) render(b *strings.Builder) {
 			b.WriteString("      " + in.key + ": " + in.value + "\n")
 		}
 	}
+	if len(j.secrets) > 0 {
+		b.WriteString("    secrets:\n")
+		for _, in := range j.secrets {
+			b.WriteString("      " + in.key + ": " + in.value + "\n")
+		}
+	}
 	b.WriteString("    permissions:\n")
 	for _, p := range j.permissions {
 		b.WriteString("      " + p + "\n")
@@ -104,9 +110,11 @@ func RenderWorkflow(o WorkflowOptions) string {
 
 	if o.Versioning {
 		jobs = append(jobs, pipelineJob{
-			id: "version", comment: "release-please, on main",
+			id: "version", pipeline: "version",
+			comment:     "release-please, on main; a GitHub App's token, when one is set, lets its release pull request run the checks",
 			cond:        "github.event_name != 'pull_request' && github.event_name != 'schedule'",
-			pipeline:    "version",
+			with:        []input{{"app_client_id", expr("vars.RELEASE_APP_CLIENT_ID")}},
+			secrets:     []input{{"APP_PRIVATE_KEY", expr("secrets.RELEASE_APP_PRIVATE_KEY")}},
 			permissions: []string{"contents: write", "pull-requests: write"},
 		})
 	}

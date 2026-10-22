@@ -308,7 +308,8 @@ func TestGeneratedWorkflowIsLeastPrivilegeAndNeverCancelsMain(t *testing.T) {
 			t.Errorf("%s: concurrency group %q can cancel runs on main", name, group)
 		}
 		for job, j := range w.Jobs {
-			if j.Secrets != nil {
+			// only the release GitHub App's key, empty unless the repository sets it
+			if secrets, _ := j.Secrets.(map[string]any); j.Secrets != nil && (job != "version" || len(secrets) != 1 || secrets["APP_PRIVATE_KEY"] == nil) {
 				t.Errorf("%s: %s passes secrets", name, job)
 			}
 			// GitHub Pages and a service's release attestations sign in with an OIDC token

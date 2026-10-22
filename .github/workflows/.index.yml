@@ -73,17 +73,20 @@ jobs:
     uses: ./.github/workflows/version.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      # empty unless set, so release-please uses GITHUB_TOKEN
+      app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
     permissions:
       contents: write
       pull-requests: write
 
-  # a pull request's checks, and on main the release's; a release PR only bumps the version and changelog
+  # a pull request's checks, the release pull request's included, and on main the release's
   service:
     needs: [changes, version]
     if: >-
       !cancelled() && needs.changes.outputs.code == 'true' &&
-      ((github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--')) ||
-      needs.version.outputs.new_release_published == 'true')
+      (github.event_name == 'pull_request' || needs.version.outputs.new_release_published == 'true')
     uses: ./.github/workflows/service.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
@@ -111,7 +114,7 @@ jobs:
   # the docs site isn't versioned, so it's checked on every change that touches it, and deployed from main
   website:
     needs: changes
-    if: needs.changes.outputs.docs == 'true' && !startsWith(github.head_ref, 'release-please--')
+    if: needs.changes.outputs.docs == 'true'
     uses: ./.github/workflows/website.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
