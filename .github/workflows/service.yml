@@ -119,12 +119,12 @@ jobs:
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
       - name: Check forgego's files are current
-        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.actor != 'dependabot[bot]'
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && !(github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]')
         run: go tool -modfile=.forgego/task/go.mod task sync-check
       # a Dependabot bump of forgego changes the files it manages: lint against them refreshed, and the
       # patch pipeline commits them
       - name: Refresh forgego's files
-        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.actor == 'dependabot[bot]'
+        if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
         run: go tool -modfile=.forgego/task/go.mod task sync
       - name: Check go.mod is tidy
         if: inputs.lint

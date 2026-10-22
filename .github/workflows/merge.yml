@@ -1,6 +1,6 @@
 name: merge
 
-# Dependabot's pull requests: a review request, then a squash merge once the checks pass.
+# Dependabot's pull requests: a review request, then a squash merge of a minor or patch update once the checks pass.
 
 on:
   workflow_call:
@@ -59,21 +59,33 @@ jobs:
     name: squash
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 15
-    # Dependabot opened the pull request and made its latest change, and the checks passed. Not for GitHub
-    # Actions updates: they change workflow files, which GITHUB_TOKEN may never merge, so a person merges them
-    if: inputs.checks_passed && github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/github_actions/')
+    # Dependabot opened the pull request, from a branch of this repository, and made its latest change, and the
+    # checks passed. Not for GitHub Actions updates: they change workflow files, which GITHUB_TOKEN may never
+    # merge, so a person merges them
+    if: inputs.checks_passed && github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'dependabot/github_actions/')
     permissions:
       contents: write
       pull-requests: write
     steps:
+      # what Dependabot says the update is, from its commit, so a major update is never merged unseen
+      - name: Read the update's metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       # Through the API rather than the gh CLI, which a self-hosted runner may not have
       - name: Enable auto-merge
         uses: actions/github-script@v9
         env:
           DISPATCH_TYPE: auto-merged
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
         with:
           script: |
             const pr = context.payload.pull_request;
+            const minor = ['version-update:semver-minor', 'version-update:semver-patch'];
+            if (!minor.includes(process.env.UPDATE_TYPE)) {
+              return core.notice(`#${pr.number} is a ${process.env.UPDATE_TYPE || 'unclassified'} update: a person merges majors and anything fetch-metadata can't classify`);
+            }
             // A merge made with GITHUB_TOKEN starts no workflow, so main's pipeline (and release-please)
             // would never see it. repository_dispatch is one of the two events that token may start.
             const dispatch = async () => {
@@ -101,10 +113,11 @@ jobs:
             let merged = false;
             try {
               await github.graphql(
-                `mutation ($id: ID!) {
-                  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) { clientMutationId }
+                // the commit the checks ran on: a later push to the branch merges only after its own checks
+                `mutation ($id: ID!, $oid: GitObjectID!) {
+                  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $oid }) { clientMutationId }
                 }`,
-                { id: pr.node_id },
+                { id: pr.node_id, oid: pr.head.sha },
               );
               core.info(`Auto-merge enabled for #${pr.number}`);
             } catch (error) {
@@ -117,7 +130,7 @@ jobs:
               const mergeable =
                 /is in (clean|unstable|has[ _]hooks) status|protected branch rules not configured|auto merge is not allowed/i;
               if (!mergeable.test(error.message)) throw error;
-              await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'squash' });
+              await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'squash', sha: pr.head.sha });
               core.info(`Merged #${pr.number}`);
               merged = true;
             }

@@ -661,12 +661,55 @@ func TestReleaseRunsTheSnapshotsGoReleaser(t *testing.T) {
 // someone else opened that Dependabot then updated; and nothing merges before the checks pass.
 func TestSquashNeedsDependabotAndPassingChecks(t *testing.T) {
 	squash := readWorkflow(t, "merge.yml").Jobs["squash"]
-	for _, want := range []string{"inputs.checks_passed && ", "github.event.pull_request.user.login == 'dependabot[bot]' && ", "github.actor == 'dependabot[bot]' && "} {
+	for _, want := range []string{
+		"inputs.checks_passed && ", "github.event.pull_request.user.login == 'dependabot[bot]' && ", "github.actor == 'dependabot[bot]' && ",
+		"github.event.pull_request.head.repo.full_name == github.repository && ",
+	} {
 		if !strings.Contains(squash.If, want) || strings.Contains(squash.If, "||") {
 			t.Errorf("squash if = %q, want it to need %q", squash.If, want)
 		}
 	}
 	if s := stepNamed(squash, "Enable auto-merge"); s.Env["DISPATCH_TYPE"] != "auto-merged" || !strings.Contains(s.With["script"], "createDispatchEvent") {
 		t.Errorf("squash doesn't send the auto-merged dispatch: %+v", s)
+	}
+}
+
+// Only a minor or patch update merges unseen, and only at the commit whose checks passed.
+func TestSquashMergesOnlyMinorUpdatesAtTheCheckedCommit(t *testing.T) {
+	squash := readWorkflow(t, "merge.yml").Jobs["squash"]
+	if first := squash.Steps[0]; first.ID != "metadata" || !strings.HasPrefix(first.Uses, "dependabot/fetch-metadata@") ||
+		first.With["github-token"] != "${{ secrets.GITHUB_TOKEN }}" {
+		t.Errorf("squash's first step = %+v, want dependabot/fetch-metadata", first)
+	}
+	merge := stepNamed(squash, "Enable auto-merge")
+	script := merge.With["script"]
+	if merge.Env["UPDATE_TYPE"] != "${{ steps.metadata.outputs.update-type }}" {
+		t.Errorf("UPDATE_TYPE = %q", merge.Env["UPDATE_TYPE"])
+	}
+	for _, want := range []string{
+		"'version-update:semver-minor', 'version-update:semver-patch'", "core.notice(",
+		"sha: pr.head.sha", "expectedHeadOid: $oid", "oid: pr.head.sha",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("the squash script doesn't contain %q", want)
+		}
+	}
+	if notice, merges := strings.Index(script, "core.notice("), strings.Index(script, "enablePullRequestAutoMerge"); notice > merges {
+		t.Error("the squash script merges before it checks the update type")
+	}
+}
+
+// Dependabot's pull request lints against forgego's files refreshed only when Dependabot opened it and made its
+// latest change; anyone else's push to it is checked as it is.
+func TestLintRefreshesOnlyDependabotsOwnPullRequests(t *testing.T) {
+	const dependabot = "github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'"
+	for _, pipeline := range []string{"library.yml", "service.yml", "website.yml"} {
+		lint := readWorkflow(t, pipeline).Jobs["lint"]
+		if check := stepNamed(lint, "Check forgego's files are current"); !strings.HasSuffix(check.If, " && !("+dependabot+")") {
+			t.Errorf("%s: sync-check if = %q", pipeline, check.If)
+		}
+		if refresh := stepNamed(lint, "Refresh forgego's files"); !strings.HasSuffix(refresh.If, " && "+dependabot) {
+			t.Errorf("%s: sync if = %q", pipeline, refresh.If)
+		}
 	}
 }
