@@ -26,6 +26,7 @@ func TestInitDryRunResolvesFeatureFlags(t *testing.T) {
 		{[]string{"--no-all", "--testing"}, "base, build, testing, workflows"},
 		{[]string{"--no-linting", "--docker", "--debian"}, "base, build, testing, versioning, docker, debian, workflows"},
 		{[]string{"--website"}, "base, linting, build, versioning, workflows"},
+		{[]string{"--library", "--windows", "--macos"}, "base, linting, build, testing, versioning, workflows"},
 	} {
 		args := append([]string{"init", "--dry-run", "-C", dir}, tc.args...)
 		code, out := run(t, args...)
@@ -51,6 +52,8 @@ func TestInitRejectsConflictingFlags(t *testing.T) {
 		{[]string{"init", "--library", "--website"}, 2},
 		{[]string{"init", "--testing", "--no-testing"}, 2},
 		{[]string{"init", "--dry-run", "--library", "--docker", "-C", t.TempDir()}, 2},
+		{[]string{"init", "--dry-run", "--website", "--windows", "-C", t.TempDir()}, 2},
+		{[]string{"init", "--dry-run", "--website", "--macos", "-C", t.TempDir()}, 2},
 		{[]string{"init", "extra"}, 1},
 		{[]string{"init", "--unknown"}, 1},
 	} {

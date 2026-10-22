@@ -190,6 +190,10 @@ CI builds the image for every configured platform — see [Pipeline reference]({
 
 Update `maintainer`, `description` and `license` in the `nfpms` section; Forge.go fills them with placeholders (`license: MIT`).
 
+### Windows and macOS
+
+`--windows` and `--macos` add no files: they set `test_windows: windows-latest` and `test_macos: macos-latest` on the checks job in `.index.yml`, so the `library` or `service` pipeline also runs the tests and the build on that system and uploads the build as its own artifact. A website has no such stages, so `init` refuses them with `--website`. Without them, CI runs on Linux only, as a private repository pays more for Windows and macOS minutes. To pass a runner's environment, a shorter suite or a setup script, edit the job's inputs instead — see [Windows and macOS]({{< relref "workflows/reference.md#windows-and-macos" >}}).
+
 ## Websites
 
 ### Hugo: static site

@@ -301,6 +301,13 @@ func allOptions() map[string]WorkflowOptions {
 							}
 						}
 						all[name] = o
+						if mode == "website" {
+							continue // init refuses --windows and --macos there
+						}
+						for flag, os := range map[string][2]bool{" windows": {true, false}, " macos": {false, true}, " windows macos": {true, true}} {
+							o.Windows, o.MacOS = os[0], os[1]
+							all[name+flag] = o
+						}
 					}
 				}
 			}
@@ -453,6 +460,19 @@ func TestGeneratedJobsPerMode(t *testing.T) {
 		}
 		if !slices.Equal(ids, c.jobs) {
 			t.Errorf("%+v: jobs %v, want %v", c.o, ids, c.jobs)
+		}
+	}
+}
+
+// --windows and --macos ask the checks for their stages on GitHub's hosted runners, and nothing else does.
+func TestGeneratedChecksTestOnWindowsAndMacOSWhenAsked(t *testing.T) {
+	for name, o := range allOptions() {
+		checks := map[string]string{"backend": "service", "library": "library", "website": "website"}[o.Mode]
+		with := parse(t, name, RenderWorkflow(o)).Jobs[checks].With
+		for input, want := range map[string]string{"test_windows": map[bool]string{true: "windows-latest"}[o.Windows], "test_macos": map[bool]string{true: "macos-latest"}[o.MacOS]} {
+			if got, _ := with[input].(string); got != want {
+				t.Errorf("%s: %s = %q, want %q", name, input, got, want)
+			}
 		}
 	}
 }
@@ -642,9 +662,9 @@ func TestRunnerStagesDefaultToNothing(t *testing.T) {
 			}
 		}
 	}
-	// a generated project spends no Windows or macOS minutes unless it asks; forgego's own CI tests on both
+	// a generated project spends no Windows or macOS minutes unless it asks with --windows or --macos
 	for name, o := range allOptions() {
-		if text := RenderWorkflow(o); strings.Contains(text, "test_windows") || strings.Contains(text, "test_macos") {
+		if text := RenderWorkflow(o); !o.Windows && !o.MacOS && (strings.Contains(text, "test_windows") || strings.Contains(text, "test_macos")) {
 			t.Errorf("%s tests on Windows or macOS", name)
 		}
 	}

@@ -130,6 +130,7 @@ The other modes differ only in their jobs:
 | `--debian` | As `--backend`: GoReleaser builds the `.deb` from the `nfpms` section of `.goreleaser.yaml` |
 
 - `--docker` adds a `docker` job after the checks: it builds on pull requests, and builds and pushes on a release. `merge` waits for it, so a broken image stops a Dependabot merge.
+- `--windows` passes `test_windows: windows-latest` and `--macos` passes `test_macos: macos-latest` to a backend's or library's checks, which then test and build on that system too (see [Windows and macOS]({{< relref "reference.md#windows-and-macos" >}})).
 - `--no-testing` passes `run_tests: false` and `--no-linting` passes `lint: false` to a backend's or library's checks, which skips their `test` stage and golangci-lint.
 - `--no-versioning` leaves out `version` and `publish`: the checks, and a website's deploy, run on every push to `main` instead.
 

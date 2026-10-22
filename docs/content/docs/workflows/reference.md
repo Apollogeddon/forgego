@@ -71,7 +71,7 @@ The `test` and `build` stages run on `runs_on` alone. To test and build on Windo
       setup_script: '.github/setup.sh'
 ```
 
-Each runs the [setup script](#setup-scripts), then `task <extra_test_task>` (with `GOFLAGS=-race` wherever cgo is on, and skipped with `run_tests: false`), then `build_command`, and uploads `artifact_path` as the `<artifact_name>-windows` or `<artifact_name>-macos` artifact. The `env` applies to the tests and the build alike, so the tests compile the same way as the binary the stage builds. Every `run` step uses bash, Git Bash on Windows. Empty, the default, skips the stage, so the generated `.index.yml` spends no Windows or macOS minutes, which a private repository pays for at a higher rate; set them on its check job to test there. Forge.go's own CI sets both.
+Each runs the [setup script](#setup-scripts), then `task <extra_test_task>` (with `GOFLAGS=-race` wherever cgo is on, and skipped with `run_tests: false`), then `build_command`, and uploads `artifact_path` as the `<artifact_name>-windows` or `<artifact_name>-macos` artifact. The `env` applies to the tests and the build alike, so the tests compile the same way as the binary the stage builds. Every `run` step uses bash, Git Bash on Windows. Empty, the default, skips the stage, so the generated `.index.yml` spends no Windows or macOS minutes, which a private repository pays for at a higher rate, unless `init` was run with `--windows` or `--macos`; you can also set them on its check job yourself. Forge.go's own CI sets both.
 
 ### Setup scripts
 

@@ -24,6 +24,8 @@ type Init struct {
 	Versioning bool
 	Docker     bool
 	Debian     bool
+	Windows    bool // CI tests and builds on Windows too
+	MacOS      bool // and on macOS
 	Go         string
 	Target     string
 }
@@ -52,6 +54,13 @@ func (c Init) Validate() []string {
 	}
 	if c.Debian && !c.IsBackend() {
 		errs = append(errs, "--debian is only available in backend mode")
+	}
+	// only the service and library pipelines have the Windows and macOS stages
+	if c.Windows && c.IsWebsite() {
+		errs = append(errs, "--windows is not available in website mode")
+	}
+	if c.MacOS && c.IsWebsite() {
+		errs = append(errs, "--macos is not available in website mode")
 	}
 	if c.Go != "" && !validGoVersion(c.Go) {
 		errs = append(errs, "--go must be a Go release such as 1.27 or 1.27.1, got "+c.Go)

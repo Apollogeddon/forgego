@@ -18,6 +18,8 @@ type WorkflowOptions struct {
 	Testing    bool
 	Linting    bool
 	Versioning bool
+	Windows    bool // the checks test and build on Windows too; not for a website
+	MacOS      bool // and on macOS
 }
 
 const workflowHeader = `name: index
@@ -141,6 +143,12 @@ func RenderWorkflow(o WorkflowOptions) string {
 		}
 		if !o.Linting {
 			check.with = append(check.with, input{"lint", "false"})
+		}
+		if o.Windows {
+			check.with = append(check.with, input{"test_windows", "windows-latest"})
+		}
+		if o.MacOS {
+			check.with = append(check.with, input{"test_macos", "macos-latest"})
 		}
 	}
 	jobs = append(jobs, check)

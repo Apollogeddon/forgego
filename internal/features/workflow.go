@@ -30,6 +30,8 @@ func (Workflow) Apply(ctx *Context) bool {
 		Testing:    ctx.Cfg.Testing,
 		Linting:    ctx.Cfg.Linting,
 		Versioning: ctx.Cfg.Versioning,
+		Windows:    ctx.Cfg.Windows,
+		MacOS:      ctx.Cfg.MacOS,
 	}))
 	if written && replacing {
 		removeOldWorkflows(ctx)

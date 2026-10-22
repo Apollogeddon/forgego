@@ -134,6 +134,8 @@ forgego --version
 | `--all` / `--no-all` | Turn every standard feature on or off at once; an explicit flag such as `--testing` still wins. |
 | `--docker` | Add a `Dockerfile` and a Docker CI job (not available for `--library`). |
 | `--debian` | Add a `.deb` package with a systemd unit (`--backend` only). |
+| `--windows` | Test and build on Windows too in CI (not available for `--website`). |
+| `--macos` | Test and build on macOS too in CI (not available for `--website`). |
 | `--force` | Overwrite existing config files and tasks. |
 | `--dry-run` | Show what would change without writing anything. |
 | `--go VERSION` | Target Go version, a minor or a patch release (default: the existing `go.mod`'s, else Forge.go's default). |
@@ -141,7 +143,7 @@ forgego --version
 
 `--website` scaffolds a static documentation site built with Hugo and the Hextra theme, which Hugo fetches as a Go module: `hugo.toml`, `content/_index.md` and `content/docs/_index.md`, plus the theme's search script in `assets/forgego/flexsearch/`, so the site builds without network access. There is no Go source. `task dev` serves the site locally with live reload, and `task build` writes it to `public/`. In CI, the `website` pipeline builds the site and `pages` deploys `public/` to GitHub Pages.
 
-Choose at most one mode. An invalid combination — more than one mode, a feature both on and off, `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`. An option or argument `init` doesn't know exits with code `1`.
+Choose at most one mode. An invalid combination — more than one mode, a feature both on and off, `--docker` with `--library`, `--debian` outside backend mode, `--windows` or `--macos` with `--website`, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`. An option or argument `init` doesn't know exits with code `1`.
 
 `--go` sets the `go` line of a new `go.mod` (a minor release gets a `.0` patch) and the `golang` image the `Dockerfile` builds with. CI reads its Go version from `go.mod`, so the generated workflow passes no `go_version`. Without `--go`, an existing project's `go.mod` decides both. `init` never changes an existing `go.mod`'s `go` line, so to move such a project to another Go, edit `go.mod` (CI follows it) and pass the same `--go` with `--force` to rewrite the `Dockerfile`.
 
