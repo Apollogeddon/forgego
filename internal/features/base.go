@@ -40,6 +40,8 @@ func (Base) Apply(ctx *Context) bool {
 		ignore = templates.GitignoreWebsite
 	}
 	ok = CreateIfMissing(ctx, ".gitignore", ignore) && ok
+	// never replaced: a project's own rules, such as Git LFS ones, live there too
+	ok = CreateIfMissing(ctx, ".gitattributes", templates.Gitattributes) && ok
 	ok = CreateFile(ctx, ".editorconfig", templates.Editorconfig) && ok
 
 	ok = useTool(ctx, templates.Task) && ok

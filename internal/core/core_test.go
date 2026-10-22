@@ -83,11 +83,26 @@ func refuteFiles(t *testing.T, fs *fsys.Memory, unwanted ...string) {
 	}
 }
 
+// LF on every platform, so a Windows checkout reads the same; a project's own rules are never replaced.
+func TestGitattributesWrittenOnceAndKept(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	if got := read(t, fs, ".gitattributes"); got != templates.Gitattributes {
+		t.Errorf(".gitattributes = %q", got)
+	}
+	own := "*.psd filter=lfs diff=lfs merge=lfs -text\n"
+	_ = fs.WriteFile(dir+"/.gitattributes", own)
+	run(t, fs, func(c *config.Init) { c.Force = true })
+	if got := read(t, fs, ".gitattributes"); got != own {
+		t.Errorf(".gitattributes after --force = %q, want the project's own", got)
+	}
+}
+
 func TestBackend(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, nil)
 	assertFiles(t, fs,
-		"go.mod", "cmd/billing-api/main.go", "cmd/billing-api/main_test.go", ".gitignore",
+		"go.mod", "cmd/billing-api/main.go", "cmd/billing-api/main_test.go", ".gitignore", ".gitattributes",
 		".forgego/task/go.mod", ".forgego/task/go.sum", ".forgego/golangci-lint/go.mod", ".forgego/gotestsum/go.mod",
 		".forgego/govulncheck/go.mod", ".forgego/lefthook/go.mod", ".forgego/golangci.yml",
 		".golangci.yml", ".golangci.local.yml", "lefthook.yml", ".goreleaser.yaml",

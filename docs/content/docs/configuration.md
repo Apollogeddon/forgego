@@ -10,7 +10,7 @@ Forge.go writes three kinds of file:
 | Kind | Examples | Re-running `init` |
 | :--- | :--- | :--- |
 | **Config** | `lefthook.yml`, `.goreleaser.yaml`, `Dockerfile`, `hugo.toml`, `.github/workflows/.index.yml`, `.editorconfig`, `.github/dependabot.yml`, `.github/CODEOWNERS` | Left alone; overwritten only with `--force` |
-| **Your source** | `go.mod`, `.gitignore`, `.golangci.local.yml`, the starter source and test, `content/` | Created once, never overwritten — even with `--force` |
+| **Your source** | `go.mod`, `.gitignore`, `.gitattributes`, `.golangci.local.yml`, the starter source and test, `content/` | Created once, never overwritten — even with `--force` |
 | **Managed** | Everything under `.forgego/`, and `.golangci.yml` | Always refreshed; `--force` makes no difference |
 
 ## Managed files
@@ -227,6 +227,7 @@ so, once Go has downloaded Hugo and the theme, the site builds with no network a
 | File | What it does |
 | :--- | :--- |
 | `.editorconfig` | LF line endings, UTF-8 and 120 columns; tabs in Go files, `go.mod` and `go.sum`, two spaces elsewhere |
+| `.gitattributes` | LF in the working tree on every platform, so a Windows checkout reads the same, with a website's vendored FlexSearch kept byte for byte; written once, never overwritten, so your own rules (Git LFS, say) are safe |
 | `.github/dependabot.yml` | Weekly Go module and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. Forge.go itself is proposed the same way, through its pin in `.forgego/forgego/go.mod`. The `merge` pipeline merges them once CI passes. `.index.yml` calls Forge.go's pipelines at `@main`, which has no versions to propose. The other tools in `.forgego/` aren't included: `forgego sync` keeps them in step with Forge.go. |
 | `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
 

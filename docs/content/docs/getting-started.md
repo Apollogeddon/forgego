@@ -222,6 +222,7 @@ A default `forgego init` (backend) in a project named `billing-api`, with a `git
 │   ├── main.go
 │   └── main_test.go
 ├── .editorconfig
+├── .gitattributes              # LF on every platform
 ├── .gitignore
 ├── .golangci.local.yml         # your changes to the lint config
 ├── .golangci.yml               # generated from the two above — don't edit
