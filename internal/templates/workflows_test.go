@@ -668,8 +668,12 @@ func TestRunnerStagesDefaultToNothing(t *testing.T) {
 			t.Errorf("%s tests on Windows or macOS", name)
 		}
 	}
-	if own := readWorkflow(t, ".index.yml").Jobs["service"].With; own["test_windows"] != "windows-latest" || own["test_macos"] != "macos-latest" {
-		t.Errorf("forgego's own service = %v, want Windows and macOS", own)
+	// forgego's own CI tests a release on both, and a pull request on Linux only
+	own := readWorkflow(t, ".index.yml").Jobs["service"].With
+	for system, runner := range map[string]string{"windows": "windows-latest", "macos": "macos-latest"} {
+		if want := "${{ needs.version.outputs.new_release_published == 'true' && '" + runner + "' || '' }}"; own["test_"+system] != want {
+			t.Errorf("forgego's own test_%s = %q, want %q", system, own["test_"+system], want)
+		}
 	}
 	publish := readWorkflow(t, "publish.yml")
 	if publish.On.WorkflowCall.Inputs["native_builds"].Default != "[]" {

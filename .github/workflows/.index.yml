@@ -93,9 +93,10 @@ jobs:
     uses: ./.github/workflows/service.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
-      # forgego runs wherever Go does, so its tests run on every system it's released for
-      test_windows: windows-latest
-      test_macos: macos-latest
+      # forgego runs wherever Go does, so a release is tested on every system it's released for; a pull
+      # request runs on Linux only, to stay cheap, and a Windows or macOS failure still stops the publish
+      test_windows: ${{ needs.version.outputs.new_release_published == 'true' && 'windows-latest' || '' }}
+      test_macos: ${{ needs.version.outputs.new_release_published == 'true' && 'macos-latest' || '' }}
     permissions:
       contents: read
       pull-requests: write
