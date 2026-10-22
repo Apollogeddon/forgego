@@ -201,8 +201,8 @@ func expectWiring(t *testing.T, caller string, w workflow, resolve func(uses str
 	t.Helper()
 	for id, j := range w.Jobs {
 		if j.Uses == "" {
-			if id != "changes" {
-				t.Errorf("%s: %s is a job of its own; only changes may be", caller, id)
+			if id != "changes" && (id != "scorecard" || caller != ".index.yml") {
+				t.Errorf("%s: %s is a job of its own; only changes, and forgego's own scorecard, may be", caller, id)
 			}
 			continue
 		}
@@ -778,5 +778,39 @@ func TestPatchProposesTheRefreshedFiles(t *testing.T) {
 	}
 	if !maps.Equal(update.Permissions, map[string]string{"contents": "write", "pull-requests": "write"}) {
 		t.Errorf("update permissions = %v", update.Permissions)
+	}
+}
+
+// Dependency review and Scorecard are free only for a public repository, so they run only there.
+func TestPublicOnlyExtras(t *testing.T) {
+	for _, pipeline := range []string{"library.yml", "service.yml", "website.yml"} {
+		review := stepNamed(readWorkflow(t, pipeline).Jobs["scan"], "Review the dependency changes")
+		if !strings.HasPrefix(review.Uses, "actions/dependency-review-action@") || review.With["fail-on-severity"] != "high" ||
+			review.If != "github.event_name == 'pull_request' && github.event.repository.private == false" {
+			t.Errorf("%s: dependency review = %+v", pipeline, review)
+		}
+	}
+	w := readWorkflow(t, ".index.yml")
+	scorecard := w.Jobs["scorecard"]
+	if !maps.Equal(scorecard.Permissions, map[string]string{"contents": "read", "security-events": "write", "actions": "read"}) {
+		t.Errorf("scorecard permissions = %v", scorecard.Permissions)
+	}
+	if !strings.Contains(scorecard.If, "github.event.repository.private == false") || !strings.Contains(scorecard.If, "github.event_name == 'schedule'") ||
+		!strings.Contains(scorecard.If, "github.ref == 'refs/heads/main'") {
+		t.Errorf("scorecard if = %q", scorecard.If)
+	}
+	score := stepNamed(scorecard, "Score with Scorecard")
+	if !strings.HasPrefix(score.Uses, "ossf/scorecard-action@") || score.With["publish_results"] != "false" {
+		t.Errorf("scorecard step = %+v", score)
+	}
+	if upload := stepNamed(scorecard, "Upload the results"); !strings.HasPrefix(upload.Uses, "github/codeql-action/upload-sarif@") ||
+		upload.With["sarif_file"] != score.With["results_file"] {
+		t.Errorf("upload step = %+v", upload)
+	}
+	// a generated project scores nothing of its own
+	for name, o := range allOptions() {
+		if strings.Contains(RenderWorkflow(o), "scorecard") {
+			t.Errorf("%s runs scorecard", name)
+		}
 	}
 }

@@ -158,6 +158,13 @@ jobs:
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # the dependencies a pull request adds or changes, against GitHub's advisories; a private repository
+      # needs GitHub Code Security for it
+      - name: Review the dependency changes
+        if: github.event_name == 'pull_request' && github.event.repository.private == false
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
       # a pinned release, checked against the checksums it was published with
       - name: Install OSV-Scanner
         env:

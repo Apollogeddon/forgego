@@ -182,8 +182,16 @@ Everything works in a private repository on GitHub Free. Two things GitHub offer
 
 - **Artifact attestations**: a service's `publish` job passes `attest`, so the release's files get a build provenance attestation, checked with `gh attestation verify`.
 - **GitHub Pages**: a website's `pages` job deploys only from a public repository. On a paid plan, which serves Pages from a private repository too, drop that check from the job's `if`.
+- **Dependency review**: the `scan` stage reviews a pull request's dependency changes with GitHub's advisories, which a private repository needs GitHub Code Security for.
 
 A scheduled run has no `repository.private`, and the check reads that as private, which always works.
+
+On a public repository, also turn on, in **Settings → Code security**:
+
+- **CodeQL analysis**, with the default setup, for Go and GitHub Actions: it finds security bugs in the code and the workflows.
+- **Secret scanning** and its **push protection**, which blocks a push that contains a known kind of secret.
+
+A private repository on GitHub Free has neither; there Gitleaks, in the `scan` stage, catches committed secrets, and OSV-Scanner and govulncheck known vulnerabilities.
 
 ## Vulnerable dependencies
 

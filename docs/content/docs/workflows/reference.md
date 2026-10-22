@@ -27,6 +27,8 @@ To test and build on Windows and macOS as well, set `service.yml`'s `test_window
    reason = "No fixed version yet; the vulnerable function isn't called"
    ```
 
+   On a public repository's pull request, it also runs GitHub's [dependency review](https://github.com/actions/dependency-review-action), which fails on a dependency the pull request adds or changes with a high or critical advisory. A private repository needs GitHub Code Security for it, so there it's skipped, and OSV-Scanner covers it.
+
    When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls. Like OSV-Scanner, it fails a pull request and only warns elsewhere, so a release still ships: [Dependabot security updates]({{< relref "_index.md#vulnerable-dependencies" >}}) upgrade them.
 3. **`test`** — `task test` with `GOFLAGS=-race` (skip with `run_tests: false`), uploading `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: lint, scan)*
 4. **`test (windows)`**, **`test (macos)`** — `service.yml` only, each when asked: see [Windows and macOS](#windows-and-macos). *(Needs: lint, scan)*
