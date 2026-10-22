@@ -103,7 +103,7 @@ func readText(t *testing.T, name string) string {
 
 // The spec's stages: a run page reads <pipeline> / <stage>, the same words in every forge.
 var stages = map[string][]string{
-	"library": {"lint", "scan", "test", "build"},
+	"library": {"lint", "scan", "test", "test (windows)", "test (macos)", "build"},
 	"service": {"lint", "scan", "test", "test (windows)", "test (macos)", "build"},
 	"website": {"lint", "scan", "test", "build", "check"},
 	"docker":  {"build", "test", "push"},
@@ -587,16 +587,27 @@ func TestBotPullRequestsRequestAReview(t *testing.T) {
 // The Windows and macOS stages and the native builds are opt-in: their defaults run nothing, and an empty
 // matrix would fail every caller's workflow, so the native builds are skipped before their matrix expands.
 func TestRunnerStagesDefaultToNothing(t *testing.T) {
-	service := readWorkflow(t, "service.yml")
-	for _, system := range []string{"windows", "macos"} {
-		in := "test_" + system
-		if service.On.WorkflowCall.Inputs[in].Default != "" {
-			t.Errorf("%s defaults to %v", in, service.On.WorkflowCall.Inputs[in].Default)
+	for _, pipeline := range []string{"library.yml", "service.yml"} {
+		w := readWorkflow(t, pipeline)
+		for _, system := range []string{"windows", "macos"} {
+			in := "test_" + system
+			if w.On.WorkflowCall.Inputs[in].Default != "" {
+				t.Errorf("%s: %s defaults to %v", pipeline, in, w.On.WorkflowCall.Inputs[in].Default)
+			}
+			j := w.Jobs["test-"+system]
+			if j.If != "inputs."+in+" != ''" || !slices.Equal(j.Needs, []string{"lint", "scan"}) {
+				t.Errorf("%s: test-%s = if %q, needs %v", pipeline, system, j.If, j.Needs)
+			}
 		}
-		j := service.Jobs["test-"+system]
-		if j.If != "inputs."+in+" != ''" || !slices.Equal(j.Needs, []string{"lint", "scan"}) {
-			t.Errorf("test-%s = if %q, needs %v", system, j.If, j.Needs)
+	}
+	// a generated project spends no Windows or macOS minutes unless it asks; forgego's own CI tests on both
+	for name, o := range allOptions() {
+		if text := RenderWorkflow(o); strings.Contains(text, "test_windows") || strings.Contains(text, "test_macos") {
+			t.Errorf("%s tests on Windows or macOS", name)
 		}
+	}
+	if own := readWorkflow(t, ".index.yml").Jobs["service"].With; own["test_windows"] != "windows-latest" || own["test_macos"] != "macos-latest" {
+		t.Errorf("forgego's own service = %v, want Windows and macOS", own)
 	}
 	publish := readWorkflow(t, "publish.yml")
 	if publish.On.WorkflowCall.Inputs["native_builds"].Default != "[]" {

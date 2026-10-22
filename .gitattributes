@@ -1,2 +1,4 @@
+# LF everywhere, so the embedded templates and test fixtures read the same on a Windows checkout
+* text=auto eol=lf
 internal/templates/flexsearch/** -text
 docs/assets/forgego/** -text

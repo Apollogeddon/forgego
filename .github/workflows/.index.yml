@@ -90,6 +90,9 @@ jobs:
     uses: ./.github/workflows/service.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      # forgego runs wherever Go does, so its tests run on every system it's released for
+      test_windows: windows-latest
+      test_macos: macos-latest
     permissions:
       contents: read
       pull-requests: write

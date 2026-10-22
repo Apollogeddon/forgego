@@ -16,7 +16,7 @@ A root job's id is the pipeline's name. A second call to the same pipeline names
 
 | Pipeline | Stages | Purpose |
 | :--- | :--- | :--- |
-| `library.yml` | lint, scan, test, build | A library's checks |
+| `library.yml` | lint, scan, test, test (windows), test (macos), build | A library's checks, with Windows and macOS when asked |
 | `service.yml` | lint, scan, test, test (windows), test (macos), build | A backend's checks, with Windows and macOS when asked |
 | `website.yml` | lint, scan, test, build, check | A Hugo website's checks, the build, and optional link and accessibility checks of it |
 | `docker.yml` | build, push | A multi-platform image: built on pull requests, pushed to GHCR on a release |

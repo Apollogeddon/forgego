@@ -7,18 +7,22 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 var forgego string
 
+// exe is what the go command adds to a binary's name on Windows.
+var exe = map[bool]string{true: ".exe"}[runtime.GOOS == "windows"]
+
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "forgego-bin")
 	if err != nil {
 		panic(err)
 	}
-	forgego = filepath.Join(dir, "forgego")
+	forgego = filepath.Join(dir, "forgego"+exe)
 	// without VCS stamping it's a development build: under /v2, CI's merge commit would
 	// stamp a pseudo-version that forgego would try to pin, though no proxy can fetch it
 	if out, err := exec.Command("go", "build", "-buildvcs=false", "-o", forgego, "../../cmd/forgego").CombinedOutput(); err != nil {
@@ -45,7 +49,8 @@ func scaffold(t *testing.T, args ...string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pinned := regexp.MustCompile(`(?m)^  FORGEGO: .*$`).ReplaceAll(b, []byte("  FORGEGO: "+forgego))
+	// Task's shell reads a backslash as an escape, and Windows takes either separator
+	pinned := regexp.MustCompile(`(?m)^  FORGEGO: .*$`).ReplaceAll(b, []byte("  FORGEGO: "+filepath.ToSlash(forgego)))
 	if err := os.WriteFile(taskfile, pinned, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +116,7 @@ func TestBackend(t *testing.T) {
 		t.Errorf("test ran no tests:\n%s", out)
 	}
 	task(t, dir, "build")
-	if out := sh(t, dir, filepath.Join("dist", "demo")); out != "demo dev\n" {
+	if out := sh(t, dir, filepath.Join(dir, "dist", "demo"+exe)); strings.TrimSpace(out) != "demo dev" {
 		t.Errorf("the built binary printed %q", out)
 	}
 

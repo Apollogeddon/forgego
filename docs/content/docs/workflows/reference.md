@@ -9,7 +9,7 @@ This page describes each pipeline: its stages, inputs and outputs. For the gener
 
 Every pipeline takes a `runs_on` input, default `ubuntu-latest`, and runs each of its stages on that runner label. Set it per repository to use self-hosted runners, e.g. from a repository variable: `runs_on: ${{ vars.RUNS_ON || 'ubuntu-latest' }}`.
 
-To test and build on Windows and macOS as well, set `service.yml`'s `test_windows` and `test_macos` (see [Windows and macOS](#windows-and-macos)), and `publish.yml`'s `native_builds` to build release binaries on other runners (see [Native release builds](#native-release-builds)).
+To test and build on Windows and macOS as well, set `library.yml`'s or `service.yml`'s `test_windows` and `test_macos` (see [Windows and macOS](#windows-and-macos)), and `publish.yml`'s `native_builds` to build release binaries on other runners (see [Native release builds](#native-release-builds)).
 
 `docker.yml` builds every platform in one job on `runs_on` too. A runner without a Docker daemon can build and push through a remote BuildKit set with `buildkit_endpoint`. The `test` stage runs with the race detector, which needs cgo, so a self-hosted runner needs a C compiler.
 
@@ -31,7 +31,7 @@ To test and build on Windows and macOS as well, set `service.yml`'s `test_window
 
    When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls. Like OSV-Scanner, it fails a pull request and only warns elsewhere, so a release still ships: [Dependabot security updates]({{< relref "_index.md#vulnerable-dependencies" >}}) upgrade them.
 3. **`test`** — `task test` with `GOFLAGS=-race` (skip with `run_tests: false`), uploading `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: lint, scan)*
-4. **`test (windows)`**, **`test (macos)`** — `service.yml` only, each when asked: see [Windows and macOS](#windows-and-macos). *(Needs: lint, scan)*
+4. **`test (windows)`**, **`test (macos)`** — `library.yml` and `service.yml`, each when asked: see [Windows and macOS](#windows-and-macos). *(Needs: lint, scan)*
 5. **`build`** — `build_command` (default `task build`), uploading `artifact_path` (a website's `public/`) as the `artifact_name` artifact. *(Needs: lint, scan; runs alongside the tests)*
 6. **`check`** — `website.yml` only, with `check_links` or `check_accessibility`: see [Site checks](#site-checks). *(Needs: build)*
 
@@ -49,9 +49,9 @@ Every stage asks for `contents: read`; `scan` also asks for `pull-requests: writ
 | `lint` | `true` | `library`, `service` | Run golangci-lint and the `go mod tidy` check — `forgego init --no-linting` sets it to `false` |
 | `apt_packages` | `''` | `library`, `service` | apt packages to install before anything compiles, space-separated: the C libraries a cgo dependency needs, such as `libfuse-dev`. Ubuntu runners only |
 | `artifact_path` | `'dist'` | `library`, `service` | What the build writes, relative to `working_directory` |
-| `test_windows`, `test_macos` | `''` | `service` | Test and build on Windows or macOS too; see below |
-| `extra_test_task` | `'test'` | `service` | The Task task the Windows and macOS stages test with, such as a shorter `test:short` |
-| `setup_script` | `''` | `service` | A [setup script](#setup-scripts), run before compiling on Windows and macOS |
+| `test_windows`, `test_macos` | `''` | `library`, `service` | Test and build on Windows or macOS too; see below |
+| `extra_test_task` | `'test'` | `library`, `service` | The Task task the Windows and macOS stages test with, such as a shorter `test:short` |
+| `setup_script` | `''` | `library`, `service` | A [setup script](#setup-scripts), run before compiling on Windows and macOS |
 | `base_path`, `check_links`, `check_external_links`, `link_check_args`, `check_accessibility`, `accessibility_paths`, `accessibility_impact` | | `website` | See [Site checks](#site-checks) |
 
 ### Windows and macOS
@@ -71,7 +71,7 @@ The `test` and `build` stages run on `runs_on` alone. To test and build on Windo
       setup_script: '.github/setup.sh'
 ```
 
-Each runs the [setup script](#setup-scripts), then `task <extra_test_task>` (with `GOFLAGS=-race` wherever cgo is on, and skipped with `run_tests: false`), then `build_command`, and uploads `artifact_path` as the `<artifact_name>-windows` or `<artifact_name>-macos` artifact. The `env` applies to the tests and the build alike, so the tests compile the same way as the binary the stage builds. Every `run` step uses bash, Git Bash on Windows. Empty, the default, skips the stage.
+Each runs the [setup script](#setup-scripts), then `task <extra_test_task>` (with `GOFLAGS=-race` wherever cgo is on, and skipped with `run_tests: false`), then `build_command`, and uploads `artifact_path` as the `<artifact_name>-windows` or `<artifact_name>-macos` artifact. The `env` applies to the tests and the build alike, so the tests compile the same way as the binary the stage builds. Every `run` step uses bash, Git Bash on Windows. Empty, the default, skips the stage, so the generated `.index.yml` spends no Windows or macOS minutes, which a private repository pays for at a higher rate; set them on its check job to test there. Forge.go's own CI sets both.
 
 ### Setup scripts
 

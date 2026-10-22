@@ -1,6 +1,6 @@
 name: library
 
-# A library's checks: lint, scan, test and build. publish.yml fetches a release through the Go module proxy.
+# A library's checks: lint, scan, test (with Windows and macOS when asked) and build. publish.yml fetches a release through the Go module proxy.
 
 on:
   workflow_call:
@@ -55,6 +55,26 @@ on:
         required: false
         type: string
         default: 'go tool -modfile=.forgego/task/go.mod task build'
+      test_windows:
+        description: "Test and build on Windows too: a runner label, or a JSON object {\"runs_on\", \"env\"} whose env is set for both, e.g. {\"runs_on\": \"windows-latest\", \"env\": {\"CGO_ENABLED\": \"0\"}}; empty skips it"
+        required: false
+        type: string
+        default: ''
+      test_macos:
+        description: "Test and build on macOS too: a runner label, or a JSON object {\"runs_on\", \"env\"} whose env is set for both; empty skips it"
+        required: false
+        type: string
+        default: ''
+      extra_test_task:
+        description: "The Task task the Windows and macOS stages test with, e.g. a shorter test:short"
+        required: false
+        type: string
+        default: 'test'
+      setup_script:
+        description: "A script, relative to working_directory, run with bash before compiling on Windows and macOS and in native builds; RUNNER_OS says where, and it can export through GITHUB_ENV and GITHUB_PATH"
+        required: false
+        type: string
+        default: ''
 
 jobs:
   lint:
@@ -339,6 +359,135 @@ jobs:
           path: |
             ${{ inputs.working_directory }}/coverage.out
             ${{ inputs.working_directory }}/junit-report.xml
+          if-no-files-found: ignore
+
+  # The tests and the build on Windows and macOS, each when asked, so a test runs the build it ships with
+  test-windows:
+    name: test (windows)
+    if: inputs.test_windows != ''
+    needs: [lint, scan]
+    runs-on: ${{ startsWith(inputs.test_windows, '{') && (fromJSON(inputs.test_windows).runs_on || 'windows-latest') || inputs.test_windows }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Set the runner's environment
+        if: startsWith(inputs.test_windows, '{')
+        env:
+          TARGET: ${{ inputs.test_windows }}
+        run: jq -r '(.env // {}) | to_entries[] | "\(.key)=\(.value)"' <<< "$TARGET" >> "$GITHUB_ENV"
+      - name: Run the setup script
+        if: inputs.setup_script != ''
+        env:
+          SCRIPT: ${{ inputs.setup_script }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash "$SCRIPT"
+      - name: Test
+        if: inputs.run_tests
+        env:
+          TASK: ${{ inputs.extra_test_task }}
+        # the race detector needs cgo, so it's on wherever cgo is
+        run: |
+          if [ "$(go env CGO_ENABLED)" = "1" ]; then export GOFLAGS="${GOFLAGS:+$GOFLAGS }-race"; fi
+          go tool -modfile=.forgego/task/go.mod task "$TASK"
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}-windows
+          path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
+          if-no-files-found: ignore
+
+  test-macos:
+    name: test (macos)
+    if: inputs.test_macos != ''
+    needs: [lint, scan]
+    runs-on: ${{ startsWith(inputs.test_macos, '{') && (fromJSON(inputs.test_macos).runs_on || 'macos-latest') || inputs.test_macos }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the input if set, else the project's go.mod, else forgego's default
+      - name: Resolve the Go version
+        id: go
+        env:
+          INPUT: ${{ inputs.go_version }}
+          DIR: ${{ inputs.working_directory }}
+        run: |
+          if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
+          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          else echo "version=1.27" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          go-version-file: ${{ steps.go.outputs.file }}
+          cache-dependency-path: |
+            ${{ inputs.working_directory }}/go.sum
+            ${{ inputs.working_directory }}/.forgego/*/go.sum
+      - name: Set the runner's environment
+        if: startsWith(inputs.test_macos, '{')
+        env:
+          TARGET: ${{ inputs.test_macos }}
+        run: jq -r '(.env // {}) | to_entries[] | "\(.key)=\(.value)"' <<< "$TARGET" >> "$GITHUB_ENV"
+      - name: Run the setup script
+        if: inputs.setup_script != ''
+        env:
+          SCRIPT: ${{ inputs.setup_script }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash "$SCRIPT"
+      - name: Test
+        if: inputs.run_tests
+        env:
+          TASK: ${{ inputs.extra_test_task }}
+        # the race detector needs cgo, so it's on wherever cgo is
+        run: |
+          if [ "$(go env CGO_ENABLED)" = "1" ]; then export GOFLAGS="${GOFLAGS:+$GOFLAGS }-race"; fi
+          go tool -modfile=.forgego/task/go.mod task "$TASK"
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}-macos
+          path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
           if-no-files-found: ignore
 
   build:
