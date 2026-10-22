@@ -93,7 +93,7 @@ The base config uses golangci-lint's config `version: "2"`:
 
 ### govulncheck: vulnerabilities
 
-`task security` runs `govulncheck ./...`, which reports only the known vulnerabilities your code actually calls. In CI it fails a pull request and only warns elsewhere, and the `patch` pipeline upgrades the vulnerable modules on `main` — see [Pipeline reference]({{< relref "workflows/reference.md#patchyml" >}}).
+`task security` runs `govulncheck ./...`, which reports only the known vulnerabilities your code actually calls. In CI it fails a pull request and only warns elsewhere, and Dependabot security updates propose the upgrades once you turn them on — see [Vulnerable dependencies]({{< relref "workflows/_index.md#vulnerable-dependencies" >}}).
 
 ### gotestsum: testing
 

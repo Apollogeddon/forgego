@@ -102,7 +102,7 @@ jobs:
         if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && !(github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]')
         run: go tool -modfile=.forgego/task/go.mod task sync-check
       # a Dependabot bump of forgego changes the files it manages: lint against them refreshed, and the
-      # patch pipeline commits them
+      # patch pipeline proposes them through a pull request once it merges
       - name: Refresh forgego's files
         if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != '' && github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
         run: go tool -modfile=.forgego/task/go.mod task sync
@@ -159,7 +159,7 @@ jobs:
           mv "osv-scanner_linux_$arch" osv-scanner
           chmod +x osv-scanner
       # A high or critical finding (CVSS 7 or more), or a scan that couldn't finish, fails a pull request;
-      # elsewhere it's annotated instead, so releases and the patch pipeline that fixes it still run. Accept
+      # elsewhere it's annotated instead, so releases still run while a Dependabot security update fixes it. Accept
       # one with an IgnoredVulns entry in an osv-scanner.toml beside the go.mod
       - name: Scan with OSV
         id: osv
@@ -229,7 +229,7 @@ jobs:
             if (blocking && process.env.OSV_ENFORCE === 'true') {
               core.setFailed(`${found}: update the packages, or record an accepted one in osv-scanner.toml`);
             } else if (blocking) {
-              core.warning(`${found}: this fails pull requests until they're updated, as the patch pipeline may do`, { title: 'OSV scan' });
+              core.warning(`${found}: this fails pull requests until they're updated, as a Dependabot security update may do`, { title: 'OSV scan' });
             } else {
               core.info(`${rows.length} found, none high or critical`);
             }
@@ -263,7 +263,7 @@ jobs:
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
       # Reports only the vulnerabilities the code actually calls. It fails a pull request, so a change
-      # can't add one; elsewhere it warns, so releases and the patch pipeline that upgrades them still run
+      # can't add one; elsewhere it warns, so releases still run while a Dependabot security update fixes it
       - name: Scan with govulncheck
         if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         env:
@@ -274,7 +274,7 @@ jobs:
             echo "::error::govulncheck found vulnerabilities the code calls, or couldn't finish: upgrade the modules it names"
             exit 1
           fi
-          echo "::warning::govulncheck found vulnerabilities the code calls, or couldn't finish; the patch pipeline upgrades them on main"
+          echo "::warning::govulncheck found vulnerabilities the code calls, or couldn't finish; this fails pull requests until they're upgraded, as a Dependabot security update may do"
 
   test:
     name: test

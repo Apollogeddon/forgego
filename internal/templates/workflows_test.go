@@ -713,3 +713,34 @@ func TestLintRefreshesOnlyDependabotsOwnPullRequests(t *testing.T) {
 		}
 	}
 }
+
+// patch refreshes forgego's files through a pull request rather than pushing to main, with the token handed to
+// the push alone; vulnerable modules are left to Dependabot security updates.
+func TestPatchProposesTheRefreshedFiles(t *testing.T) {
+	text := readText(t, "patch.yml")
+	update := readWorkflow(t, "patch.yml").Jobs["update"]
+	if checkout := stepNamed(update, "Check out"); checkout.With["persist-credentials"] != "false" {
+		t.Errorf("checkout = %+v, want no persisted credentials", checkout)
+	}
+	push := stepNamed(update, "Push forgego's files")
+	for _, want := range []string{"branch=forgego/sync", "push --force origin \"HEAD:refs/heads/$branch\"", "http.https://github.com/.extraheader"} {
+		if !strings.Contains(push.Run, want) {
+			t.Errorf("the push doesn't run %q", want)
+		}
+	}
+	if pr := stepNamed(update, "Open a pull request"); !strings.Contains(pr.With["script"], "title: 'chore(deps): refresh the files forgego manages'") ||
+		!strings.Contains(pr.With["script"], "pulls.list(") {
+		t.Errorf("the pull request step = %+v", pr)
+	}
+	if strings.Contains(push.Run, "main") {
+		t.Errorf("the push names main: %q", push.Run)
+	}
+	for _, gone := range []string{"git-auto-commit-action", "govulncheck", "go get"} {
+		if strings.Contains(text, gone) {
+			t.Errorf("patch.yml still has %q", gone)
+		}
+	}
+	if !maps.Equal(update.Permissions, map[string]string{"contents": "write", "pull-requests": "write"}) {
+		t.Errorf("update permissions = %v", update.Permissions)
+	}
+}

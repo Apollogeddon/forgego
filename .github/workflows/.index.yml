@@ -11,7 +11,7 @@ on:
   # sent by the merge pipeline, as a merge it makes starts no push run on main
   repository_dispatch:
     types: [auto-merged]
-  # weekly, for the patch pipeline; a manual or dispatched run patches too
+  # weekly, for the patch pipeline; a manual or dispatched run refreshes too
   schedule:
     - cron: '41 3 * * 1'
 
@@ -135,6 +135,7 @@ jobs:
       pages: write
       id-token: write
 
+  # forgego's own files, refreshed through a pull request
   patch:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
     uses: ./.github/workflows/patch.yml
@@ -142,6 +143,7 @@ jobs:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
     permissions:
       contents: write
+      pull-requests: write
 
   # Dependabot's pull requests: a review request, and a squash merge when the checks passed
   merge:

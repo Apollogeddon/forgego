@@ -23,7 +23,7 @@ A root job's id is the pipeline's name. A second call to the same pipeline names
 | `version.yml` | release | release-please: the release pull request, then the tag and the draft GitHub release |
 | `publish.yml` | package, assets (native), assets, attest | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively, and their build provenance attested |
 | `pages.yml` | deploy | The built website, to GitHub Pages |
-| `patch.yml` | update | `task sync` and govulncheck's module upgrades, committed to `main` |
+| `patch.yml` | update | `task sync`, proposed through a pull request |
 | `merge.yml` | review, squash | A review request on Dependabot's pull requests, and the squash merge of a minor or patch update once the checks pass |
 
 The stages are `lint` (`forgego sync --check`, `go mod tidy -diff` and golangci-lint), `scan` (Gitleaks, OSV-Scanner and govulncheck), `test`, `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `attest`, `deploy`, `update`, `review` and `squash`.
@@ -99,6 +99,7 @@ jobs:
     uses: apollogeddon/forgego/.github/workflows/patch.yml@main
     permissions:
       contents: write
+      pull-requests: write
 
   merge:
     needs: library
@@ -136,7 +137,7 @@ If `.github/workflows/index.yml` calls Forge.go's pipelines, `init` removes it o
 
 No secrets need passing. The pipelines only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. A library is published by its Git tag, so it needs no registry credentials either. `publish.yml` takes two optional secrets for [signed releases]({{< relref "reference.md#signed-releases" >}}); pass them by name.
 
-GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request, and `patch` commits the files a Forge.go update refreshes. The event runs on the default branch.
+GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request, and `patch` proposes the files a Forge.go update refreshes. The event runs on the default branch. The pull request `patch` opens is made with `GITHUB_TOKEN` too, so close and reopen it to run its checks.
 
 ## Required permissions
 
@@ -149,7 +150,7 @@ Each root job grants what its pipeline's stages need, and nothing else:
 | `version` | `contents: write`, `pull-requests: write` | release-please's tags, releases and release pull requests |
 | `publish` | `contents: read`; `contents: write` for `assets`; `id-token: write` and `attestations: write` for `attest` | The proxy fetch; attaching the release's files and publishing the draft; their build provenance |
 | `pages` | `pages: write`, `id-token: write` | GitHub Pages |
-| `patch` | `contents: write` | Committing the refreshed files and patches |
+| `patch` | `contents: write`, `pull-requests: write` | Pushing the refreshed files to the `forgego/sync` branch, and the pull request for them |
 | `merge` | `contents: write`, `pull-requests: write` | The review request, the merge and the dispatch |
 
 GitHub checks a called workflow's permissions against the caller's before running anything, even a job that would be skipped. So a caller grants the union of what a pipeline's stages ask for. In `publish.yml`, `package` and the native builds ask for exactly `contents: read`, and `assets` asks for nothing and takes the caller's grant, so only a caller that turns `assets` on, a service's, grants `contents: write`. `attest` takes the caller's grant too, so only a caller that turns it on grants `id-token: write` and `attestations: write`.
@@ -162,5 +163,11 @@ Everything works in a private repository on GitHub Free. Two things GitHub offer
 - **GitHub Pages**: a website's `pages` job deploys only from a public repository. On a paid plan, which serves Pages from a private repository too, drop that check from the job's `if`.
 
 A scheduled run has no `repository.private`, and the check reads that as private, which always works.
+
+## Vulnerable dependencies
+
+The `scan` stage fails a pull request that adds a known high or critical vulnerability, but nothing upgrades a module that becomes vulnerable later. Turn on **Settings → Code security → Dependabot security updates**, free in private repositories too: Dependabot then opens a pull request for each one, which the checks and `merge` handle like its other updates. `patch` no longer upgrades them on `main`.
+
+For `patch`'s pull requests, and release-please's, turn on **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**.
 
 For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions**. For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**. Auto-merge squash-merges, so release-please lists each update once: a merge commit repeats the pull request's title, and release-please reads that as a second change. Merge your own pull requests the same way, with **Squash and merge**. Dependabot's GitHub Actions updates are never auto-merged: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge, so merge those pull requests yourself.

@@ -18,7 +18,7 @@ To test and build on Windows and macOS as well, set `service.yml`'s `test_window
 *A project's checks, on pull requests and before a release ships.*
 
 1. **`lint`** — `task sync-check` (when the project pins Task), or `task sync` on Dependabot's pull requests, as a Forge.go update changes the files it manages; then, with `lint` on, `go mod tidy -diff`, `golangci-lint fmt --diff` and `golangci-lint run`. A website has no Go to lint, so its `lint` stage is the sync check alone.
-2. **`scan`** — Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner scan of the source tree, with a pinned OSV-Scanner release checked against the checksums it was published with; a failed download or check fails the stage. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail the stage, so releases and the `patch` pipeline still run. Lower findings, and advisories with no severity at all, as Go's own vulnerability database gives, are warning annotations; every finding is listed in the job summary. If the scanner can't finish, for example because OSV's API is unreachable, the stage fails on a pull request, which mustn't pass unchecked, and warns elsewhere. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside `go.mod`:
+2. **`scan`** — Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner scan of the source tree, with a pinned OSV-Scanner release checked against the checksums it was published with; a failed download or check fails the stage. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail the stage, so releases still run while a Dependabot security update fixes it. Lower findings, and advisories with no severity at all, as Go's own vulnerability database gives, are warning annotations; every finding is listed in the job summary. If the scanner can't finish, for example because OSV's API is unreachable, the stage fails on a pull request, which mustn't pass unchecked, and warns elsewhere. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside `go.mod`:
 
    ```toml
    [[IgnoredVulns]]
@@ -27,7 +27,7 @@ To test and build on Windows and macOS as well, set `service.yml`'s `test_window
    reason = "No fixed version yet; the vulnerable function isn't called"
    ```
 
-   When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls. Like OSV-Scanner, it fails a pull request and only warns elsewhere, so a release still ships: the `patch` pipeline upgrades them on `main`.
+   When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls. Like OSV-Scanner, it fails a pull request and only warns elsewhere, so a release still ships: [Dependabot security updates]({{< relref "_index.md#vulnerable-dependencies" >}}) upgrade them.
 3. **`test`** — `task test` with `GOFLAGS=-race` (skip with `run_tests: false`), uploading `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: lint, scan)*
 4. **`test (windows)`**, **`test (macos)`** — `service.yml` only, each when asked: see [Windows and macOS](#windows-and-macos). *(Needs: lint, scan)*
 5. **`build`** — `build_command` (default `task build`), uploading `artifact_path` (a website's `public/`) as the `artifact_name` artifact. *(Needs: lint, scan; runs alongside the tests)*
@@ -310,11 +310,13 @@ With `buildkit_endpoint` set, the stages build on that remote BuildKit instead o
 
 ## patch.yml
 
-*Keeps `main` current.*
+*Keeps the files Forge.go manages current.*
 
-1. **`update`** — On `main`, first runs `task sync` and commits whatever it refreshes as `chore(deps): refresh the files forgego manages`, which catches up after a Dependabot update of Forge.go merges. When the project pins govulncheck, it then runs it, `go get`s the fixed version of each vulnerable module it reports, runs `go mod tidy`, and commits `go.mod` and `go.sum` as `fix(deps): upgrade modules with known vulnerabilities via govulncheck`. Vulnerabilities in the standard library are fixed by a newer Go, not by `go get`, so they're left to you. Needs `contents: write`.
+1. **`update`** — On `main`, runs `task sync`, which catches up after a Dependabot update of Forge.go merges. If it changed anything, it commits the result as `chore(deps): refresh the files forgego manages` to the `forgego/sync` branch (`forgego/sync-<working_directory>` for a module in a subdirectory), force-pushes that branch, and opens a pull request for it unless one is open already. It never pushes to `main`, and the checkout keeps no credentials: the token is handed to the push alone. Needs `contents: write` and `pull-requests: write`.
 
-The generated `.index.yml` runs it weekly, on a manual run, and on the `auto-merged` dispatch `merge.yml` sends after a Dependabot merge, so a Forge.go update's refreshed files are committed straight away and `task sync-check` keeps passing on other pull requests.
+The generated `.index.yml` runs it weekly, on a manual run, and on the `auto-merged` dispatch `merge.yml` sends after a Dependabot merge, so a Forge.go update's refreshed files are proposed straight away and `task sync-check` passes again once that pull request merges. Its pull request is opened with `GITHUB_TOKEN`, so its checks don't start on their own: close and reopen it to run them.
+
+Earlier versions also upgraded the modules govulncheck found vulnerable and committed them to `main`. [Dependabot security updates]({{< relref "_index.md#vulnerable-dependencies" >}}) do that now, as pull requests.
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |

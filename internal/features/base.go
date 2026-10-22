@@ -43,7 +43,7 @@ func (Base) Apply(ctx *Context) bool {
 	ok = CreateFile(ctx, ".editorconfig", templates.Editorconfig) && ok
 
 	ok = useTool(ctx, templates.Task) && ok
-	// Security scanning doesn't depend on linting: CI's patch job upgrades what govulncheck finds.
+	// Security scanning doesn't depend on linting: CI fails a pull request on what govulncheck finds.
 	if !ctx.Cfg.IsWebsite() {
 		ok = useTool(ctx, templates.Govulncheck) && ok
 		ctx.Tasks.Add(taskfile.Task{Name: "security", Desc: "Report known vulnerabilities the code calls", Cmds: []string{ref(templates.Govulncheck) + " ./..."}})
