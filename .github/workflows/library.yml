@@ -76,6 +76,9 @@ on:
         type: string
         default: ''
 
+# every job asks for what it needs
+permissions: {}
+
 jobs:
   lint:
     name: lint
@@ -88,7 +91,7 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install apt packages
@@ -111,7 +114,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
@@ -149,20 +152,20 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: Scan with Gitleaks
         if: inputs.enable_secrets
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # the dependencies a pull request adds or changes, against GitHub's advisories; a private repository
       # needs GitHub Code Security for it
       - name: Review the dependency changes
         if: github.event_name == 'pull_request' && github.event.repository.private == false
-        uses: actions/dependency-review-action@v5
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
       # a pinned release, checked against the checksums it was published with
@@ -196,7 +199,7 @@ jobs:
           "$RUNNER_TEMP/osv-scanner/osv-scanner" scan source -r --format json --output-file "$RUNNER_TEMP/osv.json" . || status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
       - name: Report OSV findings
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           OSV_STATUS: ${{ steps.osv.outputs.status }}
           OSV_REPORT: ${{ runner.temp }}/osv.json
@@ -281,7 +284,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         with:
           go-version: ${{ steps.go.outputs.version }}
@@ -316,7 +319,7 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install apt packages
@@ -339,7 +342,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
@@ -353,7 +356,7 @@ jobs:
         run: go tool -modfile=.forgego/task/go.mod task test
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ inputs.artifact_name }}
           path: |
@@ -376,7 +379,7 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # the input if set, else the project's go.mod, else forgego's default
@@ -391,7 +394,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
@@ -420,7 +423,7 @@ jobs:
       - name: Build
         run: ${{ inputs.build_command }}
       - name: Upload the build
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact_name }}-windows
           path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
@@ -440,7 +443,7 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # the input if set, else the project's go.mod, else forgego's default
@@ -455,7 +458,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
@@ -484,7 +487,7 @@ jobs:
       - name: Build
         run: ${{ inputs.build_command }}
       - name: Upload the build
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact_name }}-macos
           path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
@@ -503,7 +506,7 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install apt packages
@@ -526,7 +529,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
@@ -536,7 +539,7 @@ jobs:
       - name: Build
         run: ${{ inputs.build_command }}
       - name: Upload the build
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}

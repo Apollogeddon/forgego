@@ -40,6 +40,9 @@ on:
         description: "Released tag (e.g. v1.2.3); empty when nothing was released"
         value: ${{ jobs.release.outputs.tag_name }}
 
+# every job asks for what it needs
+permissions: {}
+
 jobs:
   release:
     name: release
@@ -66,12 +69,15 @@ jobs:
       - name: Create the GitHub App's token
         id: app
         if: inputs.app_client_id != ''
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ inputs.app_client_id }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # only what release-please needs, whatever else the app may do
+          permission-contents: write
+          permission-pull-requests: write
       - name: Release
-        uses: googleapis/release-please-action@v5
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
@@ -83,7 +89,7 @@ jobs:
       # pull request asks for one here instead, on any plan
       - name: Request a review
         if: steps.release.outputs.pr != ''
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PULL_REQUEST: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
           REVIEWERS: ${{ inputs.reviewers }}

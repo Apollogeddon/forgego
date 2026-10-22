@@ -84,8 +84,8 @@ func Dependabot(docker bool) string {
 		// forgego brings its own dependencies, so only it is proposed; it only runs the
 		// project's tasks, so its release doesn't ship in the project
 		{name: "gomod", dir: "/.forgego/forgego", prefix: "chore(deps)", group: "forgego", allow: version.Module},
-		// the reusable workflows are called at @main, which has no versions to propose
-		{name: "github-actions", prefix: "chore(ci)", group: "actions", ignore: []string{"apollogeddon/forgego"}},
+		// forgego's pipelines too, called at a release's tag
+		{name: "github-actions", prefix: "chore(ci)", group: "actions"},
 	}
 	if docker {
 		ecosystems = append(ecosystems, ecosystem{name: "docker", prefix: "fix(deps)", group: "docker", updateTypes: []string{"minor", "patch"}})

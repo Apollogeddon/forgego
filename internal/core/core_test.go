@@ -304,7 +304,7 @@ func TestGeneratedWorkflowIsLeastPrivilegeAndNeverCancelsMain(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 		// a run outside a pull request has a group of its own, so one on main is never cancelled
-		if group, _ := w.Concurrency["group"].(string); !strings.Contains(group, "github.head_ref || github.run_id") {
+		if group, _ := w.Concurrency["group"].(string); !strings.Contains(group, "github.event.pull_request.number || github.run_id") {
 			t.Errorf("%s: concurrency group %q can cancel runs on main", name, group)
 		}
 		for job, j := range w.Jobs {
@@ -316,7 +316,8 @@ func TestGeneratedWorkflowIsLeastPrivilegeAndNeverCancelsMain(t *testing.T) {
 			if _, ok := j.Permissions["id-token"]; ok && job != "pages" && (job != "publish" || strings.HasPrefix(name, "library")) {
 				t.Errorf("%s: %s asks for id-token", name, job)
 			}
-			if !strings.HasPrefix(j.Uses, "apollogeddon/forgego/.github/workflows/"+job+".yml@main") {
+			// the release that wrote it, which Dependabot can bump
+			if j.Uses != "apollogeddon/forgego/.github/workflows/"+job+".yml@v2.1.0" {
 				t.Errorf("%s: %s uses %s", name, job, j.Uses)
 			}
 		}
@@ -583,10 +584,14 @@ func TestRepositoryFiles(t *testing.T) {
 		t.Error(".editorconfig doesn't indent Go with tabs")
 	}
 	dependabot := read(t, fs, ".github/dependabot.yml")
-	for _, want := range []string{`package-ecosystem: "gomod"`, `package-ecosystem: "github-actions"`, `dependency-name: "apollogeddon/forgego"`} {
+	for _, want := range []string{`package-ecosystem: "gomod"`, `package-ecosystem: "github-actions"`} {
 		if !strings.Contains(dependabot, want) {
 			t.Errorf("dependabot.yml has no %s:\n%s", want, dependabot)
 		}
+	}
+	// the pipelines are called at a release's tag, which Dependabot bumps like any action
+	if strings.Contains(dependabot, "ignore:") {
+		t.Errorf("dependabot.yml ignores an update:\n%s", dependabot)
 	}
 	if got := strings.Count(dependabot, "default-days: 3"); got != 3 {
 		t.Errorf("%d of 3 updates have the cooldown", got)
@@ -675,6 +680,10 @@ func TestABuildThatIsntAReleaseRunsForgegoWithGoRun(t *testing.T) {
 		t.Error("a development build should run forgego with go run")
 	}
 	refuteFiles(t, fs, ".forgego/forgego/go.mod")
+	// a development build's pipelines may not be released yet
+	if index := read(t, fs, templates.IndexWorkflow); strings.Count(index, ".yml@main") != strings.Count(index, "uses:") {
+		t.Errorf("a development build doesn't call the pipelines at main:\n%s", index)
+	}
 }
 
 func TestDependabotProposesForgegosPin(t *testing.T) {

@@ -65,6 +65,9 @@ on:
 # The generated Dockerfiles cross-compile on the build host, and their runtime stages run nothing, so
 # one job builds every platform without emulation; qemu is for a Dockerfile that doesn't.
 
+# every job asks for what it needs
+permissions: {}
+
 jobs:
   # the image, unpushed, so a pull request checks the Dockerfile
   build:
@@ -84,7 +87,7 @@ jobs:
         type=raw,value=latest
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Resolve the image name
@@ -96,10 +99,10 @@ jobs:
       # a remote BuildKit brings its own emulation, if any
       - name: Set up QEMU
         if: inputs.qemu && inputs.buildkit_endpoint == ''
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - name: Set up Buildx
         if: inputs.buildkit_endpoint == ''
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Use the remote BuildKit
         if: inputs.buildkit_endpoint != ''
         env:
@@ -107,12 +110,12 @@ jobs:
         run: docker buildx create --name forgego --driver remote "$ENDPOINT" --use
       - name: Compute the tags
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ steps.image.outputs.image }}
           tags: ${{ inputs.tags || env.DEFAULT_TAGS }}
       - name: Build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ inputs.working_directory }}
           file: ${{ inputs.dockerfile != '' && format('{0}/{1}', inputs.working_directory, inputs.dockerfile) || '' }}
@@ -146,7 +149,7 @@ jobs:
         type=raw,value=latest
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Resolve the image name
@@ -166,10 +169,10 @@ jobs:
       # a remote BuildKit brings its own emulation, if any
       - name: Set up QEMU
         if: inputs.qemu && inputs.buildkit_endpoint == ''
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - name: Set up Buildx
         if: inputs.buildkit_endpoint == ''
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Use the remote BuildKit
         if: inputs.buildkit_endpoint != ''
         env:
@@ -177,13 +180,13 @@ jobs:
         run: docker buildx create --name forgego --driver remote "$ENDPOINT" --use
       - name: Compute the tags
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ steps.image.outputs.image }}
           tags: ${{ inputs.tags || env.DEFAULT_TAGS }}
       # A pushed image builds without a cache, which another repository's job could have planted layers in.
       - name: Push to GHCR
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ inputs.working_directory }}
           file: ${{ inputs.dockerfile != '' && format('{0}/{1}', inputs.working_directory, inputs.dockerfile) || '' }}

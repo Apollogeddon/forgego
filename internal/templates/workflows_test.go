@@ -309,7 +309,58 @@ func allOptions() map[string]WorkflowOptions {
 	return all
 }
 
-var atMain = regexp.MustCompile(`^apollogeddon/forgego/\.github/workflows/([\w-]+\.yml)@main$`)
+var atMain = regexp.MustCompile(`^apollogeddon/forgego/\.github/workflows/([\w-]+\.yml)@(main|v\d+\.\d+\.\d+)$`)
+
+// A generated workflow calls the pipelines at the release that wrote it, and at main from any other build.
+func TestGeneratedIndexCallsTheRunningRelease(t *testing.T) {
+	for v, want := range map[string]string{"v2.1.0": "v2.1.0", "latest": "main", "v2.2.0-rc.1": "main", "": "main", "v2.1.0+dirty": "main"} {
+		text := RenderWorkflow(WorkflowOptions{Mode: "backend", Versioning: true, Version: v})
+		if n := strings.Count(text, ".yml@"+want+"\n"); n == 0 || n != strings.Count(text, "uses:") {
+			t.Errorf("version %q: %d of %d calls at %s", v, n, strings.Count(text, "uses:"), want)
+		}
+	}
+}
+
+var pinned = regexp.MustCompile(`^[\w.-]+/[\w./-]+@[0-9a-f]{40}$`)
+
+// Every external action is pinned to a commit, with its tag in a comment; local pipelines stay as they are.
+func TestActionsArePinnedToCommits(t *testing.T) {
+	pipelines, roots := pipelineFiles(t)
+	for _, file := range append(pipelines, roots...) {
+		for i, line := range strings.Split(readText(t, file), "\n") {
+			_, uses, ok := strings.Cut(line, "uses: ")
+			if !ok || strings.HasPrefix(uses, "./") {
+				continue
+			}
+			ref, tag, _ := strings.Cut(uses, " # ")
+			if !pinned.MatchString(ref) || !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(tag) {
+				t.Errorf("%s:%d: %s isn't pinned to a commit with its tag", file, i+1, uses)
+			}
+		}
+	}
+}
+
+// The root workflows and every pipeline whose jobs all ask for their own permissions start from none; publish's
+// assets and attest take the caller's grant, so publish.yml can't.
+func TestWorkflowsStartWithNoPermissions(t *testing.T) {
+	pipelines, roots := pipelineFiles(t)
+	texts := map[string]string{"generated": RenderWorkflow(WorkflowOptions{Mode: "backend", Versioning: true})}
+	for _, file := range append(pipelines, roots...) {
+		texts[file] = readText(t, file)
+	}
+	for file, text := range texts {
+		var raw struct {
+			Permissions any `yaml:"permissions"`
+		}
+		if err := yaml.Unmarshal([]byte(text), &raw); err != nil {
+			t.Fatal(err)
+		}
+		empty := raw.Permissions != nil && len(raw.Permissions.(map[string]any)) == 0
+		if want := file != "publish.yml"; empty != want {
+			t.Errorf("%s: top-level permissions %v, want empty %v", file, raw.Permissions, want)
+		}
+	}
+}
 
 func TestGeneratedIndexCallsForgegosPipelines(t *testing.T) {
 	sent := regexp.MustCompile(`DISPATCH_TYPE: ([\w-]+)`).FindStringSubmatch(readText(t, "merge.yml"))
@@ -330,7 +381,7 @@ func TestGeneratedIndexCallsForgegosPipelines(t *testing.T) {
 			t.Errorf("%s listens for repository_dispatch %v, want [%s]", name, w.On.RepositoryDispatch.Types, sent[1])
 		}
 		// each run outside a pull request has a group of its own, so a queued run on main is never cancelled
-		if w.Concurrency["group"] != "${{ github.workflow }}-${{ github.head_ref || github.run_id }}" || w.Concurrency["cancel-in-progress"] != true {
+		if w.Concurrency["group"] != "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}" || w.Concurrency["cancel-in-progress"] != true {
 			t.Errorf("%s: concurrency = %v", name, w.Concurrency)
 		}
 		if w.Jobs["patch"].If != "${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}" {

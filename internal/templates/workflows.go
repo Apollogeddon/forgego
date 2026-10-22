@@ -18,6 +18,18 @@ type WorkflowOptions struct {
 	Testing    bool
 	Linting    bool
 	Versioning bool
+	Version    string // the forgego writing it, whose pipelines it calls when it's a release; else main
+}
+
+var plainRelease = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+
+// PipelineRef is the ref a generated workflow calls the pipelines at: a forgego release's tag, which Dependabot
+// can bump and an immutable release locks, or main for a development build or a pre-release.
+func PipelineRef(v string) string {
+	if plainRelease.MatchString(v) {
+		return v
+	}
+	return "main"
 }
 
 const workflowHeader = `name: index
@@ -38,8 +50,11 @@ on:
 concurrency:
   # a pull request's newer run replaces its older one; every other run has a group of its own, so a run on
   # main, running or queued, is never cancelled and a release is never created without being published
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
+
+# every job asks for what it needs
+permissions: {}
 
 jobs:
 `
@@ -63,7 +78,7 @@ type pipelineJob struct {
 
 func expr(e string) string { return "${{ " + e + " }}" }
 
-func (j pipelineJob) render(b *strings.Builder) {
+func (j pipelineJob) render(b *strings.Builder, ref string) {
 	if j.comment != "" {
 		b.WriteString("  # " + j.comment + "\n")
 	}
@@ -78,7 +93,7 @@ func (j pipelineJob) render(b *strings.Builder) {
 	if j.cond != "" {
 		b.WriteString("    if: " + expr(j.cond) + "\n")
 	}
-	b.WriteString("    uses: " + WorkflowRepo + j.pipeline + ".yml@main\n")
+	b.WriteString("    uses: " + WorkflowRepo + j.pipeline + ".yml@" + ref + "\n")
 	if len(j.with) > 0 {
 		b.WriteString("    with:\n")
 		for _, in := range j.with {
@@ -213,7 +228,7 @@ func RenderWorkflow(o WorkflowOptions) string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		j.render(&b)
+		j.render(&b, PipelineRef(o.Version))
 	}
 	return b.String()
 }
