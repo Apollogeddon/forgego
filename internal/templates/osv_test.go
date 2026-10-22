@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -46,11 +47,40 @@ func secureSteps(t *testing.T) map[string]osvStep {
 
 func TestOSVScanNeverSwallowsTheResult(t *testing.T) {
 	steps := secureSteps(t)
-	if run := steps["Scan with OSV"].Run; strings.Contains(run, "|| true") || !strings.Contains(run, "--format json") {
+	if run := steps["Scan with OSV"].Run; strings.Contains(run, "|| true") || !strings.Contains(run, "--format json") ||
+		!strings.Contains(run, `"$RUNNER_TEMP/osv-scanner/osv-scanner" scan`) {
 		t.Errorf("Scan with OSV run = %q", run)
 	}
 	if got := steps["Report OSV findings"].Env["OSV_ENFORCE"]; got != "${{ github.event_name == 'pull_request' }}" {
 		t.Errorf("OSV_ENFORCE = %q", got)
+	}
+}
+
+// The scanner is a pinned release, checked against its published checksums, and a failed download or check
+// fails the step rather than scanning with nothing.
+func TestOSVScannerIsPinnedAndVerified(t *testing.T) {
+	install := secureSteps(t)["Install OSV-Scanner"]
+	if !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(install.Env["OSV_SCANNER_VERSION"]) {
+		t.Errorf("OSV_SCANNER_VERSION = %q, want a release", install.Env["OSV_SCANNER_VERSION"])
+	}
+	for _, want := range []string{"curl -fsSLO", "osv-scanner_SHA256SUMS", "sha256sum -c --ignore-missing", "exit 1"} {
+		if !strings.Contains(install.Run, want) {
+			t.Errorf("Install OSV-Scanner doesn't run %q", want)
+		}
+	}
+	if strings.Contains(install.Run, "latest") || strings.Contains(install.Run, "|| true") {
+		t.Errorf("Install OSV-Scanner = %q", install.Run)
+	}
+}
+
+// govulncheck, like OSV, fails a pull request and only warns elsewhere.
+func TestGovulncheckFailsOnlyAPullRequest(t *testing.T) {
+	for _, pipeline := range []string{"library.yml", "service.yml", "website.yml"} {
+		scan := scanSteps(t, pipeline)["Scan with govulncheck"]
+		if scan.Env["ENFORCE"] != "${{ github.event_name == 'pull_request' }}" ||
+			!strings.Contains(scan.Run, `if [ "$ENFORCE" = true ]`) || !strings.Contains(scan.Run, "exit 1") {
+			t.Errorf("%s: Scan with govulncheck = %+v", pipeline, scan)
+		}
 	}
 }
 
@@ -59,9 +89,10 @@ func TestCheckPipelinesShareTheOSVScan(t *testing.T) {
 	want := secureSteps(t)
 	for _, pipeline := range []string{"library.yml", "website.yml"} {
 		got := scanSteps(t, pipeline)
-		for _, name := range []string{"Scan with OSV", "Report OSV findings"} {
+		for _, name := range []string{"Install OSV-Scanner", "Scan with OSV", "Report OSV findings"} {
 			if got[name].Run != want[name].Run || got[name].With["script"] != want[name].With["script"] ||
-				got[name].Env["OSV_ENFORCE"] != want[name].Env["OSV_ENFORCE"] {
+				got[name].Env["OSV_ENFORCE"] != want[name].Env["OSV_ENFORCE"] ||
+				got[name].Env["OSV_SCANNER_VERSION"] != want[name].Env["OSV_SCANNER_VERSION"] {
 				t.Errorf("%s: %q differs from service.yml's", pipeline, name)
 			}
 		}
@@ -143,19 +174,28 @@ func TestOSVReportFailsOnlyAPullRequestOnAHighFinding(t *testing.T) {
 }
 
 func TestOSVReportPassesWhenThereIsNothingToReport(t *testing.T) {
+	for _, status := range []string{"0", "128"} {
+		calls := runOSVReport(t, status, []map[string]any{}, true)
+		if len(calls["setFailed"]) != 0 || len(calls["warning"]) != 0 {
+			t.Errorf("status %s: calls = %v", status, calls)
+		}
+	}
+}
+
+// A scan that couldn't finish fails a pull request, which can't pass unchecked, and warns elsewhere.
+func TestOSVReportFailsAPullRequestOnAnIncompleteScan(t *testing.T) {
 	for _, tc := range []struct {
 		status  string
 		results []map[string]any
-		warned  bool
 	}{
-		{"0", []map[string]any{}, false},
-		{"128", []map[string]any{}, false},
-		{"127", []map[string]any{}, true},
-		{"1", nil, true},
+		{"127", []map[string]any{}},
+		{"1", nil},
 	} {
-		calls := runOSVReport(t, tc.status, tc.results, true)
-		if len(calls["setFailed"]) != 0 || (len(calls["warning"]) > 0) != tc.warned {
-			t.Errorf("status %s: calls = %v", tc.status, calls)
+		for enforce, failed := range map[bool]int{true: 1, false: 0} {
+			calls := runOSVReport(t, tc.status, tc.results, enforce)
+			if len(calls["setFailed"]) != failed || len(calls["warning"]) != 1-failed {
+				t.Errorf("status %s, enforce %v: calls = %v", tc.status, enforce, calls)
+			}
 		}
 	}
 }

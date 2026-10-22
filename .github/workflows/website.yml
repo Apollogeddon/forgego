@@ -141,19 +141,36 @@ jobs:
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # A high or critical finding (CVSS 7 or more) fails a pull request; elsewhere it's annotated
-      # instead, so releases and the patch pipeline that fixes it still run. Accept one with an
-      # IgnoredVulns entry in an osv-scanner.toml beside the go.mod
+      # a pinned release, checked against the checksums it was published with
+      - name: Install OSV-Scanner
+        env:
+          OSV_SCANNER_VERSION: v2.7.0
+          ARCH: ${{ runner.arch }}
+        run: |
+          case "$ARCH" in
+            X64) arch=amd64 ;;
+            ARM64) arch=arm64 ;;
+            *) echo "::error::OSV-Scanner has no Linux build for $ARCH"; exit 1 ;;
+          esac
+          dir="$RUNNER_TEMP/osv-scanner"
+          mkdir -p "$dir"
+          cd "$dir"
+          base="https://github.com/google/osv-scanner/releases/download/$OSV_SCANNER_VERSION"
+          curl -fsSLO "$base/osv-scanner_linux_$arch"
+          curl -fsSLO "$base/osv-scanner_SHA256SUMS"
+          sha256sum -c --ignore-missing osv-scanner_SHA256SUMS
+          mv "osv-scanner_linux_$arch" osv-scanner
+          chmod +x osv-scanner
+      # A high or critical finding (CVSS 7 or more), or a scan that couldn't finish, fails a pull request;
+      # elsewhere it's annotated instead, so releases and the patch pipeline that fixes it still run. Accept
+      # one with an IgnoredVulns entry in an osv-scanner.toml beside the go.mod
       - name: Scan with OSV
         id: osv
         run: |
-          curl -sL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
-          chmod +x "$RUNNER_TEMP/osv-scanner"
           # 0: nothing found, 1: vulnerabilities found, 128: no lockfile, anything else: no scan
           status=0
-          "$RUNNER_TEMP/osv-scanner" scan source -r --format json --output-file "$RUNNER_TEMP/osv.json" . || status=$?
+          "$RUNNER_TEMP/osv-scanner/osv-scanner" scan source -r --format json --output-file "$RUNNER_TEMP/osv.json" . || status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
-          rm "$RUNNER_TEMP/osv-scanner"
       - name: Report OSV findings
         uses: actions/github-script@v9
         env:
@@ -169,8 +186,14 @@ jobs:
               core.info('No lockfiles to scan');
               return;
             }
+            // a pull request can't pass on a scan that didn't happen; elsewhere it warns, so a release still ships
             if ((status !== 0 && status !== 1) || !fs.existsSync(process.env.OSV_REPORT)) {
-              core.warning(`OSV-Scanner couldn't finish (exit ${status}), so dependencies weren't checked; see the scan step's log`, { title: 'OSV scan incomplete' });
+              const incomplete = `OSV-Scanner couldn't finish (exit ${status}), so dependencies weren't checked; see the scan step's log`;
+              if (process.env.OSV_ENFORCE === 'true') {
+                core.setFailed(incomplete);
+              } else {
+                core.warning(incomplete, { title: 'OSV scan incomplete' });
+              }
               return;
             }
             const report = JSON.parse(fs.readFileSync(process.env.OSV_REPORT, 'utf8'));
@@ -234,13 +257,19 @@ jobs:
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
-      # Reports only the vulnerabilities the code actually calls. It doesn't fail the checks, as the
-      # patch pipeline upgrades the vulnerable modules
+      # Reports only the vulnerabilities the code actually calls. It fails a pull request, so a change
+      # can't add one; elsewhere it warns, so releases and the patch pipeline that upgrades them still run
       - name: Scan with govulncheck
         if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        env:
+          ENFORCE: ${{ github.event_name == 'pull_request' }}
         run: |
-          go tool -modfile=.forgego/govulncheck/go.mod govulncheck ./... ||
-            echo "::warning::govulncheck found vulnerabilities the code calls; the patch pipeline upgrades them on main"
+          if go tool -modfile=.forgego/govulncheck/go.mod govulncheck ./...; then exit 0; fi
+          if [ "$ENFORCE" = true ]; then
+            echo "::error::govulncheck found vulnerabilities the code calls, or couldn't finish: upgrade the modules it names"
+            exit 1
+          fi
+          echo "::warning::govulncheck found vulnerabilities the code calls, or couldn't finish; the patch pipeline upgrades them on main"
 
   test:
     name: test
