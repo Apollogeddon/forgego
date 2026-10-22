@@ -3,6 +3,7 @@ package project
 
 import (
 	"fmt"
+	"go/token"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -206,10 +207,10 @@ func (i Info) GitHubOwner() string {
 }
 
 // PackageName makes a valid Go package name from a project name: billing-api gives
-// billingapi, and a name starting with a digit gets an app prefix.
+// billingapi, and a name starting with a digit, or a Go keyword such as go, gets an app prefix.
 func PackageName(name string) string {
 	pkg := nonIdent.ReplaceAllString(strings.ToLower(unaccented(name)), "")
-	if pkg == "" || (pkg[0] >= '0' && pkg[0] <= '9') {
+	if pkg == "" || (pkg[0] >= '0' && pkg[0] <= '9') || token.IsKeyword(pkg) {
 		pkg = "app" + pkg
 	}
 	return pkg

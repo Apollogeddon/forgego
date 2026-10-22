@@ -194,7 +194,7 @@ With versioning on, lefthook runs it as the `commit-msg` hook.
 
 If the path it works out still isn't a valid module path, as from a `file://` remote, `init` stops with exit code `1` before it writes anything; run `go mod init <module path>` first.
 
-The project name is the last element of the module path without a `/vN` suffix (`billing-api`). Accents come off letters first (`Café` gives `cafe`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit. The Docker image, the `.deb` package, its systemd unit and its system user use the name lowercased, with anything but letters and digits turned into dashes (`BillingAPI` gives `billingapi`).
+The project name is the last element of the module path without a `/vN` suffix (`billing-api`). Accents come off letters first (`Café` gives `cafe`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit or be a Go keyword (a directory named `go` gives `appgo`). The Docker image, the `.deb` package, its systemd unit and its system user use the name lowercased, with anything but letters and digits turned into dashes (`BillingAPI` gives `billingapi`).
 
 ## Project structure
 

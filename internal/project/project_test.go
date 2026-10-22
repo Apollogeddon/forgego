@@ -157,3 +157,19 @@ func TestDetectRefusesAModulePathItCantMakeValid(t *testing.T) {
 		}
 	}
 }
+
+// A keyword can't name a package, so a directory named go gets the prefix a leading digit does.
+func TestPackageNameIsNeverAKeyword(t *testing.T) {
+	for name, want := range map[string]string{"go": "appgo", "Type": "apptype", "my-func": "myfunc", "range": "apprange", "golang": "golang"} {
+		if got := PackageName(name); got != want {
+			t.Errorf("PackageName(%q) = %q, want %q", name, got, want)
+		}
+	}
+	info, err := Detect(fsys.NewMemory(nil), "/work/go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Module != "go" || info.Package != "appgo" {
+		t.Errorf("info = %+v", info)
+	}
+}
