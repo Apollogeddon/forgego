@@ -251,3 +251,5 @@ jobs:
     with:
       runs_on: ${{ vars.RUNS_ON || 'ubuntu-latest' }}
 ```
+
+The check pipelines' `scan` stage runs OSV-Scanner's container action, so if those runners can't run one, also set `scan_runs_on` to runners that can, such as `ubuntu-latest` or a Kubernetes-mode runner set, and `scan_container` if that set requires a job container: see [The scan's runner]({{< relref "workflows/reference.md#the-scans-runner" >}}).

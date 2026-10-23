@@ -18,7 +18,7 @@ To test and build on Windows and macOS as well, set `library.yml`'s or `service.
 *A project's checks, on pull requests and before a release ships.*
 
 1. **`lint`** — `task sync-check` (when the project pins Task), or `task sync` on Dependabot's pull requests, as a Forge.go update changes the files it manages; then, with `lint` on, `go mod tidy -diff`, `golangci-lint fmt --diff` and `golangci-lint run`. A website has no Go to lint, so its `lint` stage is the sync check alone.
-2. **`scan`** — Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner scan of the source tree, with a pinned OSV-Scanner release checked against the checksums it was published with; a failed download or check fails the stage. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail the stage, so releases still run while a Dependabot security update fixes it. Lower findings, and advisories with no severity at all, as Go's own vulnerability database gives, are warning annotations; every finding is listed in the job summary. If the scanner can't finish, for example because OSV's API is unreachable, the stage fails on a pull request, which mustn't pass unchecked, and warns elsewhere. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside `go.mod`:
+2. **`scan`** — Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner scan of the source tree, with [OSV-Scanner's own action](https://github.com/google/osv-scanner-action), pinned to a commit like every action so Dependabot keeps it current. It's a container action, so `scan` needs a Linux runner that can run one: GitHub's hosted runners, or a self-hosted Kubernetes-mode runner set; see [The scan's runner](#the-scans-runner). On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail the stage, so releases still run while a Dependabot security update fixes it. Lower findings, and advisories with no severity at all, as Go's own vulnerability database gives, are warning annotations; every finding is listed in the job summary. If the scanner fails without a report, for example because OSV's API is unreachable, the stage fails on a pull request, which mustn't pass unchecked, and warns elsewhere. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside `go.mod`:
 
    ```toml
    [[IgnoredVulns]]
@@ -40,6 +40,8 @@ Every stage asks for `contents: read`; `scan` also asks for `pull-requests: writ
 | Input | Default | Pipelines | Purpose |
 | :--- | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | all | Runner label |
+| `scan_runs_on` | `''` | all | Runner label for the `scan` stage, which runs OSV-Scanner's container action; empty uses `runs_on`. See [The scan's runner](#the-scans-runner) |
+| `scan_container` | `''` | all | Image the `scan` stage runs in, for a runner set that requires a job container, such as `buildpack-deps:trixie-scm`; empty runs on the runner itself |
 | `working_directory` | `'.'` | all | Directory containing `go.mod` |
 | `go_version` | `''` | all | Go version; empty reads the project's `go.mod`, else Forge.go's default |
 | `enable_secrets` | `true` | all | Run the Gitleaks scan |
@@ -53,6 +55,17 @@ Every stage asks for `contents: read`; `scan` also asks for `pull-requests: writ
 | `extra_test_task` | `'test'` | `library`, `service` | The Task task the Windows and macOS stages test with, such as a shorter `test:short` |
 | `setup_script` | `''` | `library`, `service` | A [setup script](#setup-scripts), run before compiling on Windows and macOS |
 | `base_path`, `check_links`, `check_external_links`, `link_check_args`, `check_accessibility`, `accessibility_paths`, `accessibility_impact` | | `website` | See [Site checks](#site-checks) |
+
+### The scan's runner
+
+`scan` runs OSV-Scanner's action, a Docker container action, so it needs a Linux runner that can run one. GitHub's hosted runners can, so with the default `runs_on` nothing needs setting. A caller whose `runs_on` is a self-hosted runner without container support must set `scan_runs_on` to one that has it. A Kubernetes-mode runner set runs container steps as pods even without a Docker daemon; if it requires every job to declare a container, set `scan_container` too. The image needs git, for the checkout and Gitleaks, and curl and tar, for setup-go, as the stage also runs govulncheck: `buildpack-deps:trixie-scm` has them. `apt_packages` uses `sudo`, which such an image may lack.
+
+```yaml
+    with:
+      runs_on: my-runners
+      scan_runs_on: my-kubernetes-runners
+      scan_container: buildpack-deps:trixie-scm
+```
 
 ### Windows and macOS
 

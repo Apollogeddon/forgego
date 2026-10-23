@@ -10,6 +10,16 @@ on:
         required: false
         type: string
         default: 'ubuntu-latest'
+      scan_runs_on:
+        description: "Runner label for the scan stage, which runs OSV-Scanner's container action: a Linux runner that can run one, such as GitHub's hosted runners or a Kubernetes-mode runner set; empty uses runs_on"
+        required: false
+        type: string
+        default: ''
+      scan_container:
+        description: "Image the scan stage runs in, for a runner set that requires a job container (e.g. buildpack-deps:trixie-scm); it needs git, and curl and tar for setup-go, as the stage runs govulncheck; empty runs on the runner itself"
+        required: false
+        type: string
+        default: ''
       working_directory:
         description: "Directory holding go.mod"
         required: false
@@ -141,7 +151,9 @@ jobs:
 
   scan:
     name: scan
-    runs-on: ${{ inputs.runs_on }}
+    runs-on: ${{ inputs.scan_runs_on || inputs.runs_on }}
+    # an empty image runs the job on the runner itself
+    container: ${{ inputs.scan_container }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -156,6 +168,9 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # in a job container git runs as root over the runner user's checkout and refuses it (Gitleaks needs git)
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Scan with Gitleaks
         if: inputs.enable_secrets
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
@@ -168,54 +183,41 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
-      # a pinned release, checked against the checksums it was published with
-      - name: Install OSV-Scanner
-        env:
-          OSV_SCANNER_VERSION: v2.7.0
-          ARCH: ${{ runner.arch }}
-        run: |
-          case "$ARCH" in
-            X64) arch=amd64 ;;
-            ARM64) arch=arm64 ;;
-            *) echo "::error::OSV-Scanner has no Linux build for $ARCH"; exit 1 ;;
-          esac
-          dir="$RUNNER_TEMP/osv-scanner"
-          mkdir -p "$dir"
-          cd "$dir"
-          base="https://github.com/google/osv-scanner/releases/download/$OSV_SCANNER_VERSION"
-          curl -fsSLO "$base/osv-scanner_linux_$arch"
-          curl -fsSLO "$base/osv-scanner_SHA256SUMS"
-          sha256sum -c --ignore-missing osv-scanner_SHA256SUMS
-          mv "osv-scanner_linux_$arch" osv-scanner
-          chmod +x osv-scanner
+      # OSV-Scanner's own action, pinned like every action so Dependabot keeps it current. It exits non-zero on a finding
+      # as on a failure, so the report below decides; its results go in the workspace, which its container shares.
+      - name: Scan with OSV
+        id: osv
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=json
+            --output=osv-results.json
+            --recursive
+            ./${{ inputs.working_directory }}
       # A high or critical finding (CVSS 7 or more), or a scan that couldn't finish, fails a pull request;
       # elsewhere it's annotated instead, so releases still run while a Dependabot security update fixes it. Accept
       # one with an IgnoredVulns entry in an osv-scanner.toml beside the go.mod
-      - name: Scan with OSV
-        id: osv
-        run: |
-          # 0: nothing found, 1: vulnerabilities found, 128: no lockfile, anything else: no scan
-          status=0
-          "$RUNNER_TEMP/osv-scanner/osv-scanner" scan source -r --format json --output-file "$RUNNER_TEMP/osv.json" . || status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
       - name: Report OSV findings
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          OSV_STATUS: ${{ steps.osv.outputs.status }}
-          OSV_REPORT: ${{ runner.temp }}/osv.json
+          OSV_OUTCOME: ${{ steps.osv.outcome }}
+          # resolved against $GITHUB_WORKSPACE, which, unlike github.workspace, is right in a job container too
+          OSV_REPORT: osv-results.json
           OSV_ENFORCE: ${{ github.event_name == 'pull_request' }}
         with:
           script: |
             const fs = require('node:fs');
             const path = require('node:path');
-            const status = Number(process.env.OSV_STATUS);
-            if (status === 128) {
+            const reportPath = path.resolve(process.env.GITHUB_WORKSPACE, process.env.OSV_REPORT);
+            const text = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8').trim() : '';
+            if (!text && process.env.OSV_OUTCOME === 'success') {
               core.info('No lockfiles to scan');
               return;
             }
             // a pull request can't pass on a scan that didn't happen; elsewhere it warns, so a release still ships
-            if ((status !== 0 && status !== 1) || !fs.existsSync(process.env.OSV_REPORT)) {
-              const incomplete = `OSV-Scanner couldn't finish (exit ${status}), so dependencies weren't checked; see the scan step's log`;
+            if (!text) {
+              const incomplete = "OSV-Scanner couldn't finish, so dependencies weren't checked; see the scan step's log";
               if (process.env.OSV_ENFORCE === 'true') {
                 core.setFailed(incomplete);
               } else {
@@ -223,13 +225,14 @@ jobs:
               }
               return;
             }
-            const report = JSON.parse(fs.readFileSync(process.env.OSV_REPORT, 'utf8'));
+            const report = JSON.parse(text);
             // a GitHub advisory's rating when an advisory has no CVSS score
             const ratings = { CRITICAL: 9, HIGH: 7, MODERATE: 4, MEDIUM: 4, LOW: 1 };
             const rows = [];
             let blocking = 0;
             for (const result of report.results ?? []) {
-              const file = path.relative(process.env.GITHUB_WORKSPACE, result.source.path);
+              // the action's container mounts the workspace there
+              const file = path.posix.relative('/github/workspace', result.source.path);
               for (const { package: pkg, vulnerabilities = [], groups = [] } of result.packages ?? []) {
                 for (const group of groups) {
                   const vulns = vulnerabilities.filter((v) => group.ids.includes(v.id));
