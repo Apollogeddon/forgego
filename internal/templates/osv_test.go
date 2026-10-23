@@ -80,7 +80,7 @@ func TestOSVScanUsesItsOwnAction(t *testing.T) {
 	if scan.Uses == "" || !strings.Contains(text, "uses: "+osvAction+"\n") || scan.ID != "osv" || !scan.ContinueOnError {
 		t.Errorf("Scan with OSV = %+v", scan)
 	}
-	want := "--format=json\n--output=osv-results.json\n--recursive\n./${{ inputs.working_directory }}"
+	want := "--format=json\n--output-file=osv-results.json\n--recursive\n./${{ inputs.working_directory }}"
 	if scan.With["scan-args"] != want {
 		t.Errorf("scan-args = %q, want %q", scan.With["scan-args"], want)
 	}

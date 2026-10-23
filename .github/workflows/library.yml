@@ -192,7 +192,7 @@ jobs:
         with:
           scan-args: |-
             --format=json
-            --output=osv-results.json
+            --output-file=osv-results.json
             --recursive
             ./${{ inputs.working_directory }}
       # A high or critical finding (CVSS 7 or more), or a scan that couldn't finish, fails a pull request;
