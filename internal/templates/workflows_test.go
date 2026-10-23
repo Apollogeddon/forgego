@@ -85,11 +85,7 @@ func parse(t *testing.T, name, text string) workflow {
 
 func readWorkflow(t *testing.T, name string) workflow {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(workflowsDir, name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return parse(t, name, string(b))
+	return parse(t, name, readText(t, name))
 }
 
 func readText(t *testing.T, name string) string {
@@ -153,15 +149,13 @@ func TestPipelinesAreFlatAndNamedByStage(t *testing.T) {
 	for _, file := range pipelines {
 		pipeline := strings.TrimSuffix(file, ".yml")
 		text := readText(t, file)
-		var on map[string]any
 		var raw struct {
 			On map[string]any `yaml:"on"`
 		}
 		if err := yaml.Unmarshal([]byte(text), &raw); err != nil {
 			t.Fatal(err)
 		}
-		on = raw.On
-		if len(on) != 1 || on["workflow_call"] == nil {
+		if on := raw.On; len(on) != 1 || on["workflow_call"] == nil {
 			t.Errorf("%s: triggered by %v, want workflow_call alone", file, slices.Collect(maps.Keys(on)))
 		}
 		w := parse(t, file, text)
@@ -572,7 +566,7 @@ func TestLegacyWorkflowsAreKnown(t *testing.T) {
 	if !IsLegacyWorkflow(old, strings.ReplaceAll(text, "\n", "  \r\n\r\n")) {
 		t.Error("a reformatted old workflow isn't known")
 	}
-	changed := strings.Replace(legacyFixture(t, "main-library.yml"), "    with:\n", "    with:\n      runs_on: xerus\n", 1)
+	changed := strings.Replace(legacyFixture(t, "main-library.yml"), "    with:\n", "    with:\n      runs_on: self-hosted\n", 1)
 	if changed == legacyFixture(t, "main-library.yml") {
 		t.Fatal("the fixture has no with:")
 	}
@@ -732,7 +726,8 @@ func TestSiteChecksAreOptIn(t *testing.T) {
 
 // Signing is opt-in: by default assets imports no key.
 func TestReleaseSigningIsOptIn(t *testing.T) {
-	call := readWorkflow(t, "publish.yml").On.WorkflowCall
+	publish := readWorkflow(t, "publish.yml")
+	call := publish.On.WorkflowCall
 	if call.Inputs["gpg_sign"].Default != false {
 		t.Errorf("gpg_sign = %v", call.Inputs["gpg_sign"])
 	}
@@ -741,7 +736,7 @@ func TestReleaseSigningIsOptIn(t *testing.T) {
 			t.Errorf("secret %s = %v, want it declared and optional", secret, call.Secrets[secret])
 		}
 	}
-	for _, s := range readWorkflow(t, "publish.yml").Jobs["assets"].Steps {
+	for _, s := range publish.Jobs["assets"].Steps {
 		if (strings.HasPrefix(s.Uses, "crazy-max/ghaction-import-gpg") || strings.Contains(s.Run, "GPG_FINGERPRINT")) &&
 			s.If != "inputs.gpg_sign" {
 			t.Errorf("assets step %q runs without gpg_sign: if = %q", s.Name, s.If)
@@ -808,7 +803,7 @@ func TestSquashMergesAnyUpdateAtTheCheckedCommit(t *testing.T) {
 // latest change; anyone else's push to it is checked as it is.
 func TestLintRefreshesOnlyDependabotsOwnPullRequests(t *testing.T) {
 	const dependabot = "github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'"
-	for _, pipeline := range []string{"library.yml", "service.yml", "website.yml"} {
+	for _, pipeline := range checkPipelines {
 		lint := readWorkflow(t, pipeline).Jobs["lint"]
 		if check := stepNamed(lint, "Check forgego's files are current"); !strings.HasSuffix(check.If, " && !("+dependabot+")") {
 			t.Errorf("%s: sync-check if = %q", pipeline, check.If)
@@ -856,7 +851,7 @@ func TestPatchProposesTheRefreshedFiles(t *testing.T) {
 
 // Dependency review and Scorecard are free only for a public repository, so they run only there.
 func TestPublicOnlyExtras(t *testing.T) {
-	for _, pipeline := range []string{"library.yml", "service.yml", "website.yml"} {
+	for _, pipeline := range checkPipelines {
 		review := stepNamed(readWorkflow(t, pipeline).Jobs["scan"], "Review the dependency changes")
 		if !strings.HasPrefix(review.Uses, "actions/dependency-review-action@") || review.With["fail-on-severity"] != "high" ||
 			review.If != "github.event_name == 'pull_request' && github.event.repository.private == false" {

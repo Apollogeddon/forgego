@@ -61,12 +61,20 @@ on:
         type: string
         default: ''
 
-
 # The generated Dockerfiles cross-compile on the build host, and their runtime stages run nothing, so
 # one job builds every platform without emulation; qemu is for a Dockerfile that doesn't.
 
 # every job asks for what it needs
 permissions: {}
+
+# docker/metadata-action's tags when the caller gives none
+env:
+  DEFAULT_TAGS: |
+    type=semver,pattern={{version}},value=${{ inputs.version }}
+    type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+    type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
+    type=sha
+    type=raw,value=latest
 
 jobs:
   # the image, unpushed, so a pull request checks the Dockerfile
@@ -78,13 +86,6 @@ jobs:
     timeout-minutes: ${{ inputs.qemu && 90 || 30 }}
     permissions:
       contents: read
-    env:
-      DEFAULT_TAGS: |
-        type=semver,pattern={{version}},value=${{ inputs.version }}
-        type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
-        type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
-        type=sha
-        type=raw,value=latest
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -140,13 +141,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    env:
-      DEFAULT_TAGS: |
-        type=semver,pattern={{version}},value=${{ inputs.version }}
-        type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
-        type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
-        type=sha
-        type=raw,value=latest
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

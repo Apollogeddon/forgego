@@ -53,12 +53,8 @@ var checkPipelines = []string{"library.yml", "service.yml", "website.yml"}
 
 func readScanPipeline(t *testing.T, pipeline string) scanPipeline {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", pipeline))
-	if err != nil {
-		t.Fatal(err)
-	}
 	var w scanPipeline
-	if err := yaml.Unmarshal(b, &w); err != nil {
+	if err := yaml.Unmarshal([]byte(readText(t, pipeline)), &w); err != nil {
 		t.Fatal(err)
 	}
 	return w
@@ -90,31 +86,32 @@ const osvRun = `/osv-scanner scan source --format=json --output-file="$GITHUB_WO
 
 // OSV-Scanner runs in Google's own image as the job's container, under an image: key so Dependabot's docker
 // updates keep the tag current; it exits non-zero on a finding, so the step carries on and the report decides.
+// service.yml's stands for all three, as TestCheckPipelinesShareTheOSVScan holds them equal.
 func TestOSVScanRunsInItsOwnImage(t *testing.T) {
 	for _, pipeline := range checkPipelines {
 		if text := readText(t, pipeline); strings.Contains(text, "google/osv-scanner-action") {
 			t.Errorf("%s still uses OSV-Scanner's container action", pipeline)
 		}
-		job := readScanPipeline(t, pipeline).Jobs["scan-osv"]
-		if job.Name != "scan (osv)" || job.RunsOn != "${{ inputs.scan_runs_on || (github.event.repository.private && 'ubuntu-latest' || inputs.runs_on) }}" {
-			t.Errorf("%s: scan-osv name %q, runs-on %q", pipeline, job.Name, job.RunsOn)
-		}
-		if len(job.Container) != 1 || !osvImage.MatchString(job.Container["image"]) {
-			t.Errorf("%s: scan-osv container = %v", pipeline, job.Container)
-		}
-		if !maps.Equal(job.Permissions, map[string]string{"contents": "read"}) {
-			t.Errorf("%s: scan-osv permissions = %v", pipeline, job.Permissions)
-		}
-		if job.Defaults.Run["working-directory"] != "${{ inputs.working_directory }}" {
-			t.Errorf("%s: scan-osv runs in %q", pipeline, job.Defaults.Run["working-directory"])
-		}
-		var names []string
-		for _, s := range job.Steps {
-			names = append(names, s.Name)
-		}
-		if want := []string{"Check out", "Scan with OSV", "Report OSV findings"}; !slices.Equal(names, want) {
-			t.Errorf("%s: scan-osv steps = %v, want %v", pipeline, names, want)
-		}
+	}
+	job := readScanPipeline(t, "service.yml").Jobs["scan-osv"]
+	if job.Name != "scan (osv)" || job.RunsOn != "${{ inputs.scan_runs_on || (github.event.repository.private && 'ubuntu-latest' || inputs.runs_on) }}" {
+		t.Errorf("scan-osv name %q, runs-on %q", job.Name, job.RunsOn)
+	}
+	if len(job.Container) != 1 || !osvImage.MatchString(job.Container["image"]) {
+		t.Errorf("scan-osv container = %v", job.Container)
+	}
+	if !maps.Equal(job.Permissions, map[string]string{"contents": "read"}) {
+		t.Errorf("scan-osv permissions = %v", job.Permissions)
+	}
+	if job.Defaults.Run["working-directory"] != "${{ inputs.working_directory }}" {
+		t.Errorf("scan-osv runs in %q", job.Defaults.Run["working-directory"])
+	}
+	var names []string
+	for _, s := range job.Steps {
+		names = append(names, s.Name)
+	}
+	if want := []string{"Check out", "Scan with OSV", "Report OSV findings"}; !slices.Equal(names, want) {
+		t.Errorf("scan-osv steps = %v, want %v", names, want)
 	}
 	steps := osvSteps(t)
 	if checkout := steps["Check out"]; checkout.With["persist-credentials"] != "false" || checkout.With["fetch-depth"] != "" {

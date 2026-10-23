@@ -233,11 +233,7 @@ func TestInvalidCombinationsWriteNothing(t *testing.T) {
 func TestWindowsAndMacOSReachTheChecks(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, func(c *config.Init) { c.Mode, c.Windows, c.MacOS = config.Library, true, true })
-	var w workflow
-	if err := yaml.Unmarshal([]byte(read(t, fs, templates.IndexWorkflow)), &w); err != nil {
-		t.Fatal(err)
-	}
-	if with := w.Jobs["library"].With; with["test_windows"] != "windows-latest" || with["test_macos"] != "macos-latest" {
+	if with := readWorkflow(t, fs).Jobs["library"].With; with["test_windows"] != "windows-latest" || with["test_macos"] != "macos-latest" {
 		t.Errorf("library with = %v", with)
 	}
 }
@@ -309,49 +305,43 @@ func TestDebianRunsTheServiceAsItsOwnUser(t *testing.T) {
 }
 
 type workflow struct {
-	Concurrency map[string]any `yaml:"concurrency"`
-	Jobs        map[string]struct {
-		Uses        string            `yaml:"uses"`
-		Needs       any               `yaml:"needs"`
-		Secrets     any               `yaml:"secrets"`
-		Permissions map[string]string `yaml:"permissions"`
-		With        map[string]any    `yaml:"with"`
+	Jobs map[string]struct {
+		Uses  string         `yaml:"uses"`
+		Needs any            `yaml:"needs"`
+		With  map[string]any `yaml:"with"`
 	} `yaml:"jobs"`
 }
 
-func TestGeneratedWorkflowIsLeastPrivilegeAndNeverCancelsMain(t *testing.T) {
-	for name, edit := range map[string]func(*config.Init){
-		"backend":        nil,
-		"library":        func(c *config.Init) { c.Mode = config.Library },
-		"website":        func(c *config.Init) { c.Mode = config.Website },
-		"backend docker": func(c *config.Init) { c.Docker = true },
-		"website docker": func(c *config.Init) { c.Mode, c.Docker = config.Website, true },
+func readWorkflow(t *testing.T, fs *fsys.Memory) workflow {
+	t.Helper()
+	var w workflow
+	if err := yaml.Unmarshal([]byte(read(t, fs, templates.IndexWorkflow)), &w); err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+// The mode and --docker reach the generated workflow; what each job passes and is granted is pinned for every
+// combination in the templates' tests.
+func TestGeneratedWorkflowCallsTheModesPipelines(t *testing.T) {
+	for _, c := range []struct {
+		name, checks string
+		edit         func(*config.Init)
+	}{
+		{"backend", "service", nil},
+		{"library", "library", func(c *config.Init) { c.Mode = config.Library }},
+		{"website", "website", func(c *config.Init) { c.Mode = config.Website }},
+		{"backend docker", "service", func(c *config.Init) { c.Docker = true }},
+		{"website docker", "website", func(c *config.Init) { c.Mode, c.Docker = config.Website, true }},
 	} {
 		fs := fsys.NewMemory(nil)
-		run(t, fs, edit)
-		var w workflow
-		if err := yaml.Unmarshal([]byte(read(t, fs, templates.IndexWorkflow)), &w); err != nil {
-			t.Fatalf("%s: %v", name, err)
+		run(t, fs, c.edit)
+		w := readWorkflow(t, fs)
+		if w.Jobs[c.checks].Uses != templates.WorkflowRepo+c.checks+".yml@main" {
+			t.Errorf("%s: no %s checks job in %v", c.name, c.checks, w.Jobs)
 		}
-		// a run outside a pull request has a group of its own, so one on main is never cancelled
-		if group, _ := w.Concurrency["group"].(string); !strings.Contains(group, "github.event.pull_request.number || github.run_id") {
-			t.Errorf("%s: concurrency group %q can cancel runs on main", name, group)
-		}
-		for job, j := range w.Jobs {
-			// only the release GitHub App's key, empty unless the repository sets it
-			if secrets, _ := j.Secrets.(map[string]any); j.Secrets != nil && (job != "version" || len(secrets) != 1 || secrets["APP_PRIVATE_KEY"] == nil) {
-				t.Errorf("%s: %s passes secrets", name, job)
-			}
-			// GitHub Pages and a service's release attestations sign in with an OIDC token
-			if _, ok := j.Permissions["id-token"]; ok && job != "pages" && (job != "publish" || strings.HasPrefix(name, "library")) {
-				t.Errorf("%s: %s asks for id-token", name, job)
-			}
-			if !strings.HasPrefix(j.Uses, "apollogeddon/forgego/.github/workflows/"+job+".yml@main") {
-				t.Errorf("%s: %s uses %s", name, job, j.Uses)
-			}
-		}
-		if strings.Contains(name, "docker") && w.Jobs["docker"].Needs == nil {
-			t.Errorf("%s: no docker job after the checks", name)
+		if _, docker := w.Jobs["docker"]; docker != strings.HasSuffix(c.name, "docker") || (docker && w.Jobs["docker"].Needs == nil) {
+			t.Errorf("%s: docker job = %+v, want one after the checks only with --docker", c.name, w.Jobs["docker"])
 		}
 	}
 }
@@ -359,10 +349,7 @@ func TestGeneratedWorkflowIsLeastPrivilegeAndNeverCancelsMain(t *testing.T) {
 func TestDisabledFeaturesBecomeWorkflowInputs(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, func(c *config.Init) { c.Testing, c.Versioning, c.Linting = false, false, false })
-	var w workflow
-	if err := yaml.Unmarshal([]byte(read(t, fs, templates.IndexWorkflow)), &w); err != nil {
-		t.Fatal(err)
-	}
+	w := readWorkflow(t, fs)
 	with := w.Jobs["service"].With
 	if with["run_tests"] != false || with["lint"] != false || with["go_version"] != nil {
 		t.Errorf("with = %v", with)
@@ -399,7 +386,7 @@ func initOutput(t *testing.T, fs *fsys.Memory, edit func(*config.Init)) string {
 
 func TestAnOldGeneratedWorkflowIsReplaced(t *testing.T) {
 	legacy := legacyBackend(t)
-	changed := strings.Replace(legacy, "    with:\n", "    with:\n      runs_on: xerus\n", 1)
+	changed := strings.Replace(legacy, "    with:\n", "    with:\n      runs_on: self-hosted\n", 1)
 	own := "jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go test ./...\n"
 	for _, c := range []struct {
 		name, content string
@@ -544,7 +531,7 @@ func TestASubdirectoryOfARepositoryIsAModuleInsideIt(t *testing.T) {
 func TestSecurityScanningDoesNotNeedLinting(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, func(c *config.Init) { c.Linting = false })
-	// CI's patch job runs govulncheck on every Go project
+	// CI's scan stage runs govulncheck on every Go project
 	assertFiles(t, fs, ".forgego/govulncheck/go.mod")
 	if !strings.Contains(read(t, fs, "Taskfile.yml"), "  security:") {
 		t.Error("no security task without linting")
@@ -597,12 +584,8 @@ func TestSwitchingAFeatureOffWithForceRemovesItsTasksAndLeavesNoDrift(t *testing
 func TestDryRunOnlyReportsRealChanges(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, nil)
-	var out strings.Builder
-	console.SetOutput(&out, &out)
-	defer console.SetOutput(io.Discard, io.Discard)
-	run(t, fs, func(c *config.Init) { c.DryRun = true })
-	if strings.Contains(out.String(), "Would refresh") {
-		t.Errorf("an up-to-date project still reports refreshes:\n%s", out.String())
+	if out := initOutput(t, fs, func(c *config.Init) { c.DryRun = true }); strings.Contains(out, "Would refresh") {
+		t.Errorf("an up-to-date project still reports refreshes:\n%s", out)
 	}
 }
 
