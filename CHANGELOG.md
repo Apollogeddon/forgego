@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.1.0](https://github.com/Apollogeddon/forgego/compare/v2.0.2...v2.1.0) (2026-10-23)
+
+
+### Features
+
+* **ci:** make the pipelines work on free private and public repositories, and harden them ([#59](https://github.com/Apollogeddon/forgego/issues/59)) ([1cb87ab](https://github.com/Apollogeddon/forgego/commit/1cb87abd37427ea00cbd6bc4113b726b19752ce0))
+
+
+### Bug Fixes
+
+* **ci:** scan (osv) on github's ubuntu-latest in private repositories, whose runs_on may not run it ([#60](https://github.com/Apollogeddon/forgego/issues/60)) ([628ccfb](https://github.com/Apollogeddon/forgego/commit/628ccfb3b3ddfca3db95221c67a0efbcd1972286))
+* **deps:** bump golang.org/x/text ([#57](https://github.com/Apollogeddon/forgego/issues/57)) ([66d6f6d](https://github.com/Apollogeddon/forgego/commit/66d6f6d7657d2cdd0a4841b4c7b6bafb591cedba))
+
 ## [2.0.2](https://github.com/Apollogeddon/forgego/compare/v2.0.1...v2.0.2) (2026-10-16)
 
 
