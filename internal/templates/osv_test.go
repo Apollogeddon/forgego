@@ -96,7 +96,7 @@ func TestOSVScanRunsInItsOwnImage(t *testing.T) {
 			t.Errorf("%s still uses OSV-Scanner's container action", pipeline)
 		}
 		job := readScanPipeline(t, pipeline).Jobs["scan-osv"]
-		if job.Name != "scan (osv)" || job.RunsOn != "${{ inputs.scan_runs_on || inputs.runs_on }}" {
+		if job.Name != "scan (osv)" || job.RunsOn != "${{ inputs.scan_runs_on || (github.event.repository.private && 'ubuntu-latest' || inputs.runs_on) }}" {
 			t.Errorf("%s: scan-osv name %q, runs-on %q", pipeline, job.Name, job.RunsOn)
 		}
 		if len(job.Container) != 1 || !osvImage.MatchString(job.Container["image"]) {

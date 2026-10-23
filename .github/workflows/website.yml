@@ -11,7 +11,7 @@ on:
         type: string
         default: 'ubuntu-latest'
       scan_runs_on:
-        description: "Runner label for the scan (osv) stage, which runs in OSV-Scanner's image: a Linux runner that can run a job container, such as GitHub's hosted runners or a Kubernetes-mode runner set; empty uses runs_on"
+        description: "Runner label for the scan (osv) stage, which runs in OSV-Scanner's image: a Linux runner that can run a job container, such as GitHub's hosted runners or a Kubernetes-mode runner set. Empty uses GitHub's ubuntu-latest in a private repository, whose self-hosted runs_on often can't run one, and runs_on in a public one"
         required: false
         type: string
         default: ''
@@ -193,7 +193,7 @@ jobs:
 
   scan-osv:
     name: scan (osv)
-    runs-on: ${{ inputs.scan_runs_on || inputs.runs_on }}
+    runs-on: ${{ inputs.scan_runs_on || (github.event.repository.private && 'ubuntu-latest' || inputs.runs_on) }}
     # OSV-Scanner's own image as the job's container, where a runner set with no Docker daemon runs it like any job
     # container (it refuses the scanner's container action); Dependabot's docker updates keep the tag current
     container:
