@@ -173,31 +173,33 @@ func RenderWorkflow(o WorkflowOptions) string {
 		publish := pipelineJob{
 			id: "publish", pipeline: "publish", needs: []string{"version", checks},
 			cond: afterChecks + " && " + released,
+			with: []input{{"tag_name", expr("needs.version.outputs.tag_name")}},
 		}
 		if o.Mode == "library" {
 			// the assets stage, which would need contents: write, is off, so the grant stays read-only
 			publish.comment = "the release, through the Go module proxy"
-			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}, {"package", "true"}, {"assets", "false"}}
+			publish.with = append(publish.with, input{"package", "true"}, input{"assets", "false"})
 			publish.permissions = []string{"contents: read"}
 		} else {
 			// GitHub Free attests only a public repository's builds
 			publish.comment = "the release's binaries, built by GoReleaser, attached to the GitHub release and attested"
-			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}, {"attest", expr(public)}}
+			publish.with = append(publish.with, input{"attest", expr(public)})
 			publish.permissions = []string{"contents: write", "id-token: write", "attestations: write"}
 		}
 		jobs = append(jobs, publish)
 	}
 
 	if o.Mode == "website" {
+		const servedBy = ", to GitHub Pages, which GitHub Free serves only from a public repository: a paid plan can drop that check"
 		pages := pipelineJob{
 			id: "pages", pipeline: "pages",
-			comment:     "every change to main, to GitHub Pages, which GitHub Free serves only from a public repository: a paid plan can drop that check",
+			comment:     "every change to main" + servedBy,
 			needs:       []string{checks},
 			cond:        "github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && " + public,
 			permissions: []string{"pages: write", "id-token: write"},
 		}
 		if o.Versioning {
-			pages.comment = "a release, to GitHub Pages, which GitHub Free serves only from a public repository: a paid plan can drop that check"
+			pages.comment = "a release" + servedBy
 			pages.needs = []string{"version", checks}
 			pages.cond = afterChecks + " && " + released + " && " + public
 		}
@@ -229,7 +231,7 @@ func RenderWorkflow(o WorkflowOptions) string {
 	return b.String()
 }
 
-var forgegoPipeline = regexp.MustCompile(`(?i)apollogeddon/forgego/\.github/workflows/`)
+var forgegoPipeline = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(WorkflowRepo))
 
 // CallsForgego reports whether a workflow calls forgego's pipelines, rather than being the project's own.
 func CallsForgego(content string) bool { return forgegoPipeline.MatchString(content) }
