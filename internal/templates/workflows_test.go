@@ -103,9 +103,9 @@ func readText(t *testing.T, name string) string {
 
 // The spec's stages: a run page reads <pipeline> / <stage>, the same words in every forge.
 var stages = map[string][]string{
-	"library": {"lint", "scan", "test", "build"},
-	"service": {"lint", "scan", "test", "test (windows)", "test (macos)", "build"},
-	"website": {"lint", "scan", "test", "build", "check"},
+	"library": {"lint", "scan", "scan (osv)", "test", "test (windows)", "test (macos)", "build"},
+	"service": {"lint", "scan", "scan (osv)", "test", "test (windows)", "test (macos)", "build"},
+	"website": {"lint", "scan", "scan (osv)", "test", "build", "check"},
 	"docker":  {"build", "test", "push"},
 	"version": {"release"},
 	"publish": {"package", "assets", "attest"},
@@ -201,8 +201,8 @@ func expectWiring(t *testing.T, caller string, w workflow, resolve func(uses str
 	t.Helper()
 	for id, j := range w.Jobs {
 		if j.Uses == "" {
-			if id != "changes" {
-				t.Errorf("%s: %s is a job of its own; only changes may be", caller, id)
+			if id != "changes" && (id != "scorecard" || caller != ".index.yml") {
+				t.Errorf("%s: %s is a job of its own; only changes, and forgego's own scorecard, may be", caller, id)
 			}
 			continue
 		}
@@ -301,6 +301,13 @@ func allOptions() map[string]WorkflowOptions {
 							}
 						}
 						all[name] = o
+						if mode == "website" {
+							continue // init refuses --windows and --macos there
+						}
+						for flag, os := range map[string][2]bool{" windows": {true, false}, " macos": {false, true}, " windows macos": {true, true}} {
+							o.Windows, o.MacOS = os[0], os[1]
+							all[name+flag] = o
+						}
 					}
 				}
 			}
@@ -310,6 +317,48 @@ func allOptions() map[string]WorkflowOptions {
 }
 
 var atMain = regexp.MustCompile(`^apollogeddon/forgego/\.github/workflows/([\w-]+\.yml)@main$`)
+
+var pinned = regexp.MustCompile(`^[\w.-]+/[\w./-]+@[0-9a-f]{40}$`)
+
+// Every external action is pinned to a commit, with its tag in a comment; local pipelines stay as they are.
+func TestActionsArePinnedToCommits(t *testing.T) {
+	pipelines, roots := pipelineFiles(t)
+	for _, file := range append(pipelines, roots...) {
+		for i, line := range strings.Split(readText(t, file), "\n") {
+			_, uses, ok := strings.Cut(line, "uses: ")
+			if !ok || strings.HasPrefix(uses, "./") {
+				continue
+			}
+			ref, tag, _ := strings.Cut(uses, " # ")
+			if !pinned.MatchString(ref) || !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(tag) {
+				t.Errorf("%s:%d: %s isn't pinned to a commit with its tag", file, i+1, uses)
+			}
+		}
+	}
+}
+
+// The root workflows and every pipeline whose jobs all ask for their own permissions start from none; publish's
+// assets and attest take the caller's grant, so publish.yml can't.
+func TestWorkflowsStartWithNoPermissions(t *testing.T) {
+	pipelines, roots := pipelineFiles(t)
+	texts := map[string]string{"generated": RenderWorkflow(WorkflowOptions{Mode: "backend", Versioning: true})}
+	for _, file := range append(pipelines, roots...) {
+		texts[file] = readText(t, file)
+	}
+	for file, text := range texts {
+		var raw struct {
+			Permissions any `yaml:"permissions"`
+		}
+		if err := yaml.Unmarshal([]byte(text), &raw); err != nil {
+			t.Fatal(err)
+		}
+		empty := raw.Permissions != nil && len(raw.Permissions.(map[string]any)) == 0
+		// publish and patch take their callers' grants on purpose
+		if want := file != "publish.yml" && file != "patch.yml"; empty != want {
+			t.Errorf("%s: top-level permissions %v, want empty %v", file, raw.Permissions, want)
+		}
+	}
+}
 
 func TestGeneratedIndexCallsForgegosPipelines(t *testing.T) {
 	sent := regexp.MustCompile(`DISPATCH_TYPE: ([\w-]+)`).FindStringSubmatch(readText(t, "merge.yml"))
@@ -330,20 +379,56 @@ func TestGeneratedIndexCallsForgegosPipelines(t *testing.T) {
 			t.Errorf("%s listens for repository_dispatch %v, want [%s]", name, w.On.RepositoryDispatch.Types, sent[1])
 		}
 		// each run outside a pull request has a group of its own, so a queued run on main is never cancelled
-		if w.Concurrency["group"] != "${{ github.workflow }}-${{ github.head_ref || github.run_id }}" || w.Concurrency["cancel-in-progress"] != true {
+		if w.Concurrency["group"] != "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}" || w.Concurrency["cancel-in-progress"] != true {
 			t.Errorf("%s: concurrency = %v", name, w.Concurrency)
 		}
 		if w.Jobs["patch"].If != "${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}" {
 			t.Errorf("%s: patch if = %q", name, w.Jobs["patch"].If)
 		}
 		for id, j := range w.Jobs {
-			// only GitHub Pages needs an OIDC token
-			if _, ok := j.Permissions["id-token"]; ok && id != "pages" {
+			// only GitHub Pages and a service's attestations need an OIDC token
+			if _, ok := j.Permissions["id-token"]; ok && id != "pages" && (id != "publish" || o.Mode != "backend") {
 				t.Errorf("%s: %s asks for id-token", name, id)
 			}
-			if j.Secrets != nil {
-				t.Errorf("%s: %s passes secrets", name, id)
+			// only the release GitHub App's key, which is empty unless the repository sets it
+			if j.Secrets != nil && (id != "version" || !maps.Equal(j.Secrets, map[string]any{"APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"})) {
+				t.Errorf("%s: %s passes secrets %v", name, id, j.Secrets)
 			}
+		}
+	}
+}
+
+// release-please opens its pull request with a GitHub App's token when the repository sets one, as one opened
+// with GITHUB_TOKEN runs no checks, and with GITHUB_TOKEN otherwise; and the release pull request's checks run.
+func TestVersionReleasesWithAnOptionalAppToken(t *testing.T) {
+	w := readWorkflow(t, "version.yml")
+	if in := w.On.WorkflowCall.Inputs["app_client_id"]; in.Default != "" || in.Required {
+		t.Errorf("app_client_id = %+v", in)
+	}
+	if secret := w.On.WorkflowCall.Secrets["APP_PRIVATE_KEY"]; secret == nil || secret["required"] != false {
+		t.Errorf("APP_PRIVATE_KEY = %v, want it declared and optional", secret)
+	}
+	release := w.Jobs["release"]
+	app := stepNamed(release, "Create the GitHub App's token")
+	if app.ID != "app" || app.If != "inputs.app_client_id != ''" || !strings.HasPrefix(app.Uses, "actions/create-github-app-token@") ||
+		app.With["client-id"] != "${{ inputs.app_client_id }}" || app.With["private-key"] != "${{ secrets.APP_PRIVATE_KEY }}" {
+		t.Errorf("the app token step = %+v", app)
+	}
+	if token := stepNamed(release, "Release").With["token"]; token != "${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}" {
+		t.Errorf("release-please's token = %q", token)
+	}
+	generated := parse(t, "backend", RenderWorkflow(WorkflowOptions{Mode: "backend", Versioning: true})).Jobs["version"]
+	for name, j := range map[string]job{".index.yml": readWorkflow(t, ".index.yml").Jobs["version"], "generated": generated} {
+		if j.With["app_client_id"] != "${{ vars.RELEASE_APP_CLIENT_ID }}" || j.Secrets["APP_PRIVATE_KEY"] != "${{ secrets.RELEASE_APP_PRIVATE_KEY }}" {
+			t.Errorf("%s: version = %+v", name, j)
+		}
+	}
+	if strings.Contains(readText(t, ".index.yml"), "release-please--") {
+		t.Error(".index.yml still skips the release pull request's checks")
+	}
+	for name, o := range allOptions() {
+		if strings.Contains(RenderWorkflow(o), "release-please--") {
+			t.Errorf("%s skips the release pull request's checks", name)
 		}
 	}
 }
@@ -379,6 +464,19 @@ func TestGeneratedJobsPerMode(t *testing.T) {
 	}
 }
 
+// --windows and --macos ask the checks for their stages on GitHub's hosted runners, and nothing else does.
+func TestGeneratedChecksTestOnWindowsAndMacOSWhenAsked(t *testing.T) {
+	for name, o := range allOptions() {
+		checks := map[string]string{"backend": "service", "library": "library", "website": "website"}[o.Mode]
+		with := parse(t, name, RenderWorkflow(o)).Jobs[checks].With
+		for input, want := range map[string]string{"test_windows": map[bool]string{true: "windows-latest"}[o.Windows], "test_macos": map[bool]string{true: "macos-latest"}[o.MacOS]} {
+			if got, _ := with[input].(string); got != want {
+				t.Errorf("%s: %s = %q, want %q", name, input, got, want)
+			}
+		}
+	}
+}
+
 func TestGeneratedIndexGatesOnTheChecksAndTheRelease(t *testing.T) {
 	jobs := parse(t, "backend", RenderWorkflow(WorkflowOptions{Mode: "backend", Docker: true, Testing: true, Linting: true, Versioning: true})).Jobs
 	if !strings.Contains(jobs["service"].If, "github.event_name == 'pull_request' || needs.version.outputs.new_release_published == 'true'") {
@@ -407,8 +505,36 @@ func TestGeneratedIndexGatesOnTheChecksAndTheRelease(t *testing.T) {
 	}
 
 	unversioned := parse(t, "website", RenderWorkflow(WorkflowOptions{Mode: "website"})).Jobs["pages"]
-	if unversioned.If != "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}" {
-		t.Errorf("pages if = %q; want every change to main deployed", unversioned.If)
+	if unversioned.If != "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event.repository.private == false }}" {
+		t.Errorf("pages if = %q; want every change to a public repository's main deployed", unversioned.If)
+	}
+}
+
+// GitHub Free attests builds and serves Pages only for a public repository. A scheduled run has no
+// repository.private, and `== false` reads that as private, which always works; `!private` wouldn't.
+func TestFreePlanExtrasNeedAPublicRepository(t *testing.T) {
+	const public = "github.event.repository.private == false"
+	own := readWorkflow(t, ".index.yml").Jobs
+	backend := parse(t, "backend", RenderWorkflow(WorkflowOptions{Mode: "backend", Versioning: true})).Jobs
+	for name, publish := range map[string]job{".index.yml": own["publish"], "backend": backend["publish"]} {
+		if publish.With["attest"] != "${{ "+public+" }}" ||
+			publish.Permissions["id-token"] != "write" || publish.Permissions["attestations"] != "write" {
+			t.Errorf("%s: publish = %+v; want it to attest a public repository's release", name, publish)
+		}
+	}
+	website := parse(t, "website", RenderWorkflow(WorkflowOptions{Mode: "website", Versioning: true})).Jobs
+	for name, pages := range map[string]job{".index.yml": own["pages"], "website": website["pages"]} {
+		if !strings.Contains(pages.If, " && "+public) {
+			t.Errorf("%s: pages if = %q; want it only from a public repository", name, pages.If)
+		}
+	}
+	for name, o := range allOptions() {
+		if text := RenderWorkflow(o); strings.Contains(text, "!github.event.repository.private") {
+			t.Errorf("%s reads a missing repository.private as public", name)
+		}
+	}
+	if strings.Contains(readText(t, ".index.yml"), "!github.event.repository.private") {
+		t.Error(".index.yml reads a missing repository.private as public")
 	}
 }
 
@@ -523,15 +649,30 @@ func TestBotPullRequestsRequestAReview(t *testing.T) {
 // The Windows and macOS stages and the native builds are opt-in: their defaults run nothing, and an empty
 // matrix would fail every caller's workflow, so the native builds are skipped before their matrix expands.
 func TestRunnerStagesDefaultToNothing(t *testing.T) {
-	service := readWorkflow(t, "service.yml")
-	for _, system := range []string{"windows", "macos"} {
-		in := "test_" + system
-		if service.On.WorkflowCall.Inputs[in].Default != "" {
-			t.Errorf("%s defaults to %v", in, service.On.WorkflowCall.Inputs[in].Default)
+	for _, pipeline := range []string{"library.yml", "service.yml"} {
+		w := readWorkflow(t, pipeline)
+		for _, system := range []string{"windows", "macos"} {
+			in := "test_" + system
+			if w.On.WorkflowCall.Inputs[in].Default != "" {
+				t.Errorf("%s: %s defaults to %v", pipeline, in, w.On.WorkflowCall.Inputs[in].Default)
+			}
+			j := w.Jobs["test-"+system]
+			if j.If != "inputs."+in+" != ''" || !slices.Equal(j.Needs, []string{"lint", "scan", "scan-osv"}) {
+				t.Errorf("%s: test-%s = if %q, needs %v", pipeline, system, j.If, j.Needs)
+			}
 		}
-		j := service.Jobs["test-"+system]
-		if j.If != "inputs."+in+" != ''" || !slices.Equal(j.Needs, []string{"lint", "scan"}) {
-			t.Errorf("test-%s = if %q, needs %v", system, j.If, j.Needs)
+	}
+	// a generated project spends no Windows or macOS minutes unless it asks with --windows or --macos
+	for name, o := range allOptions() {
+		if text := RenderWorkflow(o); !o.Windows && !o.MacOS && (strings.Contains(text, "test_windows") || strings.Contains(text, "test_macos")) {
+			t.Errorf("%s tests on Windows or macOS", name)
+		}
+	}
+	// forgego's own CI tests a release on both, and a pull request on Linux only
+	own := readWorkflow(t, ".index.yml").Jobs["service"].With
+	for system, runner := range map[string]string{"windows": "windows-latest", "macos": "macos-latest"} {
+		if want := "${{ needs.version.outputs.new_release_published == 'true' && '" + runner + "' || '' }}"; own["test_"+system] != want {
+			t.Errorf("forgego's own test_%s = %q, want %q", system, own["test_"+system], want)
 		}
 	}
 	publish := readWorkflow(t, "publish.yml")
@@ -550,8 +691,8 @@ func TestRunnerStagesDefaultToNothing(t *testing.T) {
 	}
 }
 
-// publish's package and native builds ask for only what they need; assets asks for nothing and takes the
-// caller's grant, so a library's caller, which turns assets off, never grants contents: write.
+// publish's package and native builds ask for only what they need; assets and attest ask for nothing and take the
+// caller's grant, so a library's caller, which turns both off, never grants contents: write or an OIDC token.
 func TestPublishCapsItsPermissions(t *testing.T) {
 	jobs := readWorkflow(t, "publish.yml").Jobs
 	for _, id := range []string{"package", "assets-native"} {
@@ -559,8 +700,13 @@ func TestPublishCapsItsPermissions(t *testing.T) {
 			t.Errorf("%s permissions = %v", id, jobs[id].Permissions)
 		}
 	}
-	if jobs["assets"].Permissions != nil {
-		t.Errorf("assets permissions = %v, want the caller's", jobs["assets"].Permissions)
+	for _, id := range []string{"assets", "attest"} {
+		if jobs[id].Permissions != nil {
+			t.Errorf("%s permissions = %v, want the caller's", id, jobs[id].Permissions)
+		}
+	}
+	if !strings.Contains(jobs["attest"].If, "inputs.attest") || !slices.Equal(jobs["attest"].Needs, []string{"assets"}) {
+		t.Errorf("attest = if %q, needs %v", jobs["attest"].If, jobs["attest"].Needs)
 	}
 	if jobs["package"].If != "inputs.package" || !strings.Contains(jobs["assets"].If, "inputs.assets") {
 		t.Errorf("package if = %q, assets if = %q", jobs["package"].If, jobs["assets"].If)
@@ -628,12 +774,116 @@ func TestReleaseRunsTheSnapshotsGoReleaser(t *testing.T) {
 // someone else opened that Dependabot then updated; and nothing merges before the checks pass.
 func TestSquashNeedsDependabotAndPassingChecks(t *testing.T) {
 	squash := readWorkflow(t, "merge.yml").Jobs["squash"]
-	for _, want := range []string{"inputs.checks_passed && ", "github.event.pull_request.user.login == 'dependabot[bot]' && ", "github.actor == 'dependabot[bot]' && "} {
+	for _, want := range []string{
+		"inputs.checks_passed && ", "github.event.pull_request.user.login == 'dependabot[bot]' && ", "github.actor == 'dependabot[bot]' && ",
+		"github.event.pull_request.head.repo.full_name == github.repository && ",
+		// these change workflow files, which GITHUB_TOKEN may never merge
+		" && !startsWith(github.head_ref, 'dependabot/github_actions/')",
+		" && !startsWith(github.head_ref, 'dependabot/docker/dot-github/workflows/')",
+	} {
 		if !strings.Contains(squash.If, want) || strings.Contains(squash.If, "||") {
 			t.Errorf("squash if = %q, want it to need %q", squash.If, want)
 		}
 	}
 	if s := stepNamed(squash, "Enable auto-merge"); s.Env["DISPATCH_TYPE"] != "auto-merged" || !strings.Contains(s.With["script"], "createDispatchEvent") {
 		t.Errorf("squash doesn't send the auto-merged dispatch: %+v", s)
+	}
+}
+
+// Any update whose checks passed merges, whatever its size, and only at the commit those checks ran on.
+func TestSquashMergesAnyUpdateAtTheCheckedCommit(t *testing.T) {
+	squash := readWorkflow(t, "merge.yml").Jobs["squash"]
+	if len(squash.Steps) != 1 || squash.Steps[0].Name != "Enable auto-merge" {
+		t.Errorf("squash steps = %+v, want only Enable auto-merge", squash.Steps)
+	}
+	script := stepNamed(squash, "Enable auto-merge").With["script"]
+	for _, want := range []string{"sha: pr.head.sha", "expectedHeadOid: $oid", "oid: pr.head.sha"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("the squash script doesn't contain %q", want)
+		}
+	}
+}
+
+// Dependabot's pull request lints against forgego's files refreshed only when Dependabot opened it and made its
+// latest change; anyone else's push to it is checked as it is.
+func TestLintRefreshesOnlyDependabotsOwnPullRequests(t *testing.T) {
+	const dependabot = "github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'"
+	for _, pipeline := range []string{"library.yml", "service.yml", "website.yml"} {
+		lint := readWorkflow(t, pipeline).Jobs["lint"]
+		if check := stepNamed(lint, "Check forgego's files are current"); !strings.HasSuffix(check.If, " && !("+dependabot+")") {
+			t.Errorf("%s: sync-check if = %q", pipeline, check.If)
+		}
+		if refresh := stepNamed(lint, "Refresh forgego's files"); !strings.HasSuffix(refresh.If, " && "+dependabot) {
+			t.Errorf("%s: sync if = %q", pipeline, refresh.If)
+		}
+	}
+}
+
+// patch refreshes forgego's files through a pull request rather than pushing to main, with the token handed to
+// the push alone; vulnerable modules are left to Dependabot security updates.
+func TestPatchProposesTheRefreshedFiles(t *testing.T) {
+	text := readText(t, "patch.yml")
+	update := readWorkflow(t, "patch.yml").Jobs["update"]
+	if checkout := stepNamed(update, "Check out"); checkout.With["persist-credentials"] != "false" {
+		t.Errorf("checkout = %+v, want no persisted credentials", checkout)
+	}
+	push := stepNamed(update, "Push forgego's files")
+	for _, want := range []string{"branch=forgego/sync", "push --force origin \"HEAD:refs/heads/$branch\"", "http.https://github.com/.extraheader"} {
+		if !strings.Contains(push.Run, want) {
+			t.Errorf("the push doesn't run %q", want)
+		}
+	}
+	if pr := stepNamed(update, "Open a pull request"); !strings.Contains(pr.With["script"], "title: 'chore(deps): refresh the files forgego manages'") ||
+		!strings.Contains(pr.With["script"], "pulls.list(") {
+		t.Errorf("the pull request step = %+v", pr)
+	}
+	if strings.Contains(push.Run, "main") {
+		t.Errorf("the push names main: %q", push.Run)
+	}
+	for _, gone := range []string{"git-auto-commit-action", "govulncheck", "go get"} {
+		if strings.Contains(text, gone) {
+			t.Errorf("patch.yml still has %q", gone)
+		}
+	}
+	// the caller's grant, so a caller from before patch opened pull requests still starts
+	if update.Permissions != nil {
+		t.Errorf("update permissions = %v, want the caller's", update.Permissions)
+	}
+	if !strings.Contains(text, "error.status !== 403") || !strings.Contains(text, "grant this job pull-requests: write") {
+		t.Error("patch.yml fails, rather than warns, when its caller grants no pull-requests: write")
+	}
+}
+
+// Dependency review and Scorecard are free only for a public repository, so they run only there.
+func TestPublicOnlyExtras(t *testing.T) {
+	for _, pipeline := range []string{"library.yml", "service.yml", "website.yml"} {
+		review := stepNamed(readWorkflow(t, pipeline).Jobs["scan"], "Review the dependency changes")
+		if !strings.HasPrefix(review.Uses, "actions/dependency-review-action@") || review.With["fail-on-severity"] != "high" ||
+			review.If != "github.event_name == 'pull_request' && github.event.repository.private == false" {
+			t.Errorf("%s: dependency review = %+v", pipeline, review)
+		}
+	}
+	w := readWorkflow(t, ".index.yml")
+	scorecard := w.Jobs["scorecard"]
+	if !maps.Equal(scorecard.Permissions, map[string]string{"contents": "read", "security-events": "write", "actions": "read"}) {
+		t.Errorf("scorecard permissions = %v", scorecard.Permissions)
+	}
+	if !strings.Contains(scorecard.If, "github.event.repository.private == false") || !strings.Contains(scorecard.If, "github.event_name == 'schedule'") ||
+		!strings.Contains(scorecard.If, "github.ref == 'refs/heads/main'") {
+		t.Errorf("scorecard if = %q", scorecard.If)
+	}
+	score := stepNamed(scorecard, "Score with Scorecard")
+	if !strings.HasPrefix(score.Uses, "ossf/scorecard-action@") || score.With["publish_results"] != "false" {
+		t.Errorf("scorecard step = %+v", score)
+	}
+	if upload := stepNamed(scorecard, "Upload the results"); !strings.HasPrefix(upload.Uses, "github/codeql-action/upload-sarif@") ||
+		upload.With["sarif_file"] != score.With["results_file"] {
+		t.Errorf("upload step = %+v", upload)
+	}
+	// a generated project scores nothing of its own
+	for name, o := range allOptions() {
+		if strings.Contains(RenderWorkflow(o), "scorecard") {
+			t.Errorf("%s runs scorecard", name)
+		}
 	}
 }

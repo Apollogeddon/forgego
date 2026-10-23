@@ -147,7 +147,8 @@ const LefthookWebsitePrePush = `    build:
 const LefthookCommitMsg = `commit-msg:
   commands:
     conventional-commit:
-      run: go tool -modfile=.forgego/task/go.mod task commit-msg -- {1}
+      # single-quoted: on Windows lefthook runs this inside sh -c "...", where double quotes end early and sh drops backslashes
+      run: go tool -modfile=.forgego/task/go.mod task commit-msg -- '{1}'
 `
 
 // ReleaseConfig configures release-please for a Go module: versions are git tags, so

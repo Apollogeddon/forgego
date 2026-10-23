@@ -40,10 +40,12 @@ func (Base) Apply(ctx *Context) bool {
 		ignore = templates.GitignoreWebsite
 	}
 	ok = CreateIfMissing(ctx, ".gitignore", ignore) && ok
+	// never replaced: a project's own rules, such as Git LFS ones, live there too
+	ok = CreateIfMissing(ctx, ".gitattributes", templates.Gitattributes) && ok
 	ok = CreateFile(ctx, ".editorconfig", templates.Editorconfig) && ok
 
 	ok = useTool(ctx, templates.Task) && ok
-	// Security scanning doesn't depend on linting: CI's patch job upgrades what govulncheck finds.
+	// Security scanning doesn't depend on linting: CI fails a pull request on what govulncheck finds.
 	if !ctx.Cfg.IsWebsite() {
 		ok = useTool(ctx, templates.Govulncheck) && ok
 		ctx.Tasks.Add(taskfile.Task{Name: "security", Desc: "Report known vulnerabilities the code calls", Cmds: []string{ref(templates.Govulncheck) + " ./..."}})

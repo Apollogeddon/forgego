@@ -18,6 +18,8 @@ type WorkflowOptions struct {
 	Testing    bool
 	Linting    bool
 	Versioning bool
+	Windows    bool // the checks test and build on Windows too; not for a website
+	MacOS      bool // and on macOS
 }
 
 const workflowHeader = `name: index
@@ -31,20 +33,27 @@ on:
   # sent by the merge pipeline, as a merge it makes starts no push run on main
   repository_dispatch:
     types: [auto-merged]
-  # weekly, for the patch pipeline; a manual or dispatched run patches too
+  # weekly, for the patch pipeline; a manual or dispatched run refreshes too
   schedule:
     - cron: '17 3 * * 1'
 
 concurrency:
   # a pull request's newer run replaces its older one; every other run has a group of its own, so a run on
   # main, running or queued, is never cancelled and a release is never created without being published
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
+
+# every job asks for what it needs
+permissions: {}
 
 jobs:
 `
 
 const released = "needs.version.outputs.new_release_published == 'true'"
+
+// public is true only for a public repository: the field is missing on a scheduled run, which then falls back
+// to what a private repository on GitHub Free can do.
+const public = "github.event.repository.private == false"
 
 // input is one `with:` entry, kept in order.
 type input struct{ key, value string }
@@ -53,7 +62,7 @@ type input struct{ key, value string }
 type pipelineJob struct {
 	id, comment, cond, pipeline string
 	needs                       []string
-	with                        []input
+	with, secrets               []input
 	permissions                 []string
 }
 
@@ -81,6 +90,12 @@ func (j pipelineJob) render(b *strings.Builder) {
 			b.WriteString("      " + in.key + ": " + in.value + "\n")
 		}
 	}
+	if len(j.secrets) > 0 {
+		b.WriteString("    secrets:\n")
+		for _, in := range j.secrets {
+			b.WriteString("      " + in.key + ": " + in.value + "\n")
+		}
+	}
 	b.WriteString("    permissions:\n")
 	for _, p := range j.permissions {
 		b.WriteString("      " + p + "\n")
@@ -88,7 +103,8 @@ func (j pipelineJob) render(b *strings.Builder) {
 }
 
 // RenderWorkflow returns the project's .github/workflows/.index.yml. Pull requests run the checks, main runs
-// release-please and, on a release, the checks again before shipping, and a weekly or dispatched run patches.
+// release-please and, on a release, the checks again before shipping, and a weekly or dispatched run refreshes
+// forgego's files.
 func RenderWorkflow(o WorkflowOptions) string {
 	checks := "service"
 	switch o.Mode {
@@ -99,9 +115,11 @@ func RenderWorkflow(o WorkflowOptions) string {
 
 	if o.Versioning {
 		jobs = append(jobs, pipelineJob{
-			id: "version", comment: "release-please, on main",
+			id: "version", pipeline: "version",
+			comment:     "release-please, on main; a GitHub App's token, when one is set, lets its release pull request run the checks",
 			cond:        "github.event_name != 'pull_request' && github.event_name != 'schedule'",
-			pipeline:    "version",
+			with:        []input{{"app_client_id", expr("vars.RELEASE_APP_CLIENT_ID")}},
+			secrets:     []input{{"APP_PRIVATE_KEY", expr("secrets.RELEASE_APP_PRIVATE_KEY")}},
 			permissions: []string{"contents: write", "pull-requests: write"},
 		})
 	}
@@ -125,6 +143,12 @@ func RenderWorkflow(o WorkflowOptions) string {
 		}
 		if !o.Linting {
 			check.with = append(check.with, input{"lint", "false"})
+		}
+		if o.Windows {
+			check.with = append(check.with, input{"test_windows", "windows-latest"})
+		}
+		if o.MacOS {
+			check.with = append(check.with, input{"test_macos", "macos-latest"})
 		}
 	}
 	jobs = append(jobs, check)
@@ -156,32 +180,35 @@ func RenderWorkflow(o WorkflowOptions) string {
 			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}, {"package", "true"}, {"assets", "false"}}
 			publish.permissions = []string{"contents: read"}
 		} else {
-			publish.comment = "the release's binaries, built by GoReleaser and attached to the GitHub release"
-			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}}
-			publish.permissions = []string{"contents: write"}
+			// GitHub Free attests only a public repository's builds
+			publish.comment = "the release's binaries, built by GoReleaser, attached to the GitHub release and attested"
+			publish.with = []input{{"tag_name", expr("needs.version.outputs.tag_name")}, {"attest", expr(public)}}
+			publish.permissions = []string{"contents: write", "id-token: write", "attestations: write"}
 		}
 		jobs = append(jobs, publish)
 	}
 
 	if o.Mode == "website" {
 		pages := pipelineJob{
-			id: "pages", pipeline: "pages", comment: "every change to main, to GitHub Pages",
-			needs: []string{checks}, cond: "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'",
+			id: "pages", pipeline: "pages",
+			comment:     "every change to main, to GitHub Pages, which GitHub Free serves only from a public repository: a paid plan can drop that check",
+			needs:       []string{checks},
+			cond:        "github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && " + public,
 			permissions: []string{"pages: write", "id-token: write"},
 		}
 		if o.Versioning {
-			pages.comment = "a release, to GitHub Pages"
+			pages.comment = "a release, to GitHub Pages, which GitHub Free serves only from a public repository: a paid plan can drop that check"
 			pages.needs = []string{"version", checks}
-			pages.cond = afterChecks + " && " + released
+			pages.cond = afterChecks + " && " + released + " && " + public
 		}
 		jobs = append(jobs, pages)
 	}
 
 	jobs = append(jobs, pipelineJob{
 		id: "patch", pipeline: "patch",
-		comment:     "weekly, on a manual run or after a Dependabot merge, forgego's files refreshed and vulnerable modules upgraded on main",
+		comment:     "weekly, on a manual run or after a Dependabot merge, forgego's files refreshed through a pull request",
 		cond:        "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'",
-		permissions: []string{"contents: write"},
+		permissions: []string{"contents: write", "pull-requests: write"},
 	}, pipelineJob{
 		id: "merge", pipeline: "merge",
 		comment:     "Dependabot's pull requests: a review request, and a squash merge when the checks passed",

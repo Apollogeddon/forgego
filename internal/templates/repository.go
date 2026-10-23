@@ -7,6 +7,12 @@ import (
 	"github.com/apollogeddon/forgego/v2/internal/version"
 )
 
+// Gitattributes keeps LF in the working tree on every platform, as gofmt writes LF and a Windows checkout
+// would get CRLF; a website's vendored FlexSearch keeps its bytes, so sync --check reads it unchanged.
+const Gitattributes = `* text=auto eol=lf
+assets/forgego/** -text
+`
+
 // Editorconfig matches what gofmt writes: tabs in Go files, two spaces elsewhere.
 const Editorconfig = `root = true
 

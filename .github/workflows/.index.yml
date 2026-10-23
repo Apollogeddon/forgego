@@ -11,15 +11,18 @@ on:
   # sent by the merge pipeline, as a merge it makes starts no push run on main
   repository_dispatch:
     types: [auto-merged]
-  # weekly, for the patch pipeline; a manual or dispatched run patches too
+  # weekly, for the patch pipeline and scorecard; a manual or dispatched run refreshes too
   schedule:
     - cron: '41 3 * * 1'
 
 concurrency:
   # a pull request's newer run replaces its older one; every other run has a group of its own, so a run on
   # main, running or queued, is never cancelled and a release is never created without being published
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
+
+# every job asks for what it needs
+permissions: {}
 
 # Each job calls one pipeline, so the run page reads <pipeline> / <stage>. Pull requests run the checks
 # (service for the tool, website for docs/); main runs version, and on a release checks the tool again
@@ -31,7 +34,7 @@ jobs:
   # docs site's runs when docs/ or anything it builds from changed.
   changes:
     name: changes
-    # the weekly run only patches
+    # the weekly run only patches and scores
     if: github.event_name != 'schedule'
     runs-on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
     timeout-minutes: 5
@@ -42,7 +45,7 @@ jobs:
       docs: ${{ steps.diff.outputs.docs }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -73,20 +76,30 @@ jobs:
     uses: ./.github/workflows/version.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      # empty unless set, so release-please uses GITHUB_TOKEN
+      app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
     permissions:
       contents: write
       pull-requests: write
 
-  # a pull request's checks, and on main the release's; a release PR only bumps the version and changelog
+  # a pull request's checks, the release pull request's included, and on main the release's
   service:
     needs: [changes, version]
     if: >-
       !cancelled() && needs.changes.outputs.code == 'true' &&
-      ((github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--')) ||
-      needs.version.outputs.new_release_published == 'true')
+      (github.event_name == 'pull_request' || needs.version.outputs.new_release_published == 'true')
     uses: ./.github/workflows/service.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      # the scan (osv) stage runs in OSV-Scanner's image, a job container, which `xerus` can't run: a private run
+      # scans on the Kubernetes-mode `xerus-docker` set
+      scan_runs_on: ${{ github.event.repository.private && 'xerus-docker' || 'ubuntu-latest' }}
+      # forgego runs wherever Go does, so a release is tested on every system it's released for; a pull
+      # request runs on Linux only, to stay cheap, and a Windows or macOS failure still stops the publish
+      test_windows: ${{ needs.version.outputs.new_release_published == 'true' && 'windows-latest' || '' }}
+      test_macos: ${{ needs.version.outputs.new_release_published == 'true' && 'macos-latest' || '' }}
     permissions:
       contents: read
       pull-requests: write
@@ -101,16 +114,22 @@ jobs:
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
       tag_name: ${{ needs.version.outputs.tag_name }}
+      # GitHub Free attests only a public repository's builds
+      attest: ${{ github.event.repository.private == false }}
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
   # the docs site isn't versioned, so it's checked on every change that touches it, and deployed from main
   website:
     needs: changes
-    if: needs.changes.outputs.docs == 'true' && !startsWith(github.head_ref, 'release-please--')
+    if: needs.changes.outputs.docs == 'true'
     uses: ./.github/workflows/website.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      # scanned where the service's is
+      scan_runs_on: ${{ github.event.repository.private && 'xerus-docker' || 'ubuntu-latest' }}
       working_directory: 'docs'
       enable_secrets: false
       # distinct from the service's 'dist' artifact in the same run
@@ -119,9 +138,10 @@ jobs:
       contents: read
       pull-requests: write
 
+  # GitHub Free serves Pages only from a public repository; a paid plan can drop the visibility check
   pages:
     needs: website
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event.repository.private == false
     uses: ./.github/workflows/pages.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
@@ -130,6 +150,7 @@ jobs:
       pages: write
       id-token: write
 
+  # forgego's own files, refreshed through a pull request
   patch:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
     uses: ./.github/workflows/patch.yml
@@ -137,6 +158,7 @@ jobs:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
     permissions:
       contents: write
+      pull-requests: write
 
   # Dependabot's pull requests: a review request, and a squash merge when the checks passed
   merge:
@@ -151,3 +173,32 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+
+  # OpenSSF Scorecard's review of this repository's practices, as code scanning alerts, which GitHub Free has only
+  # for a public repository. A scheduled run's event has no repository, so it reads repository_visibility instead
+  scorecard:
+    name: scorecard
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private == false) ||
+      (github.event_name == 'schedule' && github.repository_visibility == 'public')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Score with Scorecard
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: false
+      - name: Upload the results
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: results.sarif

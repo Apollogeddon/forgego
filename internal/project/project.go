@@ -3,6 +3,7 @@ package project
 
 import (
 	"fmt"
+	"go/token"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -138,8 +139,9 @@ func gitConfig(fs fsys.FS, root string) (string, bool) {
 	return content, err == nil
 }
 
+// A gitdir starting with a slash is absolute, though Windows calls one without a drive relative to it.
 func resolve(base, path string) string {
-	if filepath.IsAbs(path) {
+	if filepath.IsAbs(path) || strings.HasPrefix(filepath.ToSlash(path), "/") {
 		return path
 	}
 	return filepath.Join(base, path)
@@ -205,10 +207,10 @@ func (i Info) GitHubOwner() string {
 }
 
 // PackageName makes a valid Go package name from a project name: billing-api gives
-// billingapi, and a name starting with a digit gets an app prefix.
+// billingapi, and a name starting with a digit, or a Go keyword such as go, gets an app prefix.
 func PackageName(name string) string {
 	pkg := nonIdent.ReplaceAllString(strings.ToLower(unaccented(name)), "")
-	if pkg == "" || (pkg[0] >= '0' && pkg[0] <= '9') {
+	if pkg == "" || (pkg[0] >= '0' && pkg[0] <= '9') || token.IsKeyword(pkg) {
 		pkg = "app" + pkg
 	}
 	return pkg

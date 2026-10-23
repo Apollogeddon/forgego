@@ -1,6 +1,6 @@
 name: publish
 
-# Ships a release: a library through the Go module proxy, and a service's files attached to its GitHub release.
+# Ships a release: a library through the Go module proxy, and a service's files attached to its GitHub release and, when asked, attested.
 
 on:
   workflow_call:
@@ -71,10 +71,15 @@ on:
         type: string
         default: ''
       checksums:
-        description: "Name of the SHA-256 checksum file of the native builds and release_files; empty attaches none; with release_binaries off"
+        description: "Name of the SHA-256 checksum file of the native builds and release_files, empty attaching none, with release_binaries off; and the release's checksum file attest reads, GoReleaser's checksum.name_template with release_binaries"
         required: false
         type: string
         default: 'checksums.txt'
+      attest:
+        description: "Attest the build provenance of every file in the release's checksum file; needs id-token: write and attestations: write, and a public repository on GitHub Free"
+        required: false
+        type: boolean
+        default: false
       gpg_sign:
         description: "Import the GPG_PRIVATE_KEY secret before GoReleaser runs and export its fingerprint as GPG_FINGERPRINT, for a signs section in .goreleaser.yaml; with release_binaries"
         required: false
@@ -90,8 +95,9 @@ on:
 
 # GitHub checks a called workflow's permissions against its caller's before running any of it, even a job
 # that will be skipped, so a caller grants the union of what the stages ask for. package and the native builds
-# ask for contents: read; assets asks for nothing and takes the caller's grant, so only a caller that turns it
-# on grants contents: write.
+# ask for contents: read; assets and attest ask for nothing and take the caller's grant, so only a caller that
+# turns assets on grants contents: write, and only one that turns attest on grants id-token: write and
+# attestations: write. That's also why there's no top-level permissions: {} here.
 
 jobs:
   # A Go module is published by its tag; fetching it through the proxy makes the proxy and pkg.go.dev
@@ -108,7 +114,7 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # the input if set, else the project's go.mod, else forgego's default
@@ -123,7 +129,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
@@ -170,7 +176,7 @@ jobs:
     steps:
       # the whole history, so the build can name the release's tag
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -194,7 +200,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
@@ -214,7 +220,7 @@ jobs:
       - name: Build
         run: ${{ inputs.build_command }}
       - name: Upload the build
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: forgego-native-${{ strategy.job-index }}
           path: ${{ inputs.working_directory }}/${{ inputs.artifact_path }}
@@ -236,7 +242,7 @@ jobs:
     steps:
       # GoReleaser reads the release tag from the history
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: inputs.release_binaries || env.NATIVE == 'true' || inputs.release_files != ''
         with:
           persist-credentials: false
@@ -244,7 +250,7 @@ jobs:
       # inside the project, where GoReleaser's extra_files can glob it, but kept out of git so
       # GoReleaser doesn't count the checkout as dirty
       - name: Download the native builds
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: env.NATIVE == 'true'
         with:
           pattern: forgego-native-*
@@ -270,7 +276,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: inputs.release_binaries
         with:
           go-version: ${{ steps.go.outputs.version }}
@@ -302,7 +308,7 @@ jobs:
             exit 1
           fi
       - name: Import the signing key
-        uses: crazy-max/ghaction-import-gpg@v7.0.0
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
         id: gpg
         if: inputs.gpg_sign
         with:
@@ -319,7 +325,7 @@ jobs:
       # checksums and any .deb, then publishes it
       # the GoReleaser the generated snapshot task runs (templates.GoreleaserVersion); a test keeps them in step
       - name: Release with GoReleaser
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         if: inputs.release_binaries
         with:
           version: 'v2.18.2'
@@ -362,3 +368,29 @@ jobs:
           if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true" ]; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
           fi
+
+  # Build provenance for the release's files, from the checksum file it was published with, so a download can
+  # be checked with gh attestation verify. It takes the caller's grant, which needs id-token: write and
+  # attestations: write; a private repository on GitHub Free can't attest
+  attest:
+    name: attest
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    needs: [assets]
+    if: ${{ !cancelled() && inputs.attest && needs.assets.result == 'success' }}
+    steps:
+      - name: Download the checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag_name }}
+          CHECKSUMS: ${{ inputs.checksums }}
+        run: |
+          if [ -z "$TAG" ] || [ -z "$CHECKSUMS" ]; then
+            echo "::error::attest needs tag_name and checksums, the release and its checksum file"
+            exit 1
+          fi
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$CHECKSUMS" --dir "$RUNNER_TEMP/forgego-attest" --clobber
+      - name: Attest the release's files
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/forgego-attest/${{ inputs.checksums }}

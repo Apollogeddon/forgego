@@ -134,6 +134,8 @@ forgego --version
 | `--all` / `--no-all` | Turn every standard feature on or off at once; an explicit flag such as `--testing` still wins. |
 | `--docker` | Add a `Dockerfile` and a Docker CI job (not available for `--library`). |
 | `--debian` | Add a `.deb` package with a systemd unit (`--backend` only). |
+| `--windows` | Test and build on Windows too in CI (not available for `--website`). |
+| `--macos` | Test and build on macOS too in CI (not available for `--website`). |
 | `--force` | Overwrite existing config files and tasks. |
 | `--dry-run` | Show what would change without writing anything. |
 | `--go VERSION` | Target Go version, a minor or a patch release (default: the existing `go.mod`'s, else Forge.go's default). |
@@ -141,7 +143,7 @@ forgego --version
 
 `--website` scaffolds a static documentation site built with Hugo and the Hextra theme, which Hugo fetches as a Go module: `hugo.toml`, `content/_index.md` and `content/docs/_index.md`, plus the theme's search script in `assets/forgego/flexsearch/`, so the site builds without network access. There is no Go source. `task dev` serves the site locally with live reload, and `task build` writes it to `public/`. In CI, the `website` pipeline builds the site and `pages` deploys `public/` to GitHub Pages.
 
-Choose at most one mode. An invalid combination — more than one mode, a feature both on and off, `--docker` with `--library`, `--debian` outside backend mode, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`. An option or argument `init` doesn't know exits with code `1`.
+Choose at most one mode. An invalid combination — more than one mode, a feature both on and off, `--docker` with `--library`, `--debian` outside backend mode, `--windows` or `--macos` with `--website`, or a `--go` that isn't a Go release — stops `init` before it writes anything, with exit code `2`. An option or argument `init` doesn't know exits with code `1`.
 
 `--go` sets the `go` line of a new `go.mod` (a minor release gets a `.0` patch) and the `golang` image the `Dockerfile` builds with. CI reads its Go version from `go.mod`, so the generated workflow passes no `go_version`. Without `--go`, an existing project's `go.mod` decides both. `init` never changes an existing `go.mod`'s `go` line, so to move such a project to another Go, edit `go.mod` (CI follows it) and pass the same `--go` with `--force` to rewrite the `Dockerfile`.
 
@@ -151,10 +153,10 @@ Choose at most one mode. An invalid combination — more than one mode, a featur
 
 `forgego sync` refreshes the files Forge.go manages; `forgego sync --check` reports drift and exits `1` without writing anything. Both also accept `-C DIR`. See [Configuration]({{< relref "configuration.md#managed-files" >}}).
 
-The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -modfile=.forgego/forgego/go.mod forgego`, from a pin in `.forgego/forgego/go.mod` set to the version that scaffolded the project. Dependabot proposes each new Forge.go release there, like any other module update, and the pull request auto-merges once CI passes:
+The generated `Taskfile.yml` runs Forge.go through a `FORGEGO` var, `go tool -modfile=.forgego/forgego/go.mod forgego`, from a pin in `.forgego/forgego/go.mod` set to the version that scaffolded the project. Dependabot proposes each new Forge.go release there, like any other module update, and its pull request auto-merges once CI passes, a major release's included:
 
-- a new release usually changes the files Forge.go manages, so on Dependabot's pull requests the `lint` stage runs `task sync` instead of `task sync-check`, and checks the refreshed files;
-- once the update merges, the `merge` pipeline's `auto-merged` dispatch runs the `patch` pipeline, which runs `task sync` on `main` and commits the refreshed files, so `task sync-check` keeps passing on other pull requests.
+- a new release usually changes the files Forge.go manages, so on a pull request Dependabot opened and last pushed to, the `lint` stage runs `task sync` instead of `task sync-check`, and checks the refreshed files;
+- once the update merges, the `merge` pipeline's `auto-merged` dispatch runs the `patch` pipeline, which runs `task sync` on `main` and opens a pull request with the refreshed files from the `forgego/sync` branch; merge it so `task sync-check` passes again on other pull requests.
 
 `sync` never changes the `FORGEGO` var, so one that runs Forge.go some other way, such as a local build, is left alone.
 
@@ -194,7 +196,7 @@ With versioning on, lefthook runs it as the `commit-msg` hook.
 
 If the path it works out still isn't a valid module path, as from a `file://` remote, `init` stops with exit code `1` before it writes anything; run `go mod init <module path>` first.
 
-The project name is the last element of the module path without a `/vN` suffix (`billing-api`). Accents come off letters first (`Café` gives `cafe`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit. The Docker image, the `.deb` package, its systemd unit and its system user use the name lowercased, with anything but letters and digits turned into dashes (`BillingAPI` gives `billingapi`).
+The project name is the last element of the module path without a `/vN` suffix (`billing-api`). Accents come off letters first (`Café` gives `cafe`). The library starter's package name is that name lowercased with anything but letters and digits removed (`billingapi`), prefixed with `app` if it would start with a digit or be a Go keyword (a directory named `go` gives `appgo`). The Docker image, the `.deb` package, its systemd unit and its system user use the name lowercased, with anything but letters and digits turned into dashes (`BillingAPI` gives `billingapi`).
 
 ## Project structure
 
@@ -220,6 +222,7 @@ A default `forgego init` (backend) in a project named `billing-api`, with a `git
 │   ├── main.go
 │   └── main_test.go
 ├── .editorconfig
+├── .gitattributes              # LF on every platform
 ├── .gitignore
 ├── .golangci.local.yml         # your changes to the lint config
 ├── .golangci.yml               # generated from the two above — don't edit

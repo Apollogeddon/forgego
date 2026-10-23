@@ -52,6 +52,8 @@ Standard features (on by default; turn off with --no-<feature> or --no-all):
 Optional features:
   --docker             Add a Dockerfile (not available for --library)
   --debian             Add a .deb package with a systemd unit (--backend only)
+  --windows            Test and build on Windows too in CI (not available for --website)
+  --macos              Test and build on macOS too in CI (not available for --website)
 
 Options:
   --force              Overwrite existing config files and tasks
@@ -123,7 +125,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stdout, initUsage) }
 
-	var backend, library, website, docker, debian, force, dryRun bool
+	var backend, library, website, docker, debian, windows, macos, force, dryRun bool
 	var all, testing, linting, versioning feature
 	goVersion, target := "", "."
 	fs.BoolVar(&backend, "backend", false, "")
@@ -135,6 +137,8 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	versioning.register(fs, "versioning")
 	fs.BoolVar(&docker, "docker", false, "")
 	fs.BoolVar(&debian, "debian", false, "")
+	fs.BoolVar(&windows, "windows", false, "")
+	fs.BoolVar(&macos, "macos", false, "")
 	fs.BoolVar(&force, "force", false, "")
 	fs.BoolVar(&dryRun, "dry-run", false, "")
 	fs.StringVar(&goVersion, "go", goVersion, "")
@@ -184,6 +188,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	cfg.Linting = linting.resolve(all)
 	cfg.Versioning = versioning.resolve(all)
 	cfg.Docker, cfg.Debian = docker, debian
+	cfg.Windows, cfg.MacOS = windows, macos
 	cfg.Force, cfg.DryRun = force, dryRun
 	cfg.Go = goVersion
 	return core.Init(cfg, fsys.OS{})

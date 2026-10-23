@@ -9,7 +9,7 @@ This page describes each pipeline: its stages, inputs and outputs. For the gener
 
 Every pipeline takes a `runs_on` input, default `ubuntu-latest`, and runs each of its stages on that runner label. Set it per repository to use self-hosted runners, e.g. from a repository variable: `runs_on: ${{ vars.RUNS_ON || 'ubuntu-latest' }}`.
 
-To test and build on Windows and macOS as well, set `service.yml`'s `test_windows` and `test_macos` (see [Windows and macOS](#windows-and-macos)), and `publish.yml`'s `native_builds` to build release binaries on other runners (see [Native release builds](#native-release-builds)).
+To test and build on Windows and macOS as well, set `library.yml`'s or `service.yml`'s `test_windows` and `test_macos` (see [Windows and macOS](#windows-and-macos)), and `publish.yml`'s `native_builds` to build release binaries on other runners (see [Native release builds](#native-release-builds)).
 
 `docker.yml` builds every platform in one job on `runs_on` too. A runner without a Docker daemon can build and push through a remote BuildKit set with `buildkit_endpoint`. The `test` stage runs with the race detector, which needs cgo, so a self-hosted runner needs a C compiler.
 
@@ -18,7 +18,12 @@ To test and build on Windows and macOS as well, set `service.yml`'s `test_window
 *A project's checks, on pull requests and before a release ships.*
 
 1. **`lint`** — `task sync-check` (when the project pins Task), or `task sync` on Dependabot's pull requests, as a Forge.go update changes the files it manages; then, with `lint` on, `go mod tidy -diff`, `golangci-lint fmt --diff` and `golangci-lint run`. A website has no Go to lint, so its `lint` stage is the sync check alone.
-2. **`scan`** — Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner scan of the source tree. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail the stage, so releases and the `patch` pipeline still run. Lower findings, and advisories with no severity at all, as Go's own vulnerability database gives, are warning annotations; every finding is listed in the job summary. If the scanner can't run, for example because OSV's API is unreachable, the stage warns and passes. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside `go.mod`:
+2. **`scan`** — Gitleaks secret scan (skip with `enable_secrets: false`), GitHub's dependency review and govulncheck, on `runs_on`.
+
+   On a public repository's pull request, it runs GitHub's [dependency review](https://github.com/actions/dependency-review-action), which fails on a dependency the pull request adds or changes with a high or critical advisory. A private repository needs GitHub Code Security for it, so there it's skipped, and OSV-Scanner covers it.
+
+   When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls. Like OSV-Scanner, it fails a pull request and only warns elsewhere, so a release still ships: [Dependabot security updates]({{< relref "_index.md#vulnerable-dependencies" >}}) upgrade them.
+3. **`scan (osv)`** — an OSV-Scanner scan of the source tree, in [OSV-Scanner's own image](https://github.com/google/osv-scanner/pkgs/container/osv-scanner) as the job's container, whose tag Dependabot's Docker updates keep current. It needs a Linux runner that can run a job container: GitHub's hosted runners, or a self-hosted Kubernetes-mode runner set; see [The scan's runner](#the-scans-runner). It runs alongside `scan`. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail the stage, so releases still run while a Dependabot security update fixes it. Lower findings, and advisories with no severity at all, as Go's own vulnerability database gives, are warning annotations; every finding is listed in the job summary. If the scanner fails without a report, for example because OSV's API is unreachable, the stage fails on a pull request, which mustn't pass unchecked, and warns elsewhere. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside `go.mod`:
 
    ```toml
    [[IgnoredVulns]]
@@ -26,18 +31,17 @@ To test and build on Windows and macOS as well, set `service.yml`'s `test_window
    ignoreUntil = 2026-12-31
    reason = "No fixed version yet; the vulnerable function isn't called"
    ```
-
-   When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls and warns rather than fails: the `patch` pipeline upgrades them on `main`.
-3. **`test`** — `task test` with `GOFLAGS=-race` (skip with `run_tests: false`), uploading `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: lint, scan)*
-4. **`test (windows)`**, **`test (macos)`** — `service.yml` only, each when asked: see [Windows and macOS](#windows-and-macos). *(Needs: lint, scan)*
-5. **`build`** — `build_command` (default `task build`), uploading `artifact_path` (a website's `public/`) as the `artifact_name` artifact. *(Needs: lint, scan; runs alongside the tests)*
-6. **`check`** — `website.yml` only, with `check_links` or `check_accessibility`: see [Site checks](#site-checks). *(Needs: build)*
+4. **`test`** — `task test` with `GOFLAGS=-race` (skip with `run_tests: false`), uploading `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: lint, scan, scan (osv))*
+5. **`test (windows)`**, **`test (macos)`** — `library.yml` and `service.yml`, each when asked: see [Windows and macOS](#windows-and-macos). *(Needs: lint, scan, scan (osv))*
+6. **`build`** — `build_command` (default `task build`), uploading `artifact_path` (a website's `public/`) as the `artifact_name` artifact. *(Needs: lint, scan, scan (osv); runs alongside the tests)*
+7. **`check`** — `website.yml` only, with `check_links` or `check_accessibility`: see [Site checks](#site-checks). *(Needs: build)*
 
 Every stage asks for `contents: read`; `scan` also asks for `pull-requests: write`, for Gitleaks.
 
 | Input | Default | Pipelines | Purpose |
 | :--- | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | all | Runner label |
+| `scan_runs_on` | `''` | all | Runner label for the `scan (osv)` stage, which runs in OSV-Scanner's image; empty uses `runs_on`. See [The scan's runner](#the-scans-runner) |
 | `working_directory` | `'.'` | all | Directory containing `go.mod` |
 | `go_version` | `''` | all | Go version; empty reads the project's `go.mod`, else Forge.go's default |
 | `enable_secrets` | `true` | all | Run the Gitleaks scan |
@@ -47,10 +51,20 @@ Every stage asks for `contents: read`; `scan` also asks for `pull-requests: writ
 | `lint` | `true` | `library`, `service` | Run golangci-lint and the `go mod tidy` check — `forgego init --no-linting` sets it to `false` |
 | `apt_packages` | `''` | `library`, `service` | apt packages to install before anything compiles, space-separated: the C libraries a cgo dependency needs, such as `libfuse-dev`. Ubuntu runners only |
 | `artifact_path` | `'dist'` | `library`, `service` | What the build writes, relative to `working_directory` |
-| `test_windows`, `test_macos` | `''` | `service` | Test and build on Windows or macOS too; see below |
-| `extra_test_task` | `'test'` | `service` | The Task task the Windows and macOS stages test with, such as a shorter `test:short` |
-| `setup_script` | `''` | `service` | A [setup script](#setup-scripts), run before compiling on Windows and macOS |
+| `test_windows`, `test_macos` | `''` | `library`, `service` | Test and build on Windows or macOS too; see below |
+| `extra_test_task` | `'test'` | `library`, `service` | The Task task the Windows and macOS stages test with, such as a shorter `test:short` |
+| `setup_script` | `''` | `library`, `service` | A [setup script](#setup-scripts), run before compiling on Windows and macOS |
 | `base_path`, `check_links`, `check_external_links`, `link_check_args`, `check_accessibility`, `accessibility_paths`, `accessibility_impact` | | `website` | See [Site checks](#site-checks) |
+
+### The scan's runner
+
+`scan (osv)` runs in OSV-Scanner's image as the job's container, so it needs a Linux runner that can run a job container. GitHub's hosted runners can, so with the default `runs_on` nothing needs setting. A Kubernetes-mode runner set runs the job container as a pod even without a Docker daemon. A caller whose `runs_on` is a self-hosted runner that can't run one must set `scan_runs_on` to one that can. `scan` and every other stage stay on `runs_on`.
+
+```yaml
+    with:
+      runs_on: my-runners
+      scan_runs_on: my-kubernetes-runners
+```
 
 ### Windows and macOS
 
@@ -69,7 +83,7 @@ The `test` and `build` stages run on `runs_on` alone. To test and build on Windo
       setup_script: '.github/setup.sh'
 ```
 
-Each runs the [setup script](#setup-scripts), then `task <extra_test_task>` (with `GOFLAGS=-race` wherever cgo is on, and skipped with `run_tests: false`), then `build_command`, and uploads `artifact_path` as the `<artifact_name>-windows` or `<artifact_name>-macos` artifact. The `env` applies to the tests and the build alike, so the tests compile the same way as the binary the stage builds. Every `run` step uses bash, Git Bash on Windows. Empty, the default, skips the stage.
+Each runs the [setup script](#setup-scripts), then `task <extra_test_task>` (with `GOFLAGS=-race` wherever cgo is on, and skipped with `run_tests: false`), then `build_command`, and uploads `artifact_path` as the `<artifact_name>-windows` or `<artifact_name>-macos` artifact. The `env` applies to the tests and the build alike, so the tests compile the same way as the binary the stage builds. Every `run` step uses bash, Git Bash on Windows. Empty, the default, skips the stage, so the generated `.index.yml` spends no Windows or macOS minutes, which a private repository pays for at a higher rate, unless `init` was run with `--windows` or `--macos`; you can also set them on its check job yourself. Forge.go's own CI sets both for a release, and tests its pull requests on Linux only.
 
 ### Setup scripts
 
@@ -120,6 +134,13 @@ Both checks run in one `check` stage on the artifact the build uploaded, so they
 | `runs_on` | `'ubuntu-latest'` | Runner label |
 | `working_directory` | `'.'` | Directory of the project |
 | `reviewers` | `''` | Comma-separated logins to request a review of the release pull request from; empty means the repository's owner |
+| `app_client_id` | `''` | A GitHub App's client ID: release-please opens its pull request with the app's token, so the pull request runs the checks; empty uses `GITHUB_TOKEN` |
+
+And one secret, optional:
+
+| Secret | Purpose |
+| :--- | :--- |
+| `APP_PRIVATE_KEY` | The GitHub App's private key; with `app_client_id`. See [Release pull requests that run the checks]({{< relref "_index.md#release-pull-requests-that-run-the-checks" >}}) |
 
 | Output | Description |
 | :--- | :--- |
@@ -129,7 +150,7 @@ Both checks run in one `check` stage on the artifact the build uploaded, so they
 
 ### Checking a release
 
-The generated `.index.yml` checks each change on its pull request, and on `main` runs `version` first. Only when release-please makes a release does it run the checks again and then the job that ships what they built: `publish`, the `docker` push or the Pages deploy. Release pull requests (branches starting `release-please--`) run the checks too: they're the one place every change since the last release is checked together. Skipped jobs count as passed for required status checks, and with checks only on pull requests, turn off **Require branches to be up to date before merging**, or every PR is checked again before merge.
+The generated `.index.yml` checks each change on its pull request, and on `main` runs `version` first. Only when release-please makes a release does it run the checks again and then the job that ships what they built: `publish`, the `docker` push or the Pages deploy. Release pull requests (branches starting `release-please--`) run the checks too, once something starts them: one opened with `GITHUB_TOKEN` starts no workflow, so set up a [release app]({{< relref "_index.md#release-pull-requests-that-run-the-checks" >}}) or push to the branch. They're the one place every change since the last release is checked together. Skipped jobs count as passed for required status checks, and with checks only on pull requests, turn off **Require branches to be up to date before merging**, or every PR is checked again before merge.
 
 release-please tags the release before the release's checks run. If they fail, the tag and the draft release exist with nothing shipped, and need putting right by hand, which is why release pull requests are checked with exactly what their merge ships.
 
@@ -140,6 +161,7 @@ release-please tags the release before the release's checks run. If they fail, t
 1. **`package`** — With `package: true`, fetches `tag_name` through `proxy.golang.org` with `go mod download`. A Go module is published by its tag; this makes the proxy and pkg.go.dev pick the release up straight away rather than on first use. From `v2` on, the stage fails if the module path doesn't end in the matching major version suffix (such as `/v2`), as Go can't fetch that release. Needs `contents: read`.
 2. **`assets (native)`** — Only with `native_builds` set: on each runner it lists, runs the [setup script](#setup-scripts) and `build_command`, and uploads the files `artifact_path` holds. See [Native release builds](#native-release-builds). Needs `contents: read`.
 3. **`assets`** — With `assets` on (the default), runs GoReleaser through `goreleaser-action`, pinned to the version the generated `release:snapshot` task runs, with `release --clean`. It attaches the binaries, `checksums.txt` and any `.deb` to the draft release release-please created, then publishes it. With `gpg_sign: true` it first imports the signing key for GoReleaser. With `release_binaries: false` it attaches the native builds and `release_files`, if any, and publishes the draft. It asks for no permissions of its own and takes the caller's grant, which needs `contents: write`. *(Needs: assets (native))*
+4. **`attest`** — With `attest: true`, downloads the release's `checksums` file and attests the build provenance of every file it lists with [attest-build-provenance](https://github.com/actions/attest-build-provenance), so a download can be checked with `gh attestation verify <file> --repo <owner>/<repo>`. GitHub Free attests only a public repository's builds, so the generated job passes `attest: ${{ github.event.repository.private == false }}`. Like `assets`, it takes the caller's grant, which needs `id-token: write` and `attestations: write`. *(Needs: assets)*
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
@@ -156,7 +178,8 @@ release-please tags the release before the release's checks run. If they fail, t
 | `setup_script` | `''` | A [setup script](#setup-scripts) for the native builds |
 | `native_builds` | `'[]'` | JSON list of runners that build release binaries natively; see below |
 | `release_files` | `''` | Files to attach beside the native builds, one per line, relative to `working_directory`, e.g. `LICENSE`; with `release_binaries: false` |
-| `checksums` | `'checksums.txt'` | The checksum file written for the native builds and `release_files`; empty attaches none; with `release_binaries: false` |
+| `checksums` | `'checksums.txt'` | The checksum file written for the native builds and `release_files`, empty attaching none, with `release_binaries: false`; and the checksum file `attest` reads, which with GoReleaser is its `checksum.name_template` (`checksums.txt` as `forgego init` writes it) |
+| `attest` | `false` | Attest the build provenance of the release's files; needs a public repository on GitHub Free |
 | `gpg_sign` | `false` | Import the `GPG_PRIVATE_KEY` secret and give GoReleaser its fingerprint as `GPG_FINGERPRINT`; see [Signed releases](#signed-releases) |
 
 And these secrets, both optional:
@@ -261,7 +284,7 @@ jobs:
 
 *Deploys a built website to GitHub Pages.*
 
-1. **`deploy`** — Downloads the `artifact_name` artifact `website.yml` uploaded earlier in the run and deploys it, in the `github-pages` environment. One deploy runs at a time, in the `pages-deploy` concurrency group. Needs `pages: write` and `id-token: write`.
+1. **`deploy`** — Downloads the `artifact_name` artifact `website.yml` uploaded earlier in the run and deploys it, in the `github-pages` environment. One deploy runs at a time, in the `pages-deploy` concurrency group. Needs `pages: write` and `id-token: write`. GitHub Free serves Pages only from a public repository, so the generated `pages` job runs only there; on a paid plan, drop the `github.event.repository.private == false` check from its `if`.
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
@@ -308,11 +331,13 @@ With `buildkit_endpoint` set, the stages build on that remote BuildKit instead o
 
 ## patch.yml
 
-*Keeps `main` current.*
+*Keeps the files Forge.go manages current.*
 
-1. **`update`** — On `main`, first runs `task sync` and commits whatever it refreshes as `chore(deps): refresh the files forgego manages`, which catches up after a Dependabot update of Forge.go merges. When the project pins govulncheck, it then runs it, `go get`s the fixed version of each vulnerable module it reports, runs `go mod tidy`, and commits `go.mod` and `go.sum` as `fix(deps): upgrade modules with known vulnerabilities via govulncheck`. Vulnerabilities in the standard library are fixed by a newer Go, not by `go get`, so they're left to you. Needs `contents: write`.
+1. **`update`** — On `main`, runs `task sync`, which catches up after a Dependabot update of Forge.go merges. If it changed anything, it commits the result as `chore(deps): refresh the files forgego manages` to the `forgego/sync` branch (`forgego/sync-<working_directory>` for a module in a subdirectory), force-pushes that branch, and opens a pull request for it unless one is open already. It never pushes to `main`, and the checkout keeps no credentials: the token is handed to the push alone. Needs `contents: write` and `pull-requests: write`.
 
-The generated `.index.yml` runs it weekly, on a manual run, and on the `auto-merged` dispatch `merge.yml` sends after a Dependabot merge, so a Forge.go update's refreshed files are committed straight away and `task sync-check` keeps passing on other pull requests.
+The generated `.index.yml` runs it weekly, on a manual run, and on the `auto-merged` dispatch `merge.yml` sends after a Dependabot merge, so a Forge.go update's refreshed files are proposed straight away and `task sync-check` passes again once that pull request merges. Its pull request is opened with `GITHUB_TOKEN`, so its checks don't start on their own: close and reopen it to run them.
+
+Earlier versions also upgraded the modules govulncheck found vulnerable and committed them to `main`. [Dependabot security updates]({{< relref "_index.md#vulnerable-dependencies" >}}) do that now, as pull requests.
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
@@ -326,9 +351,9 @@ The generated `.index.yml` runs it weekly, on a manual run, and on the `auto-mer
 *Dependabot's pull requests.*
 
 1. **`review`** — On a pull request Dependabot opened, requests a review from `reviewers`, or from the repository's owner when `reviewers` is empty and the owner is a user (an organisation names its reviewers through the input), whether or not the checks passed, so a failing update reaches you too. `CODEOWNERS` requests none in a private repository on GitHub Free. A failed request warns and never fails the pipeline. Needs `pull-requests: write`.
-2. **`squash`** — When `checks_passed` and Dependabot both opened the pull request and made its latest change (someone else's push to its branch waits for a person), turns on GitHub's auto-merge through the API, so the pull request squash-merges once the required checks pass; one with no checks left to wait for is merged straight away. It needs no `gh` CLI on the runner. Once the pull request has merged, it sends the `auto-merged` `repository_dispatch` event, so `.index.yml` runs on `main`: a merge made with `GITHUB_TOKEN` starts no push run. When it turned on auto-merge rather than merging, it waits up to 12 minutes for the merge before sending it. See [Secrets]({{< relref "_index.md#secrets" >}}). Needs `contents: write` and `pull-requests: write`.
+2. **`squash`** — When `checks_passed`, and Dependabot both opened the pull request, from a branch of this repository, and made its latest change (someone else's push to its branch waits for a person), the update, whatever its size, gets GitHub's auto-merge, turned on through the API, so the pull request squash-merges once the required checks pass; one with no checks left to wait for is merged straight away. Either way it merges only the commit the checks ran on, so a later push waits for its own checks. It needs no `gh` CLI on the runner. Once the pull request has merged, it sends the `auto-merged` `repository_dispatch` event, so `.index.yml` runs on `main`: a merge made with `GITHUB_TOKEN` starts no push run. When it turned on auto-merge rather than merging, it waits up to 12 minutes for the merge before sending it. See [Secrets]({{< relref "_index.md#secrets" >}}). Needs `contents: write` and `pull-requests: write`.
 
-Dependabot's GitHub Actions updates (branches starting `dependabot/github_actions/`) are never squashed and are left for a person to merge: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge.
+Dependabot's GitHub Actions updates (branches starting `dependabot/github_actions/`), and its Docker updates to the images the workflows run in (branches starting `dependabot/docker/dot-github/workflows/`), are never squashed and are left for a person to merge: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge.
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |

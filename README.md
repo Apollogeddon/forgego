@@ -77,7 +77,7 @@ Every generated task runs through a pinned copy of [Task](https://taskfile.dev/)
 
 - **One module per tool:** each tool is pinned in its own module file under `.forgego/` and run with `go tool -modfile`, so no two tools' dependencies clash and none of them touch your `go.mod`. A fresh clone needs only Go and Git.
 - **Upgrades through `sync`:** to move a project to the tool versions of a newer Forge.go, run that version's `forgego sync`. `task sync-check` reports drift without writing anything, and runs in the generated pre-commit hook and in CI.
-- **Security patches:** CI runs govulncheck on every change, and on `main` it upgrades the modules govulncheck finds vulnerable and commits the result.
+- **Security patches:** CI runs govulncheck and OSV-Scanner on every change and fails a pull request that adds a known vulnerability; Dependabot security updates, once turned on, propose the upgrades.
 - **Tested end to end:** before each release, an integration test scaffolds a real project in every mode and runs its generated tasks and Git hooks with every pinned tool.
 
 ## Documentation

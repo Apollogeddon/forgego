@@ -83,11 +83,26 @@ func refuteFiles(t *testing.T, fs *fsys.Memory, unwanted ...string) {
 	}
 }
 
+// LF on every platform, so a Windows checkout reads the same; a project's own rules are never replaced.
+func TestGitattributesWrittenOnceAndKept(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	if got := read(t, fs, ".gitattributes"); got != templates.Gitattributes {
+		t.Errorf(".gitattributes = %q", got)
+	}
+	own := "*.psd filter=lfs diff=lfs merge=lfs -text\n"
+	_ = fs.WriteFile(dir+"/.gitattributes", own)
+	run(t, fs, func(c *config.Init) { c.Force = true })
+	if got := read(t, fs, ".gitattributes"); got != own {
+		t.Errorf(".gitattributes after --force = %q, want the project's own", got)
+	}
+}
+
 func TestBackend(t *testing.T) {
 	fs := fsys.NewMemory(nil)
 	run(t, fs, nil)
 	assertFiles(t, fs,
-		"go.mod", "cmd/billing-api/main.go", "cmd/billing-api/main_test.go", ".gitignore",
+		"go.mod", "cmd/billing-api/main.go", "cmd/billing-api/main_test.go", ".gitignore", ".gitattributes",
 		".forgego/task/go.mod", ".forgego/task/go.sum", ".forgego/golangci-lint/go.mod", ".forgego/gotestsum/go.mod",
 		".forgego/govulncheck/go.mod", ".forgego/lefthook/go.mod", ".forgego/golangci.yml",
 		".golangci.yml", ".golangci.local.yml", "lefthook.yml", ".goreleaser.yaml",
@@ -196,9 +211,11 @@ func TestAnExistingGoModNamesTheProject(t *testing.T) {
 
 func TestInvalidCombinationsWriteNothing(t *testing.T) {
 	for name, edit := range map[string]func(*config.Init){
-		"docker library": func(c *config.Init) { c.Mode, c.Docker = config.Library, true },
-		"debian website": func(c *config.Init) { c.Mode, c.Debian = config.Website, true },
-		"bad go":         func(c *config.Init) { c.Go = "go1.27" },
+		"docker library":  func(c *config.Init) { c.Mode, c.Docker = config.Library, true },
+		"debian website":  func(c *config.Init) { c.Mode, c.Debian = config.Website, true },
+		"windows website": func(c *config.Init) { c.Mode, c.Windows = config.Website, true },
+		"macos website":   func(c *config.Init) { c.Mode, c.MacOS = config.Website, true },
+		"bad go":          func(c *config.Init) { c.Go = "go1.27" },
 	} {
 		fs := fsys.NewMemory(nil)
 		cfg := config.Default(dir)
@@ -209,6 +226,19 @@ func TestInvalidCombinationsWriteNothing(t *testing.T) {
 		if len(fs.Paths()) != 0 {
 			t.Errorf("%s: wrote %v", name, fs.Paths())
 		}
+	}
+}
+
+// --windows and --macos reach the generated checks job, which then tests and builds there too.
+func TestWindowsAndMacOSReachTheChecks(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, func(c *config.Init) { c.Mode, c.Windows, c.MacOS = config.Library, true, true })
+	var w workflow
+	if err := yaml.Unmarshal([]byte(read(t, fs, templates.IndexWorkflow)), &w); err != nil {
+		t.Fatal(err)
+	}
+	if with := w.Jobs["library"].With; with["test_windows"] != "windows-latest" || with["test_macos"] != "macos-latest" {
+		t.Errorf("library with = %v", with)
 	}
 }
 
@@ -304,14 +334,16 @@ func TestGeneratedWorkflowIsLeastPrivilegeAndNeverCancelsMain(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 		// a run outside a pull request has a group of its own, so one on main is never cancelled
-		if group, _ := w.Concurrency["group"].(string); !strings.Contains(group, "github.head_ref || github.run_id") {
+		if group, _ := w.Concurrency["group"].(string); !strings.Contains(group, "github.event.pull_request.number || github.run_id") {
 			t.Errorf("%s: concurrency group %q can cancel runs on main", name, group)
 		}
 		for job, j := range w.Jobs {
-			if j.Secrets != nil {
+			// only the release GitHub App's key, empty unless the repository sets it
+			if secrets, _ := j.Secrets.(map[string]any); j.Secrets != nil && (job != "version" || len(secrets) != 1 || secrets["APP_PRIVATE_KEY"] == nil) {
 				t.Errorf("%s: %s passes secrets", name, job)
 			}
-			if _, ok := j.Permissions["id-token"]; ok && job != "pages" {
+			// GitHub Pages and a service's release attestations sign in with an OIDC token
+			if _, ok := j.Permissions["id-token"]; ok && job != "pages" && (job != "publish" || strings.HasPrefix(name, "library")) {
 				t.Errorf("%s: %s asks for id-token", name, job)
 			}
 			if !strings.HasPrefix(j.Uses, "apollogeddon/forgego/.github/workflows/"+job+".yml@main") {

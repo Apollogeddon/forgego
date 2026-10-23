@@ -1,6 +1,6 @@
 name: merge
 
-# Dependabot's pull requests: a review request, then a squash merge once the checks pass.
+# Dependabot's pull requests: a review request, then a squash merge of a minor or patch update once the checks pass.
 
 on:
   workflow_call:
@@ -21,6 +21,9 @@ on:
         type: boolean
         default: false
 
+# every job asks for what it needs
+permissions: {}
+
 jobs:
   # CODEOWNERS only requests reviews in a private repository on a paid plan, so Dependabot's pull
   # requests ask for one here instead, on any plan, and whether the checks passed or not
@@ -33,7 +36,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Request a review
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           REVIEWERS: ${{ inputs.reviewers }}
         with:
@@ -59,16 +62,17 @@ jobs:
     name: squash
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 15
-    # Dependabot opened the pull request and made its latest change, and the checks passed. Not for GitHub
-    # Actions updates: they change workflow files, which GITHUB_TOKEN may never merge, so a person merges them
-    if: inputs.checks_passed && github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/github_actions/')
+    # Dependabot opened the pull request, from a branch of this repository, and made its latest change, and the
+    # checks passed. Not for GitHub Actions updates, or Docker updates to the images the workflows run in: they
+    # change workflow files, which GITHUB_TOKEN may never merge, so a person merges them
+    if: inputs.checks_passed && github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'dependabot/github_actions/') && !startsWith(github.head_ref, 'dependabot/docker/dot-github/workflows/')
     permissions:
       contents: write
       pull-requests: write
     steps:
       # Through the API rather than the gh CLI, which a self-hosted runner may not have
       - name: Enable auto-merge
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           DISPATCH_TYPE: auto-merged
         with:
@@ -101,10 +105,11 @@ jobs:
             let merged = false;
             try {
               await github.graphql(
-                `mutation ($id: ID!) {
-                  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) { clientMutationId }
+                // the commit the checks ran on: a later push to the branch merges only after its own checks
+                `mutation ($id: ID!, $oid: GitObjectID!) {
+                  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $oid }) { clientMutationId }
                 }`,
-                { id: pr.node_id },
+                { id: pr.node_id, oid: pr.head.sha },
               );
               core.info(`Auto-merge enabled for #${pr.number}`);
             } catch (error) {
@@ -117,7 +122,7 @@ jobs:
               const mergeable =
                 /is in (clean|unstable|has[ _]hooks) status|protected branch rules not configured|auto merge is not allowed/i;
               if (!mergeable.test(error.message)) throw error;
-              await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'squash' });
+              await github.rest.pulls.merge({ ...context.repo, pull_number: pr.number, merge_method: 'squash', sha: pr.head.sha });
               core.info(`Merged #${pr.number}`);
               merged = true;
             }

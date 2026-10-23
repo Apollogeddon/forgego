@@ -1,7 +1,7 @@
 name: patch
 
-# Weekly or on a manual run: refreshes the files forgego manages, upgrades the modules govulncheck finds
-# vulnerable, and commits the result to main.
+# Weekly or on a manual run: refreshes the files forgego manages and proposes them through a pull request.
+# Vulnerable modules are left to Dependabot security updates, which open pull requests of their own.
 
 on:
   workflow_call:
@@ -27,24 +27,26 @@ on:
         type: string
         default: ''
 
+# No permissions of its own: the job takes its caller's grant, so a caller that grants contents: write but not
+# pull-requests: write still starts (GitHub refuses a whole run whose called job asks for more), and only the
+# pull request step warns.
+
 jobs:
   update:
     name: update
     if: github.ref == 'refs/heads/main'
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
-    permissions:
-      contents: write
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
     steps:
-      # the branch's tip rather than the triggering commit, so a patch committed earlier in the run is kept;
-      # keeps its credentials, to push the patch
+      # the branch's tip rather than the triggering commit; the token is handed to the push alone
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref_name }}
+          persist-credentials: false
       - name: Install apt packages
         if: inputs.apt_packages != ''
         env:
@@ -65,41 +67,60 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           go-version-file: ${{ steps.go.outputs.file }}
-          # no module cache in a job that pushes to main
+          # no module cache in a job that pushes
           cache: false
       # a Dependabot bump of forgego leaves the files it manages for this job to refresh
       - name: Refresh forgego's files
         if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
         run: go tool -modfile=.forgego/task/go.mod task sync
-      # sync is the only change in this checkout so far, and which files it touches varies
-      - name: Commit forgego's files
+      # to a branch of its own rather than main, which a branch protection rule may guard; each module of a
+      # monorepo gets its own branch
+      - name: Push forgego's files
+        id: push
         if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "chore(deps): refresh the files forgego manages"
-          repository: ${{ inputs.working_directory }}
-      # govulncheck names the fixed version of each vulnerable module, so this upgrades
-      # just those. The standard library is fixed by a newer Go, not by go get.
-      - name: Upgrade vulnerable modules
-        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIR: ${{ inputs.working_directory }}
         run: |
-          go tool -modfile=.forgego/govulncheck/go.mod govulncheck -format json ./... > "$RUNNER_TEMP/govulncheck.json"
-          mapfile -t upgrades < <(jq -r '
-            select((.finding.fixed_version // "") != "")
-            | .finding
-            | select(.trace[0].module != "stdlib")
-            | "\(.trace[0].module)@\(.fixed_version)"' "$RUNNER_TEMP/govulncheck.json" | sort -u)
-          if [ "${#upgrades[@]}" -eq 0 ]; then exit 0; fi
-          go get "${upgrades[@]}"
-          go mod tidy
-      - name: Commit the patches
-        if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
-        uses: stefanzweifel/git-auto-commit-action@v7
+          if [ -z "$(git status --porcelain -- .)" ]; then
+            echo "forgego's files are current"
+            exit 0
+          fi
+          branch=forgego/sync
+          if [ "$DIR" != . ]; then branch="forgego/sync-$(printf '%s' "${DIR#./}" | tr '/' '-')"; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- .
+          git commit -q -m "chore(deps): refresh the files forgego manages"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push --force origin "HEAD:refs/heads/$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - name: Open a pull request
+        if: steps.push.outputs.branch != ''
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BRANCH: ${{ steps.push.outputs.branch }}
+          BASE: ${{ github.ref_name }}
         with:
-          commit_message: "fix(deps): upgrade modules with known vulnerabilities via govulncheck"
-          file_pattern: 'go.mod go.sum'
-          repository: ${{ inputs.working_directory }}
+          script: |
+            const { BRANCH: head, BASE: base } = process.env;
+            const { data: open } = await github.rest.pulls.list({ ...context.repo, head: `${context.repo.owner}:${head}`, base, state: 'open' });
+            if (open.length) return core.info(`#${open[0].number} already proposes ${head}, now updated`);
+            try {
+              const { data: pr } = await github.rest.pulls.create({
+                ...context.repo,
+                head,
+                base,
+                title: 'chore(deps): refresh the files forgego manages',
+                // a pull request opened with GITHUB_TOKEN starts no workflow
+                body: 'The files `forgego sync` manages, refreshed after a forgego update.\n\nOpened with `GITHUB_TOKEN`, so its checks don\'t start on their own: close and reopen it to run them.',
+              });
+              core.info(`Opened #${pr.number}`);
+            } catch (error) {
+              // a caller generated before patch opened pull requests grants contents: write alone
+              if (error.status !== 403) throw error;
+              core.warning(`Pushed ${head}, but couldn't open a pull request for it: grant this job pull-requests: write in .index.yml, or open one from the branch`);
+            }
