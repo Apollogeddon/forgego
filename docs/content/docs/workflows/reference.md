@@ -41,7 +41,7 @@ Every stage asks for `contents: read`; `scan` also asks for `pull-requests: writ
 | Input | Default | Pipelines | Purpose |
 | :--- | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | all | Runner label |
-| `scan_runs_on` | `''` | all | Runner label for the `scan (osv)` stage, which runs in OSV-Scanner's image; empty uses `runs_on`. See [The scan's runner](#the-scans-runner) |
+| `scan_runs_on` | `''` | all | Runner label for the `scan (osv)` stage, which runs in OSV-Scanner's image; empty uses GitHub's `ubuntu-latest` in a private repository and `runs_on` in a public one. See [The scan's runner](#the-scans-runner) |
 | `working_directory` | `'.'` | all | Directory containing `go.mod` |
 | `go_version` | `''` | all | Go version; empty reads the project's `go.mod`, else Forge.go's default |
 | `enable_secrets` | `true` | all | Run the Gitleaks scan |
@@ -58,7 +58,7 @@ Every stage asks for `contents: read`; `scan` also asks for `pull-requests: writ
 
 ### The scan's runner
 
-`scan (osv)` runs in OSV-Scanner's image as the job's container, so it needs a Linux runner that can run a job container. GitHub's hosted runners can, so with the default `runs_on` nothing needs setting. A Kubernetes-mode runner set runs the job container as a pod even without a Docker daemon. A caller whose `runs_on` is a self-hosted runner that can't run one must set `scan_runs_on` to one that can. `scan` and every other stage stay on `runs_on`.
+`scan (osv)` runs in OSV-Scanner's image as the job's container, so it needs a Linux runner that can run a job container. In a private repository, whose `runs_on` is often a self-hosted runner that can't, it runs on GitHub's `ubuntu-latest`; in a public one it follows `runs_on`. To keep a private repository's scan on self-hosted runners, set `scan_runs_on` to a set that can: a Kubernetes-mode runner set runs the job container as a pod even without a Docker daemon. `scan` and every other stage stay on `runs_on`.
 
 ```yaml
     with:
