@@ -16,9 +16,9 @@ A root job's id is the pipeline's name. A second call to the same pipeline names
 
 | Pipeline | Stages | Purpose |
 | :--- | :--- | :--- |
-| `library.yml` | lint, scan, test, test (windows), test (macos), build | A library's checks, with Windows and macOS when asked |
-| `service.yml` | lint, scan, test, test (windows), test (macos), build | A backend's checks, with Windows and macOS when asked |
-| `website.yml` | lint, scan, test, build, check | A Hugo website's checks, the build, and optional link and accessibility checks of it |
+| `library.yml` | lint, scan, scan (osv), test, test (windows), test (macos), build | A library's checks, with Windows and macOS when asked |
+| `service.yml` | lint, scan, scan (osv), test, test (windows), test (macos), build | A backend's checks, with Windows and macOS when asked |
+| `website.yml` | lint, scan, scan (osv), test, build, check | A Hugo website's checks, the build, and optional link and accessibility checks of it |
 | `docker.yml` | build, push | A multi-platform image: built on pull requests, pushed to GHCR on a release |
 | `version.yml` | release | release-please: the release pull request, then the tag and the draft GitHub release |
 | `publish.yml` | package, assets (native), assets, attest | A library fetched through the Go module proxy; a service's binaries (and `.deb`) attached to the release by GoReleaser, or built natively, and their build provenance attested |
@@ -26,7 +26,7 @@ A root job's id is the pipeline's name. A second call to the same pipeline names
 | `patch.yml` | update | `task sync`, proposed through a pull request |
 | `merge.yml` | review, squash | A review request on Dependabot's pull requests, and their squash merge once the checks pass, majors included |
 
-The stages are `lint` (`forgego sync --check`, `go mod tidy -diff` and golangci-lint), `scan` (Gitleaks, OSV-Scanner and govulncheck), `test`, `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `attest`, `deploy`, `update`, `review` and `squash`.
+The stages are `lint` (`forgego sync --check`, `go mod tidy -diff` and golangci-lint), `scan` (Gitleaks, dependency review and govulncheck), `scan (osv)` (OSV-Scanner), `test`, `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `attest`, `deploy`, `update`, `review` and `squash`.
 
 There is no separate packaging pipeline: a `--debian` project uses `service.yml`, and GoReleaser builds the `.deb` in `publish.yml`'s `assets` stage.
 
@@ -196,12 +196,12 @@ On a public repository, also turn on, in **Settings → Code security**:
 - **CodeQL analysis**, with the default setup, for Go and GitHub Actions: it finds security bugs in the code and the workflows.
 - **Secret scanning** and its **push protection**, which blocks a push that contains a known kind of secret.
 
-A private repository on GitHub Free has neither; there Gitleaks, in the `scan` stage, catches committed secrets, and OSV-Scanner and govulncheck known vulnerabilities.
+A private repository on GitHub Free has neither; there Gitleaks, in the `scan` stage, catches committed secrets, and OSV-Scanner, in `scan (osv)`, and govulncheck known vulnerabilities.
 
 ## Vulnerable dependencies
 
-The `scan` stage fails a pull request that adds a known high or critical vulnerability, but nothing upgrades a module that becomes vulnerable later. Turn on **Settings → Code security → Dependabot security updates**, free in private repositories too: Dependabot then opens a pull request for each one, which the checks and `merge` handle like its other updates. `patch` no longer upgrades them on `main`.
+The `scan` and `scan (osv)` stages fail a pull request that adds a known high or critical vulnerability, but nothing upgrades a module that becomes vulnerable later. Turn on **Settings → Code security → Dependabot security updates**, free in private repositories too: Dependabot then opens a pull request for each one, which the checks and `merge` handle like its other updates. `patch` no longer upgrades them on `main`.
 
 For `patch`'s pull requests, and release-please's, turn on **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**.
 
-For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions**. For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**. Auto-merge squash-merges, so release-please lists each update once: a merge commit repeats the pull request's title, and release-please reads that as a second change. Merge your own pull requests the same way, with **Squash and merge**. Dependabot's GitHub Actions updates are never auto-merged: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge, so merge those pull requests yourself.
+For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions**. For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**. Auto-merge squash-merges, so release-please lists each update once: a merge commit repeats the pull request's title, and release-please reads that as a second change. Merge your own pull requests the same way, with **Squash and merge**. Dependabot's GitHub Actions updates, and its Docker updates to the images the workflows run in, are never auto-merged: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge, so merge those pull requests yourself.

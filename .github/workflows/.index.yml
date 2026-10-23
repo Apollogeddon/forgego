@@ -93,10 +93,9 @@ jobs:
     uses: ./.github/workflows/service.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
-      # OSV-Scanner's action is a container action, which `xerus` can't run: a private run scans on the
-      # Kubernetes-mode `xerus-docker` set, which runs every job in a container
+      # the scan (osv) stage runs in OSV-Scanner's image, a job container, which `xerus` can't run: a private run
+      # scans on the Kubernetes-mode `xerus-docker` set
       scan_runs_on: ${{ github.event.repository.private && 'xerus-docker' || 'ubuntu-latest' }}
-      scan_container: ${{ github.event.repository.private && 'buildpack-deps:trixie-scm' || '' }}
       # forgego runs wherever Go does, so a release is tested on every system it's released for; a pull
       # request runs on Linux only, to stay cheap, and a Windows or macOS failure still stops the publish
       test_windows: ${{ needs.version.outputs.new_release_published == 'true' && 'windows-latest' || '' }}
@@ -131,7 +130,6 @@ jobs:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
       # scanned where the service's is
       scan_runs_on: ${{ github.event.repository.private && 'xerus-docker' || 'ubuntu-latest' }}
-      scan_container: ${{ github.event.repository.private && 'buildpack-deps:trixie-scm' || '' }}
       working_directory: 'docs'
       enable_secrets: false
       # distinct from the service's 'dist' artifact in the same run

@@ -18,7 +18,12 @@ To test and build on Windows and macOS as well, set `library.yml`'s or `service.
 *A project's checks, on pull requests and before a release ships.*
 
 1. **`lint`** — `task sync-check` (when the project pins Task), or `task sync` on Dependabot's pull requests, as a Forge.go update changes the files it manages; then, with `lint` on, `go mod tidy -diff`, `golangci-lint fmt --diff` and `golangci-lint run`. A website has no Go to lint, so its `lint` stage is the sync check alone.
-2. **`scan`** — Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner scan of the source tree, with [OSV-Scanner's own action](https://github.com/google/osv-scanner-action), pinned to a commit like every action so Dependabot keeps it current. It's a container action, so `scan` needs a Linux runner that can run one: GitHub's hosted runners, or a self-hosted Kubernetes-mode runner set; see [The scan's runner](#the-scans-runner). On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail the stage, so releases still run while a Dependabot security update fixes it. Lower findings, and advisories with no severity at all, as Go's own vulnerability database gives, are warning annotations; every finding is listed in the job summary. If the scanner fails without a report, for example because OSV's API is unreachable, the stage fails on a pull request, which mustn't pass unchecked, and warns elsewhere. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside `go.mod`:
+2. **`scan`** — Gitleaks secret scan (skip with `enable_secrets: false`), GitHub's dependency review and govulncheck, on `runs_on`.
+
+   On a public repository's pull request, it runs GitHub's [dependency review](https://github.com/actions/dependency-review-action), which fails on a dependency the pull request adds or changes with a high or critical advisory. A private repository needs GitHub Code Security for it, so there it's skipped, and OSV-Scanner covers it.
+
+   When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls. Like OSV-Scanner, it fails a pull request and only warns elsewhere, so a release still ships: [Dependabot security updates]({{< relref "_index.md#vulnerable-dependencies" >}}) upgrade them.
+3. **`scan (osv)`** — an OSV-Scanner scan of the source tree, in [OSV-Scanner's own image](https://github.com/google/osv-scanner/pkgs/container/osv-scanner) as the job's container, whose tag Dependabot's Docker updates keep current. It needs a Linux runner that can run a job container: GitHub's hosted runners, or a self-hosted Kubernetes-mode runner set; see [The scan's runner](#the-scans-runner). It runs alongside `scan`. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail the stage, so releases still run while a Dependabot security update fixes it. Lower findings, and advisories with no severity at all, as Go's own vulnerability database gives, are warning annotations; every finding is listed in the job summary. If the scanner fails without a report, for example because OSV's API is unreachable, the stage fails on a pull request, which mustn't pass unchecked, and warns elsewhere. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside `go.mod`:
 
    ```toml
    [[IgnoredVulns]]
@@ -26,22 +31,17 @@ To test and build on Windows and macOS as well, set `library.yml`'s or `service.
    ignoreUntil = 2026-12-31
    reason = "No fixed version yet; the vulnerable function isn't called"
    ```
-
-   On a public repository's pull request, it also runs GitHub's [dependency review](https://github.com/actions/dependency-review-action), which fails on a dependency the pull request adds or changes with a high or critical advisory. A private repository needs GitHub Code Security for it, so there it's skipped, and OSV-Scanner covers it.
-
-   When the project pins govulncheck, it also runs `govulncheck ./...`, which reports only the vulnerabilities the code calls. Like OSV-Scanner, it fails a pull request and only warns elsewhere, so a release still ships: [Dependabot security updates]({{< relref "_index.md#vulnerable-dependencies" >}}) upgrade them.
-3. **`test`** — `task test` with `GOFLAGS=-race` (skip with `run_tests: false`), uploading `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: lint, scan)*
-4. **`test (windows)`**, **`test (macos)`** — `library.yml` and `service.yml`, each when asked: see [Windows and macOS](#windows-and-macos). *(Needs: lint, scan)*
-5. **`build`** — `build_command` (default `task build`), uploading `artifact_path` (a website's `public/`) as the `artifact_name` artifact. *(Needs: lint, scan; runs alongside the tests)*
-6. **`check`** — `website.yml` only, with `check_links` or `check_accessibility`: see [Site checks](#site-checks). *(Needs: build)*
+4. **`test`** — `task test` with `GOFLAGS=-race` (skip with `run_tests: false`), uploading `coverage.out` and `junit-report.xml` as the `coverage-<artifact_name>` artifact. *(Needs: lint, scan, scan (osv))*
+5. **`test (windows)`**, **`test (macos)`** — `library.yml` and `service.yml`, each when asked: see [Windows and macOS](#windows-and-macos). *(Needs: lint, scan, scan (osv))*
+6. **`build`** — `build_command` (default `task build`), uploading `artifact_path` (a website's `public/`) as the `artifact_name` artifact. *(Needs: lint, scan, scan (osv); runs alongside the tests)*
+7. **`check`** — `website.yml` only, with `check_links` or `check_accessibility`: see [Site checks](#site-checks). *(Needs: build)*
 
 Every stage asks for `contents: read`; `scan` also asks for `pull-requests: write`, for Gitleaks.
 
 | Input | Default | Pipelines | Purpose |
 | :--- | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | all | Runner label |
-| `scan_runs_on` | `''` | all | Runner label for the `scan` stage, which runs OSV-Scanner's container action; empty uses `runs_on`. See [The scan's runner](#the-scans-runner) |
-| `scan_container` | `''` | all | Image the `scan` stage runs in, for a runner set that requires a job container, such as `buildpack-deps:trixie-scm`; empty runs on the runner itself |
+| `scan_runs_on` | `''` | all | Runner label for the `scan (osv)` stage, which runs in OSV-Scanner's image; empty uses `runs_on`. See [The scan's runner](#the-scans-runner) |
 | `working_directory` | `'.'` | all | Directory containing `go.mod` |
 | `go_version` | `''` | all | Go version; empty reads the project's `go.mod`, else Forge.go's default |
 | `enable_secrets` | `true` | all | Run the Gitleaks scan |
@@ -58,13 +58,12 @@ Every stage asks for `contents: read`; `scan` also asks for `pull-requests: writ
 
 ### The scan's runner
 
-`scan` runs OSV-Scanner's action, a Docker container action, so it needs a Linux runner that can run one. GitHub's hosted runners can, so with the default `runs_on` nothing needs setting. A caller whose `runs_on` is a self-hosted runner without container support must set `scan_runs_on` to one that has it. A Kubernetes-mode runner set runs container steps as pods even without a Docker daemon; if it requires every job to declare a container, set `scan_container` too. The image needs git, for the checkout and Gitleaks, and curl and tar, for setup-go, as the stage also runs govulncheck: `buildpack-deps:trixie-scm` has them. `apt_packages` uses `sudo`, which such an image may lack.
+`scan (osv)` runs in OSV-Scanner's image as the job's container, so it needs a Linux runner that can run a job container. GitHub's hosted runners can, so with the default `runs_on` nothing needs setting. A Kubernetes-mode runner set runs the job container as a pod even without a Docker daemon. A caller whose `runs_on` is a self-hosted runner that can't run one must set `scan_runs_on` to one that can. `scan` and every other stage stay on `runs_on`.
 
 ```yaml
     with:
       runs_on: my-runners
       scan_runs_on: my-kubernetes-runners
-      scan_container: buildpack-deps:trixie-scm
 ```
 
 ### Windows and macOS
@@ -354,7 +353,7 @@ Earlier versions also upgraded the modules govulncheck found vulnerable and comm
 1. **`review`** — On a pull request Dependabot opened, requests a review from `reviewers`, or from the repository's owner when `reviewers` is empty and the owner is a user (an organisation names its reviewers through the input), whether or not the checks passed, so a failing update reaches you too. `CODEOWNERS` requests none in a private repository on GitHub Free. A failed request warns and never fails the pipeline. Needs `pull-requests: write`.
 2. **`squash`** — When `checks_passed`, and Dependabot both opened the pull request, from a branch of this repository, and made its latest change (someone else's push to its branch waits for a person), the update, whatever its size, gets GitHub's auto-merge, turned on through the API, so the pull request squash-merges once the required checks pass; one with no checks left to wait for is merged straight away. Either way it merges only the commit the checks ran on, so a later push waits for its own checks. It needs no `gh` CLI on the runner. Once the pull request has merged, it sends the `auto-merged` `repository_dispatch` event, so `.index.yml` runs on `main`: a merge made with `GITHUB_TOKEN` starts no push run. When it turned on auto-merge rather than merging, it waits up to 12 minutes for the merge before sending it. See [Secrets]({{< relref "_index.md#secrets" >}}). Needs `contents: write` and `pull-requests: write`.
 
-Dependabot's GitHub Actions updates (branches starting `dependabot/github_actions/`) are never squashed and are left for a person to merge: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge.
+Dependabot's GitHub Actions updates (branches starting `dependabot/github_actions/`), and its Docker updates to the images the workflows run in (branches starting `dependabot/docker/dot-github/workflows/`), are never squashed and are left for a person to merge: they change workflow files, which the workflow's `GITHUB_TOKEN` can't merge.
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |

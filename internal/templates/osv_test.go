@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,10 +26,15 @@ type osvStep struct {
 }
 
 type scanJob struct {
+	Name        string            `yaml:"name"`
 	RunsOn      string            `yaml:"runs-on"`
-	Container   string            `yaml:"container"`
+	Needs       stringList        `yaml:"needs"`
+	Container   map[string]string `yaml:"container"`
 	Permissions map[string]string `yaml:"permissions"`
-	Steps       []osvStep         `yaml:"steps"`
+	Defaults    struct {
+		Run map[string]string `yaml:"run"`
+	} `yaml:"defaults"`
+	Steps []osvStep `yaml:"steps"`
 }
 
 type scanPipeline struct {
@@ -42,6 +49,8 @@ type scanPipeline struct {
 	Jobs map[string]scanJob `yaml:"jobs"`
 }
 
+var checkPipelines = []string{"library.yml", "service.yml", "website.yml"}
+
 func readScanPipeline(t *testing.T, pipeline string) scanPipeline {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", pipeline))
@@ -55,37 +64,65 @@ func readScanPipeline(t *testing.T, pipeline string) scanPipeline {
 	return w
 }
 
-func scanSteps(t *testing.T, pipeline string) map[string]osvStep {
+func jobSteps(t *testing.T, pipeline, id string) map[string]osvStep {
 	t.Helper()
 	steps := map[string]osvStep{}
-	for _, step := range readScanPipeline(t, pipeline).Jobs["scan"].Steps {
+	for _, step := range readScanPipeline(t, pipeline).Jobs[id].Steps {
 		steps[step.Name] = step
 	}
 	return steps
 }
 
-func secureSteps(t *testing.T) map[string]osvStep {
+func scanSteps(t *testing.T, pipeline string) map[string]osvStep {
 	t.Helper()
-	return scanSteps(t, "service.yml")
+	return jobSteps(t, pipeline, "scan")
 }
 
-const osvAction = "google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0"
+func osvSteps(t *testing.T) map[string]osvStep {
+	t.Helper()
+	return jobSteps(t, "service.yml", "scan-osv")
+}
 
-// OSV-Scanner is Google's own action, pinned so Dependabot keeps it current; it exits non-zero on a finding,
-// so the step carries on and the report decides.
-func TestOSVScanUsesItsOwnAction(t *testing.T) {
-	steps := secureSteps(t)
+// a tag Dependabot's docker ecosystem can bump
+var osvImage = regexp.MustCompile(`^ghcr\.io/google/osv-scanner:v\d+\.\d+\.\d+$`)
+
+const osvRun = `/osv-scanner scan source --format=json --output-file="$GITHUB_WORKSPACE/osv-results.json" --recursive --allow-no-lockfiles .`
+
+// OSV-Scanner runs in Google's own image as the job's container, under an image: key so Dependabot's docker
+// updates keep the tag current; it exits non-zero on a finding, so the step carries on and the report decides.
+func TestOSVScanRunsInItsOwnImage(t *testing.T) {
+	for _, pipeline := range checkPipelines {
+		if text := readText(t, pipeline); strings.Contains(text, "google/osv-scanner-action") {
+			t.Errorf("%s still uses OSV-Scanner's container action", pipeline)
+		}
+		job := readScanPipeline(t, pipeline).Jobs["scan-osv"]
+		if job.Name != "scan (osv)" || job.RunsOn != "${{ inputs.scan_runs_on || inputs.runs_on }}" {
+			t.Errorf("%s: scan-osv name %q, runs-on %q", pipeline, job.Name, job.RunsOn)
+		}
+		if len(job.Container) != 1 || !osvImage.MatchString(job.Container["image"]) {
+			t.Errorf("%s: scan-osv container = %v", pipeline, job.Container)
+		}
+		if !maps.Equal(job.Permissions, map[string]string{"contents": "read"}) {
+			t.Errorf("%s: scan-osv permissions = %v", pipeline, job.Permissions)
+		}
+		if job.Defaults.Run["working-directory"] != "${{ inputs.working_directory }}" {
+			t.Errorf("%s: scan-osv runs in %q", pipeline, job.Defaults.Run["working-directory"])
+		}
+		var names []string
+		for _, s := range job.Steps {
+			names = append(names, s.Name)
+		}
+		if want := []string{"Check out", "Scan with OSV", "Report OSV findings"}; !slices.Equal(names, want) {
+			t.Errorf("%s: scan-osv steps = %v, want %v", pipeline, names, want)
+		}
+	}
+	steps := osvSteps(t)
+	if checkout := steps["Check out"]; checkout.With["persist-credentials"] != "false" || checkout.With["fetch-depth"] != "" {
+		t.Errorf("Check out = %+v", checkout)
+	}
 	scan := steps["Scan with OSV"]
-	text := readText(t, "service.yml")
-	if scan.Uses == "" || !strings.Contains(text, "uses: "+osvAction+"\n") || scan.ID != "osv" || !scan.ContinueOnError {
+	if scan.Uses != "" || scan.Run != osvRun || scan.ID != "osv" || !scan.ContinueOnError {
 		t.Errorf("Scan with OSV = %+v", scan)
-	}
-	want := "--format=json\n--output-file=osv-results.json\n--recursive\n./${{ inputs.working_directory }}"
-	if scan.With["scan-args"] != want {
-		t.Errorf("scan-args = %q, want %q", scan.With["scan-args"], want)
-	}
-	if _, ok := steps["Install OSV-Scanner"]; ok {
-		t.Error("the scan still installs OSV-Scanner itself")
 	}
 	report := steps["Report OSV findings"]
 	for name, want := range map[string]string{
@@ -99,27 +136,32 @@ func TestOSVScanUsesItsOwnAction(t *testing.T) {
 	}
 }
 
-// The container action needs a Linux runner that can run one, so the scan stage can run elsewhere than the rest,
-// in a job container if the runner set needs one; by default it runs with every other stage. A job container
-// runs git as root over the runner user's checkout, so the workspace is trusted before Gitleaks reads it.
+// The image needs a runner that can run a job container, so its stage can run elsewhere than the rest; by
+// default it runs with every other stage. The scan stage itself runs where everything else does, on the runner.
 func TestScanCanRunOnAContainerRunner(t *testing.T) {
-	for _, pipeline := range []string{"library.yml", "service.yml", "website.yml"} {
+	for _, pipeline := range checkPipelines {
 		w := readScanPipeline(t, pipeline)
-		for _, in := range []string{"scan_runs_on", "scan_container"} {
-			if input, ok := w.On.WorkflowCall.Inputs[in]; !ok || input.Default != "" || input.Type != "string" {
-				t.Errorf("%s: input %s = %+v", pipeline, in, input)
-			}
+		if input, ok := w.On.WorkflowCall.Inputs["scan_runs_on"]; !ok || input.Default != "" || input.Type != "string" {
+			t.Errorf("%s: input scan_runs_on = %+v", pipeline, input)
+		}
+		if _, ok := w.On.WorkflowCall.Inputs["scan_container"]; ok {
+			t.Errorf("%s still takes scan_container", pipeline)
 		}
 		scan := w.Jobs["scan"]
-		if scan.RunsOn != "${{ inputs.scan_runs_on || inputs.runs_on }}" || scan.Container != "${{ inputs.scan_container }}" {
-			t.Errorf("%s: scan runs-on %q, container %q", pipeline, scan.RunsOn, scan.Container)
+		if scan.RunsOn != "${{ inputs.runs_on }}" || scan.Container != nil {
+			t.Errorf("%s: scan runs-on %q, container %v", pipeline, scan.RunsOn, scan.Container)
 		}
 		if !maps.Equal(scan.Permissions, map[string]string{"contents": "read", "pull-requests": "write"}) {
 			t.Errorf("%s: scan permissions = %v", pipeline, scan.Permissions)
 		}
-		if len(scan.Steps) < 2 || scan.Steps[0].Name != "Check out" || scan.Steps[1].Name != "Trust the workspace" ||
-			scan.Steps[1].Run != `git config --global --add safe.directory "$GITHUB_WORKSPACE"` {
-			t.Errorf("%s: the workspace isn't trusted right after the checkout", pipeline)
+		if _, ok := scanSteps(t, pipeline)["Trust the workspace"]; ok {
+			t.Errorf("%s: scan still trusts the workspace, as only a job container needed", pipeline)
+		}
+		// what waits for the scan waits for OSV's too
+		for id, j := range w.Jobs {
+			if slices.Contains(j.Needs, "scan") != slices.Contains(j.Needs, "scan-osv") {
+				t.Errorf("%s: %s needs %v", pipeline, id, j.Needs)
+			}
 		}
 	}
 	// a generated project scans where it runs everything else
@@ -128,11 +170,12 @@ func TestScanCanRunOnAContainerRunner(t *testing.T) {
 			t.Errorf("%s sets the scan's runner", name)
 		}
 	}
-	// forgego's own private runs scan on the Kubernetes-mode set, in a container with git
+	// forgego's own private runs scan with OSV on the Kubernetes-mode set
+	if strings.Contains(readText(t, ".index.yml"), "scan_container") {
+		t.Error("forgego's own .index.yml still passes scan_container")
+	}
 	for _, id := range []string{"service", "website"} {
-		with := readWorkflow(t, ".index.yml").Jobs[id].With
-		if with["scan_runs_on"] != "${{ github.event.repository.private && 'xerus-docker' || 'ubuntu-latest' }}" ||
-			with["scan_container"] != "${{ github.event.repository.private && 'buildpack-deps:trixie-scm' || '' }}" {
+		if with := readWorkflow(t, ".index.yml").Jobs[id].With; with["scan_runs_on"] != "${{ github.event.repository.private && 'xerus-docker' || 'ubuntu-latest' }}" {
 			t.Errorf("forgego's own %s scans with %v", id, with)
 		}
 	}
@@ -140,7 +183,7 @@ func TestScanCanRunOnAContainerRunner(t *testing.T) {
 
 // govulncheck, like OSV, fails a pull request and only warns elsewhere.
 func TestGovulncheckFailsOnlyAPullRequest(t *testing.T) {
-	for _, pipeline := range []string{"library.yml", "service.yml", "website.yml"} {
+	for _, pipeline := range checkPipelines {
 		scan := scanSteps(t, pipeline)["Scan with govulncheck"]
 		if scan.Env["ENFORCE"] != "${{ github.event_name == 'pull_request' }}" ||
 			!strings.Contains(scan.Run, `if [ "$ENFORCE" = true ]`) || !strings.Contains(scan.Run, "exit 1") {
@@ -151,21 +194,22 @@ func TestGovulncheckFailsOnlyAPullRequest(t *testing.T) {
 
 // Every check pipeline gates on OSV the same way, so a fix to one reaches them all.
 func TestCheckPipelinesShareTheOSVScan(t *testing.T) {
-	want := secureSteps(t)
+	want := readScanPipeline(t, "service.yml").Jobs["scan-osv"]
 	for _, pipeline := range []string{"library.yml", "website.yml"} {
-		got := scanSteps(t, pipeline)
-		for _, name := range []string{"Trust the workspace", "Scan with OSV", "Report OSV findings"} {
-			if !reflect.DeepEqual(got[name], want[name]) {
-				t.Errorf("%s: %q differs from service.yml's", pipeline, name)
-			}
+		if got := readScanPipeline(t, pipeline).Jobs["scan-osv"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: scan-osv differs from service.yml's", pipeline)
 		}
 	}
 }
 
-// runs the report step's github-script body under Node with a stand-in for its core API
+// runs the report step's github-script body under Node with a stand-in for its core API; file collects the
+// annotations' files
 const osvHarness = `
-const calls = { info: [], warning: [], error: [], setFailed: [] };
-const record = (kind) => (message) => calls[kind].push(message);
+const calls = { info: [], warning: [], error: [], setFailed: [], file: [] };
+const record = (kind) => (message, props) => {
+  calls[kind].push(message);
+  if (props?.file !== undefined) calls.file.push(props.file);
+};
 const core = {
   info: record('info'), warning: record('warning'), error: record('error'), setFailed: record('setFailed'),
   summary: { addHeading() { return this; }, addTable() { return this; }, async write() {} },
@@ -175,7 +219,8 @@ const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 new AsyncFunction('require', 'core', body)(require, core).then(() => console.log(JSON.stringify(calls)));
 `
 
-// runs the report with the scan step's outcome and, unless results is nil, a report holding them
+// runs the report with the scan step's outcome and, unless results is nil, a report holding them; a result's
+// source path is taken as relative to the workspace and made absolute, as the scanner reports it
 func runOSVReport(t *testing.T, outcome string, results []map[string]any, enforce bool) map[string][]string {
 	t.Helper()
 	node, err := exec.LookPath("node")
@@ -184,12 +229,17 @@ func runOSVReport(t *testing.T, outcome string, results []map[string]any, enforc
 	}
 	dir := t.TempDir()
 	script := filepath.Join(dir, "report.js")
-	if err := os.WriteFile(script, []byte(secureSteps(t)["Report OSV findings"].With["script"]), 0o600); err != nil {
+	if err := os.WriteFile(script, []byte(osvSteps(t)["Report OSV findings"].With["script"]), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	report := filepath.Join(dir, "osv-results.json")
 	if results != nil {
-		b, _ := json.Marshal(map[string]any{"results": results})
+		absolute := make([]map[string]any, len(results))
+		for i, r := range results {
+			absolute[i] = maps.Clone(r)
+			absolute[i]["source"] = map[string]any{"path": filepath.Join(dir, filepath.FromSlash(r["source"].(map[string]any)["path"].(string)))}
+		}
+		b, _ := json.Marshal(map[string]any{"results": absolute})
 		if err := os.WriteFile(report, b, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -222,14 +272,18 @@ func finding(id, maxSeverity, rating string) map[string]any {
 
 func TestOSVReportFailsOnlyAPullRequestOnAHighFinding(t *testing.T) {
 	results := []map[string]any{{
-		"source":   map[string]any{"path": "/github/workspace/go.mod"},
+		"source":   map[string]any{"path": "docs/go.mod"},
 		"packages": []any{finding("GHSA-high", "9.8", ""), finding("GO-2026-0001", "", "")},
 	}}
 	for enforce, failed := range map[bool]int{true: 1, false: 0} {
-		// the action fails on any finding
+		// the scanner fails on any finding
 		calls := runOSVReport(t, "failure", results, enforce)
 		if len(calls["setFailed"]) != failed || len(calls["error"]) != 1 {
 			t.Errorf("enforce %v: calls = %v", enforce, calls)
+		}
+		// each finding is annotated on the lockfile, relative to the workspace
+		if want := filepath.Join("docs", "go.mod"); !slices.Equal(calls["file"], []string{want, want}) {
+			t.Errorf("enforce %v: annotated files = %v, want %s", enforce, calls["file"], want)
 		}
 		// a Go advisory has no severity, so it's a warning
 		if !strings.Contains(strings.Join(calls["warning"], "\n"), "GO-2026-0001") {

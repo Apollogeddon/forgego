@@ -103,9 +103,9 @@ func readText(t *testing.T, name string) string {
 
 // The spec's stages: a run page reads <pipeline> / <stage>, the same words in every forge.
 var stages = map[string][]string{
-	"library": {"lint", "scan", "test", "test (windows)", "test (macos)", "build"},
-	"service": {"lint", "scan", "test", "test (windows)", "test (macos)", "build"},
-	"website": {"lint", "scan", "test", "build", "check"},
+	"library": {"lint", "scan", "scan (osv)", "test", "test (windows)", "test (macos)", "build"},
+	"service": {"lint", "scan", "scan (osv)", "test", "test (windows)", "test (macos)", "build"},
+	"website": {"lint", "scan", "scan (osv)", "test", "build", "check"},
 	"docker":  {"build", "test", "push"},
 	"version": {"release"},
 	"publish": {"package", "assets", "attest"},
@@ -657,7 +657,7 @@ func TestRunnerStagesDefaultToNothing(t *testing.T) {
 				t.Errorf("%s: %s defaults to %v", pipeline, in, w.On.WorkflowCall.Inputs[in].Default)
 			}
 			j := w.Jobs["test-"+system]
-			if j.If != "inputs."+in+" != ''" || !slices.Equal(j.Needs, []string{"lint", "scan"}) {
+			if j.If != "inputs."+in+" != ''" || !slices.Equal(j.Needs, []string{"lint", "scan", "scan-osv"}) {
 				t.Errorf("%s: test-%s = if %q, needs %v", pipeline, system, j.If, j.Needs)
 			}
 		}
@@ -777,6 +777,9 @@ func TestSquashNeedsDependabotAndPassingChecks(t *testing.T) {
 	for _, want := range []string{
 		"inputs.checks_passed && ", "github.event.pull_request.user.login == 'dependabot[bot]' && ", "github.actor == 'dependabot[bot]' && ",
 		"github.event.pull_request.head.repo.full_name == github.repository && ",
+		// these change workflow files, which GITHUB_TOKEN may never merge
+		" && !startsWith(github.head_ref, 'dependabot/github_actions/')",
+		" && !startsWith(github.head_ref, 'dependabot/docker/dot-github/workflows/')",
 	} {
 		if !strings.Contains(squash.If, want) || strings.Contains(squash.If, "||") {
 			t.Errorf("squash if = %q, want it to need %q", squash.If, want)

@@ -63,9 +63,9 @@ jobs:
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 15
     # Dependabot opened the pull request, from a branch of this repository, and made its latest change, and the
-    # checks passed. Not for GitHub Actions updates: they change workflow files, which GITHUB_TOKEN may never
-    # merge, so a person merges them
-    if: inputs.checks_passed && github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'dependabot/github_actions/')
+    # checks passed. Not for GitHub Actions updates, or Docker updates to the images the workflows run in: they
+    # change workflow files, which GITHUB_TOKEN may never merge, so a person merges them
+    if: inputs.checks_passed && github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'dependabot/github_actions/') && !startsWith(github.head_ref, 'dependabot/docker/dot-github/workflows/')
     permissions:
       contents: write
       pull-requests: write
