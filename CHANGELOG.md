@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.1.1](https://github.com/Apollogeddon/forgego/compare/v2.1.0...v2.1.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **ci:** set up the latest patch of go.mod's Go release, so a Go security fix reaches CI unasked ([03191bd](https://github.com/Apollogeddon/forgego/commit/03191bdda97ae740d1e8f3f1634e489dceb9a14a))
+* **deps:** bump go.yaml.in/yaml/v3 ([#64](https://github.com/Apollogeddon/forgego/issues/64)) ([9a37ac9](https://github.com/Apollogeddon/forgego/commit/9a37ac9815eab34386ba0223031c2ee3b975b923))
+* let Go and tool security fixes reach a project without waiting on forgego, as forgejs and forgepy do ([f1a235f](https://github.com/Apollogeddon/forgego/commit/f1a235fc3ab7015908ecb41a075b444f377d1351))
+* **sync:** keep a tool pin the project raised, so a Dependabot security update to it isn't reverted ([895b623](https://github.com/Apollogeddon/forgego/commit/895b623bd327d424e7d85d0cb5140c1c61caecdb))
+* **sync:** lower a pin forgego wrote, and leave the tools' indirect modules to security updates ([b82451c](https://github.com/Apollogeddon/forgego/commit/b82451c0544709b28afec1ca0438716ebb0edd1c))
+* **sync:** lower a pin forgego wrote, telling it from one the project changed by a digest line ([16f8923](https://github.com/Apollogeddon/forgego/commit/16f892343d03776656151a0de07b0adae72281bf))
+* **tools:** bump github.com/aws/aws-sdk-go-v2/internal/ini ([98648f6](https://github.com/Apollogeddon/forgego/commit/98648f6e789f7b0dd3bed888ecb2a1684eb215d2))
+* **tools:** bump github.com/aws/aws-sdk-go-v2/internal/ini from 1.8.4 to 1.8.6 in /tools/hugo ([9b1ce79](https://github.com/Apollogeddon/forgego/commit/9b1ce79135b6ee9de11b756452643378f8cc3480))
+* **tools:** bump github.com/go-openapi/swag/jsonname from 0.25.5 to 0.29.2 in /tools/hugo ([e91e480](https://github.com/Apollogeddon/forgego/commit/e91e480712927b690bc8120583b33be4107a2f8f))
+* **tools:** bump github.com/go-openapi/swag/jsonname in /tools/hugo ([8166229](https://github.com/Apollogeddon/forgego/commit/81662292f5caf10d369a8a6d5d122eb2ce7511ab))
+* **tools:** bump go-jose to v4.1.7 and x/net to v0.62.0, and let Dependabot bump indirect modules ([ca4fcbc](https://github.com/Apollogeddon/forgego/commit/ca4fcbcb63703a7c5a5332f5f5998805e333a1ae))
+* **tools:** bump gopkg.in/ini.v1 from 1.67.0 to 1.67.3 in /tools/golangci-lint ([ec1551d](https://github.com/Apollogeddon/forgego/commit/ec1551da902ae162d7641473e7ac21f765a99a84))
+* **tools:** bump gopkg.in/ini.v1 in /tools/golangci-lint ([bcd5c20](https://github.com/Apollogeddon/forgego/commit/bcd5c20a42c69fef9df3e88c51392602e4bc33ef))
+* **tools:** run go generate and sync for the aws-sdk-go-v2/internal/ini bump in hugo ([4783df4](https://github.com/Apollogeddon/forgego/commit/4783df498bac3183ae43e7a27fccb77d32a35f75))
+* **tools:** run go generate and sync for the go-openapi/swag/jsonname bump in hugo ([8f5ef24](https://github.com/Apollogeddon/forgego/commit/8f5ef24cb0889bf5635087e143b6f2022be941c4))
+* **tools:** run go generate and sync for the gopkg.in/ini.v1 bump in golangci-lint ([f69a486](https://github.com/Apollogeddon/forgego/commit/f69a486f086cab91d67e145714c96e87aa01fdd2))
+
 ## [2.1.0](https://github.com/Apollogeddon/forgego/compare/v2.0.2...v2.1.0) (2026-10-23)
 
 
