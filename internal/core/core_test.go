@@ -1,6 +1,8 @@
 package core
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
@@ -504,6 +506,41 @@ func TestSyncAndInitKeepAPinTheProjectRaised(t *testing.T) {
 	_ = fs.WriteFile(dir+"/.forgego/task/go.mod", strings.Replace(mod, module+" "+pinned+" ", module+" v0.0.1 ", 1))
 	if code := sync.Run(fs, dir, true); code != 1 {
 		t.Error("sync --check accepts a pin older than forgego's")
+	}
+}
+
+// A pin forgego wrote and the project left alone is forgego's: when a later release pins a
+// module lower, as one undoing a bad bump does, sync lowers the project's too, rather than
+// keeping it as if the project had raised it.
+func TestSyncLowersAPinForgegoWrote(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	current := read(t, fs, ".forgego/task/go.mod")
+	marker, body, _ := strings.Cut(current, "\n")
+	if !strings.HasPrefix(marker, "// Pinned by forgego, ") {
+		t.Fatalf("init wrote task's pin without forgego's line: %q", marker)
+	}
+	var module, pinned string
+	for _, line := range strings.Split(body, "\n") {
+		if f := strings.Fields(line); len(f) == 4 && f[2] == "//" && f[3] == "indirect" {
+			module, pinned = f[0], f[1]
+			break
+		}
+	}
+	// what an earlier release wrote: the same pin with a module higher, marked as forgego's
+	older := strings.Replace(body, module+" "+pinned+" ", module+" v0.999.0 ", 1)
+	digest := sha256.Sum256([]byte(older))
+	_ = fs.WriteFile(dir+"/.forgego/task/go.mod", "// Pinned by forgego, "+hex.EncodeToString(digest[:8])+"\n"+older)
+	_ = fs.WriteFile(dir+"/.forgego/task/go.sum", read(t, fs, ".forgego/task/go.sum")+module+" v0.999.0/go.mod h1:x=\n")
+
+	if code := sync.Run(fs, dir, true); code != 1 {
+		t.Fatal("sync --check accepts a pin an earlier release wrote")
+	}
+	if code := sync.Run(fs, dir, false); code != 0 {
+		t.Fatalf("sync returned %d", code)
+	}
+	if read(t, fs, ".forgego/task/go.mod") != current {
+		t.Error("sync kept a pin forgego wrote as if the project had raised it")
 	}
 }
 
