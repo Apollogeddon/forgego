@@ -1,6 +1,8 @@
 package gomod
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"go/version"
 	"path/filepath"
 	"strings"
@@ -27,18 +29,51 @@ func (p Pin) Go() string {
 	return "go" + f.Go.Version
 }
 
-// Pinned is the pin a project keeps for tool: its own while it raises forgego's, else
-// forgego's. A Dependabot security update in the project raises a module of the pin past
-// forgego's, and keeping it lets the project patch a tool without waiting for a forgego
-// release; once forgego's pin is newer in any module, forgego's replaces it.
+// markPrefix starts the line forgego puts first in each pin it writes, followed by a digest
+// of the rest, so it can tell a pin it wrote from one the project changed since.
+const markPrefix = "// Pinned by forgego, "
+
+// mark gives mod the line that says forgego wrote it.
+func mark(mod string) string {
+	return markPrefix + digest(mod) + "\n" + mod
+}
+
+// unmark returns mod without forgego's line, and whether mod is unchanged since forgego
+// wrote it: its line is there and its digest matches the rest.
+func unmark(mod string) (string, bool) {
+	first, rest, _ := strings.Cut(mod, "\n")
+	recorded, ok := strings.CutPrefix(first, markPrefix)
+	if !ok {
+		return mod, false
+	}
+	return rest, recorded == digest(rest)
+}
+
+func digest(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:8])
+}
+
+// Pinned is the pin a project keeps for tool: its own when the project changed it and it
+// raises forgego's, else forgego's. A Dependabot security update in the project raises a
+// module of the pin past forgego's, and keeping it lets the project patch a tool without
+// waiting for a forgego release; once forgego's pin is newer in any module, forgego's
+// replaces it. A pin unchanged since forgego wrote it is always replaced, so a forgego
+// release that pins a module lower, as one that undoes a bad bump does, reaches the project.
 func Pinned(fs fsys.FS, dir string, tool templates.Tool) Pin {
-	forgego := Pin{tool, tool.ModFile(), tool.SumFile()}
+	forgego := Pin{tool, mark(tool.ModFile()), tool.SumFile()}
 	mod, err := fs.ReadFile(filepath.Join(dir, tool.ModPath()))
 	if err != nil {
 		return forgego
 	}
+	// a pin without forgego's line came from a release before it, and is treated as written
+	// by forgego: it can't be told from one the project changed
+	body, unchanged := unmark(mod)
+	if unchanged || !strings.HasPrefix(mod, markPrefix) {
+		return forgego
+	}
 	sum, err := fs.ReadFile(filepath.Join(dir, tool.SumPath()))
-	if err != nil || !Raises(mod, forgego.Mod) || !summed(mod, sum) {
+	if err != nil || !Raises(body, tool.ModFile()) || !summed(body, sum) {
 		return forgego
 	}
 	return Pin{tool, mod, sum}
