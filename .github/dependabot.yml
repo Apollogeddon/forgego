@@ -32,6 +32,10 @@ updates:
       tools:
         patterns:
           - "*"
+    # indirect modules too, which version updates otherwise skip: projects get them only
+    # through these pins
+    allow:
+      - dependency-type: "all"
     commit-message:
       prefix: "fix(tools)"
     cooldown:
