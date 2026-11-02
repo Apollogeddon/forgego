@@ -45,29 +45,36 @@ func TestRaises(t *testing.T) {
 	}
 }
 
-// A project's pin that raises forgego's, as a Dependabot security update leaves it, is
-// kept with its go.sum; any other is replaced with forgego's.
+// A pin unchanged since forgego wrote it is forgego's, and is replaced even when it's
+// newer than forgego's pin now, as after a release that undoes a bad bump. One the project
+// changed since, as a Dependabot security update does, is kept with its go.sum while it
+// raises forgego's; any other is replaced with forgego's.
 func TestPinnedKeepsAPinTheProjectRaised(t *testing.T) {
 	tool := templates.Task
-	forgego := tool.ModFile()
-	if !strings.Contains(forgego, "golang.org/x/net ") {
+	plain := tool.ModFile()
+	forgego := Pin{tool, mark(plain), tool.SumFile()}
+	if !strings.Contains(plain, "golang.org/x/net ") {
 		t.Fatal("task's pin no longer requires golang.org/x/net; pick another module to raise")
 	}
-	raised := raise(t, forgego, "golang.org/x/net", "v0.99.0")
-	lowered := raise(t, forgego, "golang.org/x/net", "v0.0.1")
+	raised := raise(t, plain, "golang.org/x/net", "v0.99.0")
+	lowered := raise(t, plain, "golang.org/x/net", "v0.0.1")
 	raisedSum := tool.SumFile() + "golang.org/x/net v0.99.0 h1:x=\ngolang.org/x/net v0.99.0/go.mod h1:x=\n"
+	// the project changed a pin forgego wrote: its line stays, and no longer matches
+	edited := func(mod string) string { return markPrefix + digest(plain) + "\n" + mod }
 
 	for _, tc := range []struct {
 		name     string
 		mod, sum string // empty for no file
 		want     Pin
 	}{
-		{"no pin", "", "", Pin{tool, forgego, tool.SumFile()}},
-		{"forgego's pin", forgego, tool.SumFile(), Pin{tool, forgego, tool.SumFile()}},
-		{"a raised pin", raised, raisedSum, Pin{tool, raised, raisedSum}},
-		{"a raised pin without its go.sum", raised, "", Pin{tool, forgego, tool.SumFile()}},
-		{"a raised pin whose go.sum lacks the raise", raised, tool.SumFile(), Pin{tool, forgego, tool.SumFile()}},
-		{"an older pin", lowered, tool.SumFile() + "golang.org/x/net v0.0.1/go.mod h1:x=\n", Pin{tool, forgego, tool.SumFile()}},
+		{"no pin", "", "", forgego},
+		{"forgego's pin", mark(plain), tool.SumFile(), forgego},
+		{"a raised pin", edited(raised), raisedSum, Pin{tool, edited(raised), raisedSum}},
+		{"a raised pin without its go.sum", edited(raised), "", forgego},
+		{"a raised pin whose go.sum lacks the raise", edited(raised), tool.SumFile(), forgego},
+		{"an older pin", edited(lowered), tool.SumFile() + "golang.org/x/net v0.0.1/go.mod h1:x=\n", forgego},
+		{"a newer pin forgego wrote", mark(raised), raisedSum, forgego},
+		{"a raised pin from before forgego marked its pins", raised, raisedSum, forgego},
 	} {
 		fs := fsys.NewMemory(nil)
 		if tc.mod != "" {
@@ -83,6 +90,19 @@ func TestPinnedKeepsAPinTheProjectRaised(t *testing.T) {
 		if got := Pinned(fs, "/p", tool); got != tc.want {
 			t.Errorf("%s: kept the wrong pin", tc.name)
 		}
+	}
+}
+
+func TestUnmark(t *testing.T) {
+	mod := templates.Task.ModFile()
+	if body, unchanged := unmark(mark(mod)); body != mod || !unchanged {
+		t.Errorf("a marked pin reads as changed, or loses its body")
+	}
+	if body, unchanged := unmark(mod); body != mod || unchanged {
+		t.Errorf("a pin without forgego's line reads as forgego's")
+	}
+	if _, unchanged := unmark(strings.Replace(mark(mod), "go ", "go  ", 1)); unchanged {
+		t.Errorf("a changed pin reads as unchanged")
 	}
 }
 

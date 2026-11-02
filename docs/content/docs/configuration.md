@@ -31,7 +31,7 @@ task sync
 
 `sync` refreshes:
 
-- each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use. A pin the project raised is kept: one that requires every module Forge.go's does at the same version or newer, for no older Go, as a Dependabot security update leaves it. Once Forge.go's pin is newer in any module, Forge.go's replaces it;
+- each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use. Each pin starts with a `// Pinned by forgego, <digest>` line, a digest of the rest, so `sync` can tell a pin it wrote from one you changed. A pin it wrote is replaced with the running Forge.go's, newer or older. One you changed since, as a Dependabot security update does, is kept while it requires every module Forge.go's does at the same version or newer, for no older Go; once Forge.go's pin is newer in any module, Forge.go's replaces it. Leave the first line alone. A pin from a release before that line is treated as Forge.go's;
 - `.forgego/golangci.yml` and `.golangci.yml`, when the project has `.forgego/golangci.yml` (linting on, not a website), using `.golangci.local.yml` if it exists;
 - a website's vendored FlexSearch in `assets/forgego/flexsearch/`, when the project pins Hugo (see [Websites](#websites));
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);

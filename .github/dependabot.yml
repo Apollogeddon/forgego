@@ -22,7 +22,9 @@ updates:
       default-days: 3
 
   # The tools every generated project pins. forgego embeds a copy of each, so a bump
-  # needs `task generate` on the PR before its tests pass.
+  # needs `task generate` on the PR before its tests pass. Only the tools are proposed:
+  # their indirect modules stay where each release pins them, the versions it's tested
+  # with, and a vulnerable one comes as a security update.
   - package-ecosystem: "gomod"
     directories:
       - "/tools/*"
@@ -32,10 +34,6 @@ updates:
       tools:
         patterns:
           - "*"
-    # indirect modules too, which version updates otherwise skip: projects get them only
-    # through these pins
-    allow:
-      - dependency-type: "all"
     commit-message:
       prefix: "fix(tools)"
     cooldown:
