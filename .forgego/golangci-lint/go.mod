@@ -1,4 +1,4 @@
-// Pinned by forgego, bffaa8865b228e77
+// Pinned by forgego, d69847204164a652
 module github.com/apollogeddon/forgego/tools/golangci-lint
 
 go 1.26.0

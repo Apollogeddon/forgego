@@ -1,4 +1,4 @@
-// Pinned by forgego, 3d18986b0fd40775
+// Pinned by forgego, 252eb12c1b46e043
 module github.com/apollogeddon/forgego/tools/gotestsum
 
 go 1.26.0

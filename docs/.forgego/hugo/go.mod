@@ -1,4 +1,4 @@
-// Pinned by forgego, 5f17a08780700dd3
+// Pinned by forgego, dd816b60ef9fefea
 module github.com/apollogeddon/forgego/tools/hugo
 
 go 1.27.0

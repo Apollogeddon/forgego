@@ -1,4 +1,4 @@
-// Pinned by forgego, 708d899e80bcc964
+// Pinned by forgego, e142a73fa24fcfb1
 module github.com/apollogeddon/forgego/tools/task
 
 go 1.26.4
