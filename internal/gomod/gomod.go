@@ -10,15 +10,13 @@ import (
 	"strings"
 
 	"golang.org/x/mod/modfile"
-
-	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
-// ToolsGo is the newest Go any of tools needs, such as go1.27.0; empty for none.
-func ToolsGo(tools []templates.Tool) string {
+// ToolsGo is the newest Go any of pins needs, such as go1.27.0; empty for none.
+func ToolsGo(pins []Pin) string {
 	newest := ""
-	for _, tool := range tools {
-		if v := "go" + tool.GoVersion(); version.Compare(v, newest) > 0 {
+	for _, pin := range pins {
+		if v := pin.Go(); version.Compare(v, newest) > 0 {
 			newest = v
 		}
 	}

@@ -31,7 +31,7 @@ task sync
 
 `sync` refreshes:
 
-- each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use;
+- each `.forgego/<tool>/go.mod` and `go.sum` the project already has — it never adds a tool the project doesn't use. A pin the project raised is kept: one that requires every module Forge.go's does at the same version or newer, for no older Go, as a Dependabot security update leaves it. Once Forge.go's pin is newer in any module, Forge.go's replaces it;
 - `.forgego/golangci.yml` and `.golangci.yml`, when the project has `.forgego/golangci.yml` (linting on, not a website), using `.golangci.local.yml` if it exists;
 - a website's vendored FlexSearch in `assets/forgego/flexsearch/`, when the project pins Hugo (see [Websites](#websites));
 - the `toolchain` line in `go.mod`, when the pinned tools need a newer Go than the project declares (see below);
@@ -48,7 +48,7 @@ Each tool lives in its own module, a `go.mod` and `go.sum` under `.forgego/<tool
 go tool -modfile=.forgego/<tool>/go.mod <tool>
 ```
 
-Keeping one module per tool means no two tools' dependencies are ever resolved together, so a tool can't force another onto an incompatible version — and none of them touch your project's `go.mod` or `go.sum`. `go` downloads and caches a tool the first time it runs. `sync` moves a project to the tool versions of the Forge.go that runs it.
+Keeping one module per tool means no two tools' dependencies are ever resolved together, so a tool can't force another onto an incompatible version — and none of them touch your project's `go.mod` or `go.sum`. `go` downloads and caches a tool the first time it runs. `sync` moves a project to the tool versions of the Forge.go that runs it, except where the project has raised them: Dependabot proposes security updates to the pins (see [Vulnerable dependencies]({{< relref "workflows/_index.md#vulnerable-dependencies" >}})), and `init` and `sync` keep a raised pin, and the newer Go it may need, until Forge.go's own pin catches up.
 
 ### The `toolchain` line
 
@@ -228,7 +228,7 @@ so, once Go has downloaded Hugo and the theme, the site builds with no network a
 | :--- | :--- |
 | `.editorconfig` | LF line endings, UTF-8 and 120 columns; tabs in Go files, `go.mod` and `go.sum`, two spaces elsewhere |
 | `.gitattributes` | LF in the working tree on every platform, so a Windows checkout reads the same, with a website's vendored FlexSearch kept byte for byte; written once, never overwritten, so your own rules (Git LFS, say) are safe |
-| `.github/dependabot.yml` | Weekly Go module and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. Forge.go itself is proposed the same way, through its pin in `.forgego/forgego/go.mod`. The `merge` pipeline merges them once CI passes. `.index.yml` calls Forge.go's pipelines at `@main`, which has no versions to propose. The other tools in `.forgego/` aren't included: `forgego sync` keeps them in step with Forge.go. |
+| `.github/dependabot.yml` | Weekly Go module and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. Forge.go itself is proposed the same way, through its pin in `.forgego/forgego/go.mod`. The `merge` pipeline merges them once CI passes. `.index.yml` calls Forge.go's pipelines at `@main`, which has no versions to propose. The other tools in `.forgego/` get only security updates, with no cooldown: `forgego sync` brings Forge.go's newer pins, and keeps a pin a security update raised until Forge.go's catches up. |
 | `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
 
 The `CODEOWNERS` owner is the account in a `github.com/<owner>/...` [module path]({{< relref "getting-started.md#module-path" >}}). A project whose module path isn't on GitHub gets no `CODEOWNERS`; run `init` again once it has a GitHub remote.

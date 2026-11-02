@@ -16,7 +16,12 @@ func (Workflow) ShouldRun(config.Init) bool { return true }
 func (Workflow) Cleanup(*Context)           {}
 
 func (Workflow) Apply(ctx *Context) bool {
-	ok := CreateFile(ctx, ".github/dependabot.yml", templates.Dependabot(ctx.Cfg.Docker))
+	// the last feature, so every tool is pinned by now
+	tools := make([]string, len(ctx.Tools))
+	for i, pin := range ctx.Tools {
+		tools[i] = pin.Tool.Name
+	}
+	ok := CreateFile(ctx, ".github/dependabot.yml", templates.Dependabot(ctx.Cfg.Docker, tools))
 	if owner := ctx.Project.GitHubOwner(); owner != "" {
 		ok = CreateFile(ctx, ".github/CODEOWNERS", templates.Render(templates.Codeowners, map[string]string{"OWNER": owner})) && ok
 	} else {

@@ -3,6 +3,8 @@ package features
 import (
 	"strings"
 
+	"github.com/apollogeddon/forgego/v2/internal/gomod"
+
 	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
@@ -16,12 +18,14 @@ func ref(tool templates.Tool) string {
 	return "{{." + toolVar(tool) + "}}"
 }
 
-// useTool pins a tool in .forgego/ and gives the Taskfile a var that runs it.
+// useTool pins a tool in .forgego/ and gives the Taskfile a var that runs it. A pin the
+// project raised past forgego's, as a Dependabot security update does, is kept.
 func useTool(ctx *Context, tool templates.Tool) bool {
-	ok := WriteManaged(ctx, tool.ModPath(), tool.ModFile())
-	ok = WriteManaged(ctx, tool.SumPath(), tool.SumFile()) && ok
+	pin := gomod.Pinned(ctx.FS, ctx.Cfg.Target, tool)
+	ok := WriteManaged(ctx, tool.ModPath(), pin.Mod)
+	ok = WriteManaged(ctx, tool.SumPath(), pin.Sum) && ok
 	ctx.Tasks.Var(toolVar(tool), tool.Command())
-	ctx.Tools = append(ctx.Tools, tool)
+	ctx.Tools = append(ctx.Tools, pin)
 	return ok
 }
 

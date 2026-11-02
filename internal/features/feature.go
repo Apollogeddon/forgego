@@ -8,9 +8,9 @@ import (
 	"github.com/apollogeddon/forgego/v2/internal/config"
 	"github.com/apollogeddon/forgego/v2/internal/console"
 	"github.com/apollogeddon/forgego/v2/internal/fsys"
+	"github.com/apollogeddon/forgego/v2/internal/gomod"
 	"github.com/apollogeddon/forgego/v2/internal/project"
 	"github.com/apollogeddon/forgego/v2/internal/taskfile"
-	"github.com/apollogeddon/forgego/v2/internal/templates"
 )
 
 // Context is what every feature reads and writes during one run.
@@ -22,8 +22,8 @@ type Context struct {
 	// Starter is set when the project's source is forgego's starter, untouched, so the
 	// starter test can go next to it without testing code that isn't there.
 	Starter bool
-	// Tools are the tools the features pinned, so go.mod's toolchain can run them all.
-	Tools []templates.Tool
+	// Tools are the pins the features wrote, so go.mod's toolchain can run them all.
+	Tools []gomod.Pin
 }
 
 // Feature is one step of the pipeline.

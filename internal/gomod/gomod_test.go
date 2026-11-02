@@ -15,14 +15,24 @@ func TestToolsGoIsTheNewestToolRequirement(t *testing.T) {
 	if got := ToolsGo(nil); got != "" {
 		t.Errorf("ToolsGo(nil) = %q", got)
 	}
-	got := ToolsGo(templates.Tools)
+	var pins []Pin
+	for _, tool := range templates.Tools {
+		pins = append(pins, Pin{tool, tool.ModFile(), tool.SumFile()})
+	}
+	got := ToolsGo(pins)
 	for _, tool := range templates.Tools {
 		if version.Compare("go"+tool.GoVersion(), got) > 0 {
 			t.Errorf("%s needs %s, newer than %s", tool.Name, tool.GoVersion(), got)
 		}
 	}
-	if want := ToolsGo([]templates.Tool{templates.Gotestsum}); got == want {
+	gotestsum := templates.Gotestsum
+	if want := ToolsGo([]Pin{{gotestsum, gotestsum.ModFile(), gotestsum.SumFile()}}); got == want {
 		t.Errorf("every tool needs the same Go as gotestsum, %s", got)
+	}
+	// a pin the project raised to a newer Go needs that Go
+	raised := strings.Replace(gotestsum.ModFile(), "go "+gotestsum.GoVersion(), "go 1.99.0", 1)
+	if got := ToolsGo([]Pin{{gotestsum, raised, ""}}); got != "go1.99.0" {
+		t.Errorf("a raised pin's Go = %s, want go1.99.0", got)
 	}
 }
 
