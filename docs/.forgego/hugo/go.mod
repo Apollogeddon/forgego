@@ -1,4 +1,4 @@
-// Pinned by forgego, 7cec0cfc19e85c93
+// Pinned by forgego, 27351062fb7edc77
 module github.com/apollogeddon/forgego/tools/hugo
 
 go 1.27.0
@@ -87,8 +87,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.7 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-openapi/jsonpointer v0.22.5 // indirect
-	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
+	github.com/go-openapi/jsonpointer v1.0.1 // indirect
 	github.com/gobuffalo/flect v1.0.3 // indirect
 	github.com/gobwas/glob v1.0.0 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
