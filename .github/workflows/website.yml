@@ -21,7 +21,7 @@ on:
         type: string
         default: '.'
       go_version:
-        description: "Go version; empty reads the project's go.mod, else Go 1.27"
+        description: "Go version; empty takes the latest patch of the Go release the project's go.mod names, else Go 1.27"
         required: false
         type: string
         default: ''
@@ -99,22 +99,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # the input if set, else the project's go.mod, else forgego's default
+      # the input if set, else the Go release the project's go.mod names, else forgego's default
       - name: Resolve the Go version
         id: go
         env:
           INPUT: ${{ inputs.go_version }}
-          DIR: ${{ inputs.working_directory }}
         run: |
           if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
-          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          # else the newer of go.mod's go and toolchain lines, as a minor release
+          elif [ -f go.mod ] && release=$(awk '($1 == "go" || $1 == "toolchain") && $2 ~ /^(go)?[0-9]/ { sub(/^go/, "", $2); print $2 }' go.mod | sort -V | tail -n 1 | grep -oE '^[0-9]+\.[0-9]+'); then
+            echo "version=$release" >> "$GITHUB_OUTPUT"
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
-          go-version-file: ${{ steps.go.outputs.file }}
+          # that release's latest patch, so a Go security fix reaches every run without a change to go.mod
+          check-latest: true
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
@@ -156,16 +158,17 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
-      # the input if set, else the project's go.mod, else forgego's default
+      # the input if set, else the Go release the project's go.mod names, else forgego's default
       - name: Resolve the Go version
         id: go
         if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         env:
           INPUT: ${{ inputs.go_version }}
-          DIR: ${{ inputs.working_directory }}
         run: |
           if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
-          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          # else the newer of go.mod's go and toolchain lines, as a minor release
+          elif [ -f go.mod ] && release=$(awk '($1 == "go" || $1 == "toolchain") && $2 ~ /^(go)?[0-9]/ { sub(/^go/, "", $2); print $2 }' go.mod | sort -V | tail -n 1 | grep -oE '^[0-9]+\.[0-9]+'); then
+            echo "version=$release" >> "$GITHUB_OUTPUT"
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
@@ -173,7 +176,8 @@ jobs:
         if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         with:
           go-version: ${{ steps.go.outputs.version }}
-          go-version-file: ${{ steps.go.outputs.file }}
+          # that release's latest patch, so a Go security fix reaches every run without a change to go.mod
+          check-latest: true
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
@@ -302,22 +306,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # the input if set, else the project's go.mod, else forgego's default
+      # the input if set, else the Go release the project's go.mod names, else forgego's default
       - name: Resolve the Go version
         id: go
         env:
           INPUT: ${{ inputs.go_version }}
-          DIR: ${{ inputs.working_directory }}
         run: |
           if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
-          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          # else the newer of go.mod's go and toolchain lines, as a minor release
+          elif [ -f go.mod ] && release=$(awk '($1 == "go" || $1 == "toolchain") && $2 ~ /^(go)?[0-9]/ { sub(/^go/, "", $2); print $2 }' go.mod | sort -V | tail -n 1 | grep -oE '^[0-9]+\.[0-9]+'); then
+            echo "version=$release" >> "$GITHUB_OUTPUT"
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
-          go-version-file: ${{ steps.go.outputs.file }}
+          # that release's latest patch, so a Go security fix reaches every run without a change to go.mod
+          check-latest: true
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
@@ -352,22 +358,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # the input if set, else the project's go.mod, else forgego's default
+      # the input if set, else the Go release the project's go.mod names, else forgego's default
       - name: Resolve the Go version
         id: go
         env:
           INPUT: ${{ inputs.go_version }}
-          DIR: ${{ inputs.working_directory }}
         run: |
           if [ -n "$INPUT" ]; then echo "version=$INPUT" >> "$GITHUB_OUTPUT"
-          elif [ -f go.mod ]; then echo "file=$DIR/go.mod" >> "$GITHUB_OUTPUT"
+          # else the newer of go.mod's go and toolchain lines, as a minor release
+          elif [ -f go.mod ] && release=$(awk '($1 == "go" || $1 == "toolchain") && $2 ~ /^(go)?[0-9]/ { sub(/^go/, "", $2); print $2 }' go.mod | sort -V | tail -n 1 | grep -oE '^[0-9]+\.[0-9]+'); then
+            echo "version=$release" >> "$GITHUB_OUTPUT"
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ steps.go.outputs.version }}
-          go-version-file: ${{ steps.go.outputs.file }}
+          # that release's latest patch, so a Go security fix reaches every run without a change to go.mod
+          check-latest: true
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum

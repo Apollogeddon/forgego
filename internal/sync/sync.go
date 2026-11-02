@@ -30,14 +30,17 @@ type managed struct {
 }
 
 // Expected lists every managed file present in dir with the content this forgego writes.
-// Tool modules are only refreshed when the project already has them.
+// Tool modules are only refreshed when the project already has them, and are kept while
+// the project's pin raises forgego's.
 func expected(fs fsys.FS, dir string) ([]managed, error) {
 	var files []managed
-	var pinned []templates.Tool
+	var pinned []gomod.Pin
 	for _, tool := range templates.Tools {
 		if fs.Exists(filepath.Join(dir, tool.ModPath())) {
-			pinned = append(pinned, tool)
-			files = append(files, managed{tool.ModPath(), tool.ModFile()}, managed{tool.SumPath(), tool.SumFile()})
+			// a pin the project raised past forgego's, as a Dependabot security update does, is current
+			pin := gomod.Pinned(fs, dir, tool)
+			pinned = append(pinned, pin)
+			files = append(files, managed{tool.ModPath(), pin.Mod}, managed{tool.SumPath(), pin.Sum})
 		}
 	}
 	if gomodContent, err := fs.ReadFile(filepath.Join(dir, "go.mod")); err == nil {

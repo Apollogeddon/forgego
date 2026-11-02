@@ -457,6 +457,56 @@ func TestSyncFindsAndFixesDrift(t *testing.T) {
 	}
 }
 
+// A Dependabot security update in the project raises a module of a tool's pin past
+// forgego's. sync and init keep it rather than reverting the fix, and the project's Go is
+// raised if the raised pin needs a newer one; a pin older than forgego's is still drift.
+func TestSyncAndInitKeepAPinTheProjectRaised(t *testing.T) {
+	fs := fsys.NewMemory(nil)
+	run(t, fs, nil)
+	mod := read(t, fs, ".forgego/task/go.mod")
+	var module, pinned string
+	for _, line := range strings.Split(mod, "\n") {
+		if f := strings.Fields(line); len(f) == 4 && f[2] == "//" && f[3] == "indirect" {
+			module, pinned = f[0], f[1]
+			break
+		}
+	}
+	if module == "" {
+		t.Fatal("task's pin has no indirect requirement to raise")
+	}
+	raised := strings.Replace(mod, module+" "+pinned+" ", module+" v0.999.0 ", 1)
+	raised = strings.Replace(raised, "go "+templates.Task.GoVersion()+"\n", "go 1.99.0\n", 1)
+	_ = fs.WriteFile(dir+"/.forgego/task/go.mod", raised)
+	sums := read(t, fs, ".forgego/task/go.sum") + module + " v0.999.0 h1:x=\n" + module + " v0.999.0/go.mod h1:x=\n"
+	_ = fs.WriteFile(dir+"/.forgego/task/go.sum", sums)
+
+	if code := sync.Run(fs, dir, true); code != 1 {
+		t.Fatal("sync --check missed go.mod's toolchain, which the raised pin needs")
+	}
+	if code := sync.Run(fs, dir, false); code != 0 {
+		t.Fatalf("sync returned %d", code)
+	}
+	if code := sync.Run(fs, dir, true); code != 0 {
+		t.Fatal("sync --check counts a raised pin as drift")
+	}
+	if read(t, fs, ".forgego/task/go.mod") != raised || read(t, fs, ".forgego/task/go.sum") != sums {
+		t.Fatal("sync reverted a pin the project raised")
+	}
+	if !strings.Contains(read(t, fs, "go.mod"), "toolchain go1.99.0") {
+		t.Errorf("go.mod can't run the raised pin: %q", read(t, fs, "go.mod"))
+	}
+
+	run(t, fs, nil)
+	if read(t, fs, ".forgego/task/go.mod") != raised {
+		t.Error("init reverted a pin the project raised")
+	}
+
+	_ = fs.WriteFile(dir+"/.forgego/task/go.mod", strings.Replace(mod, module+" "+pinned+" ", module+" v0.0.1 ", 1))
+	if code := sync.Run(fs, dir, true); code != 1 {
+		t.Error("sync --check accepts a pin older than forgego's")
+	}
+}
+
 func TestTheStarterTestOnlyGoesNextToTheStarter(t *testing.T) {
 	fs := fsys.NewMemory(map[string]string{dir + "/cmd/billing-api/main.go": "package main\n\nfunc main() {}\n"})
 	run(t, fs, nil)
@@ -603,6 +653,21 @@ func TestRepositoryFiles(t *testing.T) {
 	}
 	if got := strings.Count(dependabot, "default-days: 3"); got != 3 {
 		t.Errorf("%d of 3 updates have the cooldown", got)
+	}
+	// every pinned tool gets Dependabot's security updates, and only those: forgego's
+	// pins bring its version updates
+	_, security, found := strings.Cut(dependabot, "    directories:\n")
+	security, _, _ = strings.Cut(security, "\n\n")
+	if !found {
+		t.Fatalf("dependabot.yml has no security updates for the pinned tools:\n%s", dependabot)
+	}
+	for _, tool := range templates.Tools {
+		if fs.Exists(dir+"/"+tool.ModPath()) != strings.Contains(security, `- "/.forgego/`+tool.Name+`"`) {
+			t.Errorf("%s's pin and its security updates disagree:\n%s", tool.Name, security)
+		}
+	}
+	if !strings.Contains(security, "open-pull-requests-limit: 0") {
+		t.Errorf("the pinned tools get version updates:\n%s", security)
 	}
 	if strings.Contains(dependabot, "docker") {
 		t.Error("dependabot.yml updates Docker without --docker")

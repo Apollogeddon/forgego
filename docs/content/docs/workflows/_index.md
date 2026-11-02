@@ -200,7 +200,7 @@ A private repository on GitHub Free has neither; there Gitleaks, in the `scan` s
 
 ## Vulnerable dependencies
 
-The `scan` and `scan (osv)` stages fail a pull request that adds a known high or critical vulnerability, but nothing upgrades a module that becomes vulnerable later. Turn on **Settings → Code security → Dependabot security updates**, free in private repositories too: Dependabot then opens a pull request for each one, which the checks and `merge` handle like its other updates. `patch` no longer upgrades them on `main`.
+The `scan` and `scan (osv)` stages fail a pull request that adds a known high or critical vulnerability, but nothing upgrades a module that becomes vulnerable later. Turn on **Settings → Code security → Dependabot security updates**, free in private repositories too: Dependabot then opens a pull request for each one, which the checks and `merge` handle like its other updates, the tools pinned in `.forgego/` included: `sync` keeps a pin a security update raised. `patch` no longer upgrades them on `main`. A Go release's security fix needs no pull request: with no `go_version`, the pipelines set up the latest patch of the Go release `go.mod` names.
 
 For `patch`'s pull requests, and release-please's, turn on **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**.
 
