@@ -43,7 +43,7 @@ Every stage asks for `contents: read`; `scan` also asks for `pull-requests: writ
 | `runs_on` | `'ubuntu-latest'` | all | Runner label |
 | `scan_runs_on` | `''` | all | Runner label for the `scan (osv)` stage, which runs in OSV-Scanner's image; empty uses GitHub's `ubuntu-latest` in a private repository and `runs_on` in a public one. See [The scan's runner](#the-scans-runner) |
 | `working_directory` | `'.'` | all | Directory containing `go.mod` |
-| `go_version` | `''` | all | Go version; empty reads the project's `go.mod`, else Forge.go's default |
+| `go_version` | `''` | all | Go version; empty takes the latest patch of the Go release the project's `go.mod` names, else Forge.go's default |
 | `enable_secrets` | `true` | all | Run the Gitleaks scan |
 | `run_tests` | `true` (`false` for `website.yml`) | all | Run the `test` stages — `forgego init --no-testing` sets it to `false` |
 | `artifact_name` | `'dist'` | all | Name of the build artifact |
@@ -167,7 +167,7 @@ release-please tags the release before the release's checks run. If they fail, t
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label |
 | `working_directory` | `'.'` | Directory containing `go.mod` |
-| `go_version` | `''` | Go version; empty reads the project's `go.mod`, else Forge.go's default |
+| `go_version` | `''` | Go version; empty takes the latest patch of the Go release the project's `go.mod` names, else Forge.go's default |
 | `tag_name` | `''` | The release, as `version.yml`'s `tag_name`; `package` and the attachments without GoReleaser need it |
 | `package` | `false` | Fetch the release through the Go module proxy; a library's caller turns it on |
 | `assets` | `true` | Attach the release's files and publish the draft; a library's caller turns it off |
@@ -343,7 +343,7 @@ Earlier versions also upgraded the modules govulncheck found vulnerable and comm
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label |
 | `working_directory` | `'.'` | Directory containing `go.mod` |
-| `go_version` | `''` | Go version; empty reads the project's `go.mod`, else Forge.go's default |
+| `go_version` | `''` | Go version; empty takes the latest patch of the Go release the project's `go.mod` names, else Forge.go's default |
 | `apt_packages` | `''` | apt packages to install before compiling |
 
 ## merge.yml
