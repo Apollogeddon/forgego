@@ -1,3 +1,4 @@
+// Pinned by forgego, 5f17a08780700dd3
 module github.com/apollogeddon/forgego/tools/hugo
 
 go 1.27.0

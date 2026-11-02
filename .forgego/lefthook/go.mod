@@ -1,3 +1,4 @@
+// Pinned by forgego, d0422729ade7f170
 module github.com/apollogeddon/forgego/tools/lefthook
 
 go 1.27.0

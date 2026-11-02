@@ -1,3 +1,4 @@
+// Pinned by forgego, 708d899e80bcc964
 module github.com/apollogeddon/forgego/tools/task
 
 go 1.26.4
