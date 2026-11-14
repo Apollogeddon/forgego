@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.2](https://github.com/Apollogeddon/forgego/compare/v2.1.1...v2.1.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** bump the dependencies group with 2 updates ([#70](https://github.com/Apollogeddon/forgego/issues/70)) ([9affd26](https://github.com/Apollogeddon/forgego/commit/9affd2617017cf4e1ba0b53875ec2d438493de34))
+* **deps:** bump the go_modules group across 3 directories with 2 updates ([#75](https://github.com/Apollogeddon/forgego/issues/75)) ([b04cc0d](https://github.com/Apollogeddon/forgego/commit/b04cc0dcf22343b89cb499948bad2423b785476d))
+
 ## [2.1.1](https://github.com/Apollogeddon/forgego/compare/v2.1.0...v2.1.1) (2026-11-02)
 
 
