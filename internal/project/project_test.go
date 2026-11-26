@@ -16,6 +16,9 @@ func TestRemoteModule(t *testing.T) {
 		"ssh://git@github.com/acme/api.git":         "github.com/acme/api",
 		"ssh://git@gitlab.example.com:2222/a/b.git": "gitlab.example.com/a/b",
 		"ssh://gitlab.example.com:22/a/b":           "gitlab.example.com/a/b",
+		// a token in the userinfo never reaches the module path, nor an error naming it
+		"https://x-access-token:ghs_SECRET@github.com/acme/api.git": "github.com/acme/api",
+		"https://user:p@ss@gitlab.example.com:8443/a/b":             "gitlab.example.com/a/b",
 	} {
 		if got := remoteModule("[remote \"origin\"]\n\turl = " + url + "\n"); got != want {
 			t.Errorf("%s: got %q, want %q", url, got, want)

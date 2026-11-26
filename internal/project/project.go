@@ -182,7 +182,14 @@ func remoteModule(content string) string {
 	if i := strings.Index(url, "://"); i >= 0 {
 		scheme, url = url[:i], url[i+3:]
 	}
-	if at := strings.Index(url, "@"); at >= 0 && at < strings.IndexAny(url+"/", ":/") {
+	if scheme != "" {
+		// https://user:token@host/owner/repo: the userinfo, password included, is all before the
+		// authority's last @, so a token never reaches the module path or an error naming it
+		authority, _, _ := strings.Cut(url, "/")
+		if at := strings.LastIndex(authority, "@"); at >= 0 {
+			url = url[at+1:]
+		}
+	} else if at := strings.Index(url, "@"); at >= 0 && at < strings.IndexAny(url+"/", ":/") {
 		url = url[at+1:]
 	}
 	if scheme == "" {
