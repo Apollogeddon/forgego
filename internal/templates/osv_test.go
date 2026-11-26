@@ -18,6 +18,8 @@ import (
 type osvStep struct {
 	Name            string            `yaml:"name"`
 	ID              string            `yaml:"id"`
+	If              string            `yaml:"if"`
+	WorkingDir      string            `yaml:"working-directory"`
 	Uses            string            `yaml:"uses"`
 	Run             string            `yaml:"run"`
 	ContinueOnError bool              `yaml:"continue-on-error"`
@@ -110,7 +112,8 @@ func TestOSVScanRunsInItsOwnImage(t *testing.T) {
 	for _, s := range job.Steps {
 		names = append(names, s.Name)
 	}
-	if want := []string{"Check out", "Scan with OSV", "Report OSV findings"}; !slices.Equal(names, want) {
+	want := []string{"Check out", "Scan with OSV", "Check out the base branch", "Scan the base branch with OSV", "Report OSV findings"}
+	if !slices.Equal(names, want) {
 		t.Errorf("scan-osv steps = %v, want %v", names, want)
 	}
 	steps := osvSteps(t)
@@ -121,11 +124,25 @@ func TestOSVScanRunsInItsOwnImage(t *testing.T) {
 	if scan.Uses != "" || scan.Run != osvRun || scan.ID != "osv" || !scan.ContinueOnError {
 		t.Errorf("Scan with OSV = %+v", scan)
 	}
+	// a pull request's base branch, beside its own checkout and after its own scan, which is recursive
+	base := steps["Check out the base branch"]
+	if base.If != "github.event_name == 'pull_request'" || base.With["ref"] != "${{ github.event.pull_request.base.sha }}" ||
+		base.With["path"] != ".osv-base" || base.With["persist-credentials"] != "false" {
+		t.Errorf("Check out the base branch = %+v", base)
+	}
+	baseScan := steps["Scan the base branch with OSV"]
+	if baseScan.If != base.If || baseScan.ID != "osv-base" || !baseScan.ContinueOnError ||
+		baseScan.WorkingDir != ".osv-base/${{ inputs.working_directory }}" ||
+		baseScan.Run != strings.Replace(osvRun, "osv-results.json", "osv-base.json", 1) {
+		t.Errorf("Scan the base branch with OSV = %+v", baseScan)
+	}
 	report := steps["Report OSV findings"]
 	for name, want := range map[string]string{
-		"OSV_ENFORCE": "${{ github.event_name == 'pull_request' }}",
-		"OSV_OUTCOME": "${{ steps.osv.outcome }}",
-		"OSV_REPORT":  "osv-results.json",
+		"OSV_ENFORCE":      "${{ github.event_name == 'pull_request' }}",
+		"OSV_OUTCOME":      "${{ steps.osv.outcome }}",
+		"OSV_REPORT":       "osv-results.json",
+		"OSV_BASE_OUTCOME": "${{ steps.osv-base.outcome }}",
+		"OSV_BASE_REPORT":  "osv-base.json",
 	} {
 		if report.Env[name] != want {
 			t.Errorf("%s = %q, want %q", name, report.Env[name], want)
@@ -216,9 +233,36 @@ const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 new AsyncFunction('require', 'core', body)(require, core).then(() => console.log(JSON.stringify(calls)));
 `
 
-// runs the report with the scan step's outcome and, unless results is nil, a report holding them; a result's
-// source path is taken as relative to the workspace and made absolute, as the scanner reports it
+// the base branch's scan: its step's outcome and, unless results is nil, the report it wrote
+type osvBase struct {
+	outcome string
+	results []map[string]any
+}
+
+// runs the report with the scan step's outcome and, unless results is nil, a report holding them, against a
+// base branch with nothing to report
 func runOSVReport(t *testing.T, outcome string, results []map[string]any, enforce bool) map[string][]string {
+	t.Helper()
+	return runOSVReportAgainst(t, outcome, results, enforce, osvBase{outcome: "success"})
+}
+
+// writes a report holding results into dir, a result's source path taken as relative to dir and made
+// absolute, as the scanner reports it
+func writeOSVReport(t *testing.T, dir, name string, results []map[string]any) {
+	t.Helper()
+	absolute := make([]map[string]any, len(results))
+	for i, r := range results {
+		absolute[i] = maps.Clone(r)
+		absolute[i]["source"] = map[string]any{"path": filepath.Join(dir, filepath.FromSlash(r["source"].(map[string]any)["path"].(string)))}
+	}
+	b, _ := json.Marshal(map[string]any{"results": absolute})
+	if err := os.WriteFile(filepath.Join(dir, name), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// runs the report as runOSVReport does, against the base branch's scan
+func runOSVReportAgainst(t *testing.T, outcome string, results []map[string]any, enforce bool, base osvBase) map[string][]string {
 	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -229,20 +273,15 @@ func runOSVReport(t *testing.T, outcome string, results []map[string]any, enforc
 	if err := os.WriteFile(script, []byte(osvSteps(t)["Report OSV findings"].With["script"]), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	report := filepath.Join(dir, "osv-results.json")
 	if results != nil {
-		absolute := make([]map[string]any, len(results))
-		for i, r := range results {
-			absolute[i] = maps.Clone(r)
-			absolute[i]["source"] = map[string]any{"path": filepath.Join(dir, filepath.FromSlash(r["source"].(map[string]any)["path"].(string)))}
-		}
-		b, _ := json.Marshal(map[string]any{"results": absolute})
-		if err := os.WriteFile(report, b, 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeOSVReport(t, dir, "osv-results.json", results)
+	}
+	if base.results != nil {
+		writeOSVReport(t, dir, "osv-base.json", base.results)
 	}
 	cmd := exec.Command(node, "-e", osvHarness, script)
-	cmd.Env = append(os.Environ(), "OSV_OUTCOME="+outcome, "OSV_REPORT="+filepath.Base(report), "GITHUB_WORKSPACE="+dir,
+	cmd.Env = append(os.Environ(), "OSV_OUTCOME="+outcome, "OSV_REPORT=osv-results.json", "GITHUB_WORKSPACE="+dir,
+		"OSV_BASE_OUTCOME="+base.outcome, "OSV_BASE_REPORT=osv-base.json",
 		"OSV_ENFORCE="+map[bool]string{true: "true", false: "false"}[enforce])
 	out, err := cmd.Output()
 	if err != nil {
@@ -307,5 +346,105 @@ func TestOSVReportFailsAPullRequestOnAnIncompleteScan(t *testing.T) {
 		if len(calls["setFailed"]) != failed || len(calls["warning"]) != 1-failed {
 			t.Errorf("enforce %v: calls = %v", enforce, calls)
 		}
+	}
+}
+
+// An advisory no update fixes yet would otherwise fail every pull request, so nothing auto-merges, and two
+// security updates, each leaving the other's advisory, would never merge: one on the base branch only warns.
+func TestOSVReportAnnotatesAHighFindingAlreadyOnTheBaseBranch(t *testing.T) {
+	high := map[string]any{"source": map[string]any{"path": "go.mod"}, "packages": []any{finding("GHSA-high", "9.8", "")}}
+	calls := runOSVReportAgainst(t, "failure", []map[string]any{high}, true, osvBase{"failure", []map[string]any{high}})
+	if len(calls["setFailed"]) != 0 || len(calls["error"]) != 0 ||
+		!strings.Contains(strings.Join(calls["warning"], "\n"), "1 high or critical vulnerability already on the base branch") {
+		t.Errorf("calls = %v", calls)
+	}
+}
+
+// A finding the pull request adds still fails it, beside one the base branch has, and the same advisory in
+// another package is a new finding.
+func TestOSVReportFailsOnAHighFindingThePullRequestAdds(t *testing.T) {
+	old := finding("GHSA-old", "9.8", "")
+	other := maps.Clone(finding("GHSA-x", "9.8", ""))
+	other["package"] = map[string]any{"name": "example.com/other", "version": "1.0.0"}
+	base := osvBase{"failure", []map[string]any{{"source": map[string]any{"path": "go.mod"}, "packages": []any{old, other}}}}
+	results := []map[string]any{{
+		"source":   map[string]any{"path": "go.mod"},
+		"packages": []any{old, finding("GHSA-new", "8.1", ""), finding("GHSA-x", "9.8", "")},
+	}}
+	calls := runOSVReportAgainst(t, "failure", results, true, base)
+	if len(calls["error"]) != 2 || len(calls["setFailed"]) != 1 ||
+		!strings.Contains(calls["setFailed"][0], "2 high or critical vulnerabilities this pull request adds") {
+		t.Errorf("calls = %v", calls)
+	}
+}
+
+// With no base report from a scan that failed, every high finding is new, so a pull request can't pass unchecked.
+func TestOSVReportTreatsEveryHighFindingAsNewWithoutABaseScan(t *testing.T) {
+	results := []map[string]any{{"source": map[string]any{"path": "go.mod"}, "packages": []any{finding("GHSA-high", "9.8", "")}}}
+	calls := runOSVReportAgainst(t, "failure", results, true, osvBase{outcome: "failure"})
+	if len(calls["setFailed"]) != 1 || !strings.Contains(strings.Join(calls["warning"], "\n"), "base branch couldn't be scanned") {
+		t.Errorf("calls = %v", calls)
+	}
+}
+
+// govulncheck's JSON stream: GO-2026-0001 and GO-2026-0004 are called (their trace reaches a function), and
+// the others only imported or required
+const govulncheckStream = `{"config":{"protocol_version":"v1.0.0"}}
+{"finding":{"osv":"GO-2026-0001","trace":[{"module":"example.com/a","version":"v1.0.0","package":"example.com/a/p","function":"Parse"},{"module":"me","function":"main"}]}}
+{"finding":{"osv":"GO-2026-0002","trace":[{"module":"example.com/b","version":"v1.0.0","package":"example.com/b/q"}]}}
+{"finding":{"osv":"GO-2026-0003","trace":[{"module":"example.com/c","version":"v1.0.0"}]}}
+{"finding":{"osv":"GO-2026-0004","trace":[{"module":"example.com/d","version":"v1.0.0","package":"d","function":"Do"}]}}
+`
+
+// Runs the govulncheck step's script with a stand-in go that prints govulncheckStream, less GO-2026-0004 in the
+// base branch's directory, so the base branch has one called vulnerability and the pull request adds another.
+func runGovulncheck(t *testing.T, enforce, withBase bool) (string, error) {
+	t.Helper()
+	for _, tool := range []string{"bash", "jq"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("needs %s to run the step", tool)
+		}
+	}
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base")
+	bin := filepath.Join(dir, "bin")
+	for _, d := range []string{base, bin} {
+		if err := os.Mkdir(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stream := filepath.Join(dir, "stream.json")
+	if err := os.WriteFile(stream, []byte(govulncheckStream), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/bash\nif [ \"$PWD\" = '" + base + "' ]; then grep -v GO-2026-0004 '" + stream + "'; else cat '" + stream + "'; fi\n"
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte(stub), 0o700); err != nil { //nolint:gosec // an executable stub
+		t.Fatal(err)
+	}
+	baseDir := ""
+	if withBase {
+		baseDir = base
+	}
+	cmd := exec.Command("bash", "-e", "-c", scanSteps(t, "service.yml")["Scan with govulncheck"].Run)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "RUNNER_TEMP="+dir,
+		"ENFORCE="+map[bool]string{true: "true", false: "false"}[enforce], "BASE_DIR="+baseDir)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// A pull request fails only on a vulnerability it adds; one on its base branch warns, as does every one
+// elsewhere, and without a base scan every one counts as new.
+func TestGovulncheckFailsOnlyOnAVulnerabilityThePullRequestAdds(t *testing.T) {
+	out, err := runGovulncheck(t, true, true)
+	if err == nil || !strings.Contains(out, "::warning title=govulncheck::the code calls GO-2026-0001") ||
+		!strings.Contains(out, "::error title=govulncheck::the code calls GO-2026-0004") || strings.Contains(out, "GO-2026-0002") {
+		t.Errorf("pull request: err %v, output:\n%s", err, out)
+	}
+	if out, err := runGovulncheck(t, false, false); err != nil || strings.Contains(out, "::error") {
+		t.Errorf("elsewhere: err %v, output:\n%s", err, out)
+	}
+	if out, err := runGovulncheck(t, true, false); err == nil || !strings.Contains(out, "::error title=govulncheck::the code calls GO-2026-0001") {
+		t.Errorf("no base: err %v, output:\n%s", err, out)
 	}
 }
