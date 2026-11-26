@@ -385,7 +385,7 @@ func TestGeneratedIndexCallsForgegosPipelines(t *testing.T) {
 				t.Errorf("%s: %s asks for id-token", name, id)
 			}
 			// only the release GitHub App's key, which is empty unless the repository sets it
-			if j.Secrets != nil && (id != "version" || !maps.Equal(j.Secrets, map[string]any{"APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"})) {
+			if j.Secrets != nil && ((id != "version" && id != "patch") || !maps.Equal(j.Secrets, map[string]any{"APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"})) {
 				t.Errorf("%s: %s passes secrets %v", name, id, j.Secrets)
 			}
 		}
@@ -879,6 +879,37 @@ func TestPublicOnlyExtras(t *testing.T) {
 	for name, o := range allOptions() {
 		if strings.Contains(RenderWorkflow(o), "scorecard") {
 			t.Errorf("%s runs scorecard", name)
+		}
+	}
+}
+
+// The patch pipeline pushes its refresh and opens its pull request with the release GitHub App's token when
+// the repository sets one, so its checks run, and with GITHUB_TOKEN otherwise.
+func TestPatchProposesWithAnOptionalAppToken(t *testing.T) {
+	w := readWorkflow(t, "patch.yml")
+	if in := w.On.WorkflowCall.Inputs["app_client_id"]; in.Default != "" || in.Required {
+		t.Errorf("app_client_id = %+v", in)
+	}
+	if secret := w.On.WorkflowCall.Secrets["APP_PRIVATE_KEY"]; secret == nil || secret["required"] != false {
+		t.Errorf("APP_PRIVATE_KEY = %v, want it declared and optional", secret)
+	}
+	update := w.Jobs["update"]
+	app := stepNamed(update, "Create the GitHub App's token")
+	if app.ID != "app" || !strings.HasPrefix(app.If, "inputs.app_client_id != ''") || !strings.HasPrefix(app.Uses, "actions/create-github-app-token@") ||
+		app.With["client-id"] != "${{ inputs.app_client_id }}" || app.With["private-key"] != "${{ secrets.APP_PRIVATE_KEY }}" {
+		t.Errorf("the app token step = %+v", app)
+	}
+	const token = "${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}"
+	if got := stepNamed(update, "Push forgego's files").Env["GH_TOKEN"]; got != token {
+		t.Errorf("the push's token = %q", got)
+	}
+	if got := stepNamed(update, "Open a pull request").With["github-token"]; got != token {
+		t.Errorf("the pull request's token = %q", got)
+	}
+	generated := parse(t, "backend", RenderWorkflow(WorkflowOptions{Mode: "backend", Versioning: true})).Jobs["patch"]
+	for name, j := range map[string]job{".index.yml": readWorkflow(t, ".index.yml").Jobs["patch"], "generated": generated} {
+		if j.With["app_client_id"] != "${{ vars.RELEASE_APP_CLIENT_ID }}" || j.Secrets["APP_PRIVATE_KEY"] != "${{ secrets.RELEASE_APP_PRIVATE_KEY }}" {
+			t.Errorf("%s: patch = %+v", name, j)
 		}
 	}
 }

@@ -335,7 +335,7 @@ With `buildkit_endpoint` set, the stages build on that remote BuildKit instead o
 
 1. **`update`** — On `main`, runs `task sync`, which catches up after a Dependabot update of Forge.go merges. If it changed anything, it commits the result as `chore(deps): refresh the files forgego manages` to the `forgego/sync` branch (`forgego/sync-<working_directory>` for a module in a subdirectory), force-pushes that branch, and opens a pull request for it unless one is open already. It never pushes to `main`, and the checkout keeps no credentials: the token is handed to the push alone. Needs `contents: write` and `pull-requests: write`.
 
-The generated `.index.yml` runs it weekly, on a manual run, and on the `auto-merged` dispatch `merge.yml` sends after a Dependabot merge, so a Forge.go update's refreshed files are proposed straight away and `task sync-check` passes again once that pull request merges. Its pull request is opened with `GITHUB_TOKEN`, so its checks don't start on their own: close and reopen it to run them.
+The generated `.index.yml` runs it weekly, on a manual run, and on the `auto-merged` dispatch `merge.yml` sends after a Dependabot merge, so a Forge.go update's refreshed files are proposed straight away and `task sync-check` passes again once that pull request merges. With a GitHub App, it pushes the refresh and opens its pull request with the app's token, so the checks run; without one it uses `GITHUB_TOKEN`, and the pull request's checks don't start on their own: close and reopen it to run them. The generated `patch` job passes the same release app as `version`, from the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret (see [Release pull requests that run the checks]({{< relref "_index.md#release-pull-requests-that-run-the-checks" >}})).
 
 Earlier versions also upgraded the modules govulncheck found vulnerable and committed them to `main`. [Dependabot security updates]({{< relref "_index.md#vulnerable-dependencies" >}}) do that now, as pull requests.
 
@@ -345,6 +345,11 @@ Earlier versions also upgraded the modules govulncheck found vulnerable and comm
 | `working_directory` | `'.'` | Directory containing `go.mod` |
 | `go_version` | `''` | Go version; empty takes the latest patch of the Go release the project's `go.mod` names, else Forge.go's default |
 | `apt_packages` | `''` | apt packages to install before compiling |
+| `app_client_id` | `''` | A GitHub App's client ID: the refresh is pushed and its pull request opened with the app's token, so the pull request runs the checks; empty uses `GITHUB_TOKEN` |
+
+| Secret | Purpose |
+| :--- | :--- |
+| `APP_PRIVATE_KEY` | The GitHub App's private key; with `app_client_id` |
 
 ## merge.yml
 

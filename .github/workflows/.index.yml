@@ -150,12 +150,15 @@ jobs:
       pages: write
       id-token: write
 
-  # forgego's own files, refreshed through a pull request
+  # forgego's own files, refreshed through a pull request, whose checks the release GitHub App's token runs
   patch:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
     uses: ./.github/workflows/patch.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
     permissions:
       contents: write
       pull-requests: write
