@@ -1,6 +1,7 @@
 name: merge
 
-# Dependabot's pull requests: a review request, then a squash merge of a minor or patch update once the checks pass.
+# Dependabot's pull requests: a review request, then a squash merge once the checks pass, majors included (a
+# major is its own pull request, as the generated groups take only minors and patches).
 
 on:
   workflow_call:

@@ -181,19 +181,59 @@ jobs:
           cache-dependency-path: |
             ${{ inputs.working_directory }}/go.sum
             ${{ inputs.working_directory }}/.forgego/*/go.sum
-      # Reports only the vulnerabilities the code actually calls. It fails a pull request, so a change
-      # can't add one; elsewhere it warns, so releases still run while a Dependabot security update fixes it
+      # On a pull request, its base branch in a worktree outside the workspace, so govulncheck can tell a
+      # vulnerability the pull request adds from one it was opened with
+      - name: Check out the base branch
+        id: base
+        if: github.event_name == 'pull_request' && hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          WORKING_DIRECTORY: ${{ inputs.working_directory }}
+        run: |
+          if git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"; then
+            echo "dir=$RUNNER_TEMP/base/$WORKING_DIRECTORY" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::couldn't check out the base branch, so every vulnerability govulncheck finds counts as new"
+          fi
+      # Only the vulnerabilities the code actually calls. One a pull request adds fails it, as does a scan that
+      # couldn't finish; one already on its base branch, and any elsewhere, warns instead, so an advisory nothing
+      # fixes yet never blocks every other pull request, and releases still run while a Dependabot security
+      # update fixes it
       - name: Scan with govulncheck
         if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         env:
           ENFORCE: ${{ github.event_name == 'pull_request' }}
+          BASE_DIR: ${{ steps.base.outputs.dir }}
         run: |
-          if go tool -modfile=.forgego/govulncheck/go.mod govulncheck ./...; then exit 0; fi
-          if [ "$ENFORCE" = true ]; then
-            echo "::error::govulncheck found vulnerabilities the code calls, or couldn't finish: upgrade the modules it names"
+          # the advisories of the findings whose trace reaches a function: those the code calls
+          called() {
+            (cd "$1" && go tool -modfile=.forgego/govulncheck/go.mod govulncheck -format json ./...) > "$2" &&
+              jq -r 'select(.finding.trace[0].function? // "" | length > 0) | .finding.osv' "$2" | sort -u
+          }
+          if ! found=$(called . "$RUNNER_TEMP/govulncheck.json"); then
+            if [ "$ENFORCE" = true ]; then echo "::error::govulncheck couldn't finish; see the log"; exit 1; fi
+            echo "::warning::govulncheck couldn't finish; see the log"
+            exit 0
+          fi
+          if [ -z "$found" ]; then echo "No vulnerabilities the code calls"; exit 0; fi
+          known=""
+          if [ "$ENFORCE" = true ] && [ -n "$BASE_DIR" ]; then
+            known=$(called "$BASE_DIR" "$RUNNER_TEMP/govulncheck-base.json") ||
+              { echo "::warning::govulncheck couldn't scan the base branch, so every finding counts as new"; known=""; }
+          fi
+          new=0
+          for id in $found; do
+            if [ "$ENFORCE" = true ] && ! grep -qxF "$id" <<< "$known"; then
+              echo "::error title=govulncheck::the code calls $id: https://pkg.go.dev/vuln/$id"
+              new=$((new + 1))
+            else
+              echo "::warning title=govulncheck::the code calls $id: https://pkg.go.dev/vuln/$id"
+            fi
+          done
+          if [ "$new" -gt 0 ]; then
+            echo "::error::this pull request adds vulnerabilities the code calls ($new): upgrade the modules govulncheck names"
             exit 1
           fi
-          echo "::warning::govulncheck found vulnerabilities the code calls, or couldn't finish; this fails pull requests until they're upgraded, as a Dependabot security update may do"
 
   scan-osv:
     name: scan (osv)
@@ -213,21 +253,38 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # A high or critical finding (CVSS 7 or more) that a pull request adds fails it; one already on its base
+      # branch, and any finding elsewhere, is annotated instead, so a vulnerability no update fixes yet never
+      # blocks every other pull request (Dependabot's included) and releases still run. Accept one with an
+      # IgnoredVulns entry in an osv-scanner.toml beside the go.mod
       - name: Scan with OSV
         id: osv
         # it exits non-zero on a finding as on a failure, so the report below decides; an image's login shell resets
         # PATH, so the scanner is named by its path
         continue-on-error: true
         run: /osv-scanner scan source --format=json --output-file="$GITHUB_WORKSPACE/osv-results.json" --recursive --allow-no-lockfiles .
-      # A high or critical finding (CVSS 7 or more), or a scan that couldn't finish, fails a pull request;
-      # elsewhere it's annotated instead, so releases still run while a Dependabot security update fixes it. Accept
-      # one with an IgnoredVulns entry in an osv-scanner.toml beside the go.mod
+      # the base branch, to tell a finding the pull request adds from one it was opened with
+      - name: Check out the base branch
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .osv-base
+          persist-credentials: false
+      - name: Scan the base branch with OSV
+        id: osv-base
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        working-directory: .osv-base/${{ inputs.working_directory }}
+        run: /osv-scanner scan source --format=json --output-file="$GITHUB_WORKSPACE/osv-base.json" --recursive --allow-no-lockfiles .
       - name: Report OSV findings
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           OSV_OUTCOME: ${{ steps.osv.outcome }}
           # resolved against $GITHUB_WORKSPACE, which, unlike github.workspace, is right in a job container too
           OSV_REPORT: osv-results.json
+          OSV_BASE_OUTCOME: ${{ steps.osv-base.outcome }}
+          OSV_BASE_REPORT: osv-base.json
           OSV_ENFORCE: ${{ github.event_name == 'pull_request' }}
         with:
           script: |
@@ -250,6 +307,21 @@ jobs:
               return;
             }
             const report = JSON.parse(text);
+            // the advisories the base branch already has, per package; with no base report from a scan that
+            // failed, every high finding counts as new, so a pull request still can't merge unchecked
+            const key = (pkg, id) => `${pkg.ecosystem ?? ''}:${pkg.name}:${id}`;
+            const onBase = new Set();
+            const basePath = path.resolve(process.env.GITHUB_WORKSPACE, process.env.OSV_BASE_REPORT);
+            const baseText = fs.existsSync(basePath) ? fs.readFileSync(basePath, 'utf8').trim() : '';
+            for (const result of baseText ? (JSON.parse(baseText).results ?? []) : []) {
+              for (const { package: pkg, groups = [] } of result.packages ?? []) {
+                for (const group of groups) for (const id of group.ids) onBase.add(key(pkg, id));
+              }
+            }
+            if (process.env.OSV_ENFORCE === 'true' && !baseText && process.env.OSV_BASE_OUTCOME !== 'success') {
+              core.warning("The base branch couldn't be scanned, so every high or critical finding fails this pull request", { title: 'OSV scan' });
+            }
+            let known = 0;
             // a GitHub advisory's rating when an advisory has no CVSS score
             const ratings = { CRITICAL: 9, HIGH: 7, MODERATE: 4, MEDIUM: 4, LOW: 1 };
             const rows = [];
@@ -265,7 +337,10 @@ jobs:
                   }
                   const high = score >= 7;
                   const message = `${pkg.name} ${pkg.version}: ${group.ids.join(', ')} ${vulns[0]?.summary ?? ''} (severity ${score || 'unknown'})`;
-                  if (high) {
+                  if (high && group.ids.every((id) => onBase.has(key(pkg, id)))) {
+                    known++;
+                    core.warning(`${message}, already on the base branch`, { title: 'High or critical vulnerability', file });
+                  } else if (high) {
                     blocking++;
                     core.error(message, { title: 'High or critical vulnerability', file });
                   } else {
@@ -281,14 +356,16 @@ jobs:
                 .addTable([['Lockfile', 'Package', 'Advisories', 'Severity'], ...rows])
                 .write();
             }
-            const found = `${blocking} high or critical ${blocking === 1 ? 'vulnerability' : 'vulnerabilities'}`;
+            const count = (n) => `${n} high or critical ${n === 1 ? 'vulnerability' : 'vulnerabilities'}`;
             if (blocking && process.env.OSV_ENFORCE === 'true') {
-              core.setFailed(`${found}: update the packages, or record an accepted one in osv-scanner.toml`);
+              core.setFailed(`${count(blocking)} this pull request adds: update the packages, or record an accepted one in osv-scanner.toml`);
             } else if (blocking) {
-              core.warning(`${found}: this fails pull requests until they're updated, as a Dependabot security update may do`, { title: 'OSV scan' });
-            } else {
-              core.info(`${rows.length} found, none high or critical`);
+              core.warning(`${count(blocking)}: a pull request that adds one fails, and a Dependabot security update fixes them`, { title: 'OSV scan' });
             }
+            if (known) {
+              core.warning(`${count(known)} already on the base branch: they fail no pull request, and a Dependabot security update fixes them`, { title: 'OSV scan' });
+            }
+            if (!blocking && !known) core.info(`${rows.length} found, none high or critical`);
 
   test:
     name: test

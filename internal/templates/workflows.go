@@ -208,8 +208,10 @@ func RenderWorkflow(o WorkflowOptions) string {
 
 	jobs = append(jobs, pipelineJob{
 		id: "patch", pipeline: "patch",
-		comment:     "weekly, on a manual run or after a Dependabot merge, forgego's files refreshed through a pull request",
+		comment:     "weekly, on a manual run or after a Dependabot merge, forgego's files refreshed through a pull request; the release GitHub App's token, when one is set, lets it run the checks",
 		cond:        "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'",
+		with:        []input{{"app_client_id", expr("vars.RELEASE_APP_CLIENT_ID")}},
+		secrets:     []input{{"APP_PRIVATE_KEY", expr("secrets.RELEASE_APP_PRIVATE_KEY")}},
 		permissions: []string{"contents: write", "pull-requests: write"},
 	}, pipelineJob{
 		id: "merge", pipeline: "merge",

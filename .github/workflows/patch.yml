@@ -26,6 +26,15 @@ on:
         required: false
         type: string
         default: ''
+      app_client_id:
+        description: "A GitHub App's client ID, whose token pushes the refresh and opens its pull request, so its checks run; empty uses GITHUB_TOKEN"
+        required: false
+        type: string
+        default: ''
+    secrets:
+      APP_PRIVATE_KEY:
+        description: "The GitHub App's private key; with app_client_id"
+        required: false
 
 # No permissions of its own: the job takes its caller's grant, so a caller that grants contents: write but not
 # pull-requests: write still starts (GitHub refuses a whole run whose called job asks for more), and only the
@@ -79,13 +88,25 @@ jobs:
       - name: Refresh forgego's files
         if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
         run: go tool -modfile=.forgego/task/go.mod task sync
+      # a push or pull request made with GITHUB_TOKEN starts no workflow, so the refresh's checks never run; one
+      # made with a GitHub App's token does
+      - name: Create the GitHub App's token
+        id: app
+        if: inputs.app_client_id != '' && hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ inputs.app_client_id }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # only what the push and the pull request need, whatever else the app may do
+          permission-contents: write
+          permission-pull-requests: write
       # to a branch of its own rather than main, which a branch protection rule may guard; each module of a
       # monorepo gets its own branch
       - name: Push forgego's files
         id: push
         if: hashFiles(format('{0}/.forgego/task/go.mod', inputs.working_directory)) != ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           DIR: ${{ inputs.working_directory }}
         run: |
           if [ -z "$(git status --porcelain -- .)" ]; then
@@ -106,7 +127,9 @@ jobs:
         env:
           BRANCH: ${{ steps.push.outputs.branch }}
           BASE: ${{ github.ref_name }}
+          APP: ${{ steps.app.outputs.token != '' }}
         with:
+          github-token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           script: |
             const { BRANCH: head, BASE: base } = process.env;
             const { data: open } = await github.rest.pulls.list({ ...context.repo, head: `${context.repo.owner}:${head}`, base, state: 'open' });
@@ -118,7 +141,8 @@ jobs:
                 base,
                 title: 'chore(deps): refresh the files forgego manages',
                 // a pull request opened with GITHUB_TOKEN starts no workflow
-                body: 'The files `forgego sync` manages, refreshed after a forgego update.\n\nOpened with `GITHUB_TOKEN`, so its checks don\'t start on their own: close and reopen it to run them.',
+                body: 'The files `forgego sync` manages, refreshed after a forgego update.' + (process.env.APP === 'true' ? ''
+                  : '\n\nOpened with `GITHUB_TOKEN`, so its checks don\'t start on their own: close and reopen it to run them, or set the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret so the next one runs them.'),
               });
               core.info(`Opened #${pr.number}`);
             } catch (error) {
