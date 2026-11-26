@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.1.2](https://github.com/Apollogeddon/forgego/compare/v2.1.1...v2.1.2) (2026-11-26)
+
+
+### Bug Fixes
+
+* **ci:** fail a pull request only on the osv findings and called vulnerabilities it adds ([d3795f2](https://github.com/Apollogeddon/forgego/commit/d3795f2be21e01916d03bface75f896bbc9178f0))
+* **ci:** open patch's pull request with the release app's token when one is set, so its checks run ([ca64d7e](https://github.com/Apollogeddon/forgego/commit/ca64d7e67e131975f43c4b09f90dac2c3363b992))
+* **deps:** bump the dependencies group with 2 updates ([#70](https://github.com/Apollogeddon/forgego/issues/70)) ([9affd26](https://github.com/Apollogeddon/forgego/commit/9affd2617017cf4e1ba0b53875ec2d438493de34))
+* **deps:** bump the go_modules group across 3 directories with 2 updates ([#75](https://github.com/Apollogeddon/forgego/issues/75)) ([b04cc0d](https://github.com/Apollogeddon/forgego/commit/b04cc0dcf22343b89cb499948bad2423b785476d))
+* **project:** strip a token from the git remote's userinfo, so init never prints it in an error ([f188ccc](https://github.com/Apollogeddon/forgego/commit/f188ccc88f5fafa81dc257a50c23285ba03a1d4a))
+* **tools:** run go generate and sync for the go.opentelemetry.io/otel 1.47.0 bump in hugo and task ([1a07e0f](https://github.com/Apollogeddon/forgego/commit/1a07e0fd29807e60af6e92d1371f4b0529564ebe))
+* unblock auto-patching, stop leaking remote tokens, and land the otel tool bumps ([755ac9d](https://github.com/Apollogeddon/forgego/commit/755ac9dde6be890105d7904a427602627046940f))
+
 ## [2.1.1](https://github.com/Apollogeddon/forgego/compare/v2.1.0...v2.1.1) (2026-11-02)
 
 
