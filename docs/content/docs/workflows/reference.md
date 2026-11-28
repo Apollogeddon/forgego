@@ -284,7 +284,8 @@ jobs:
 
 *Deploys a built website to GitHub Pages.*
 
-1. **`deploy`** — Downloads the `artifact_name` artifact `website.yml` uploaded earlier in the run and deploys it, in the `github-pages` environment. One deploy runs at a time, in the `pages-deploy` concurrency group. Needs `pages: write` and `id-token: write`. GitHub Free serves Pages only from a public repository, so the generated `pages` job runs only there; on a paid plan, drop the `github.event.repository.private == false` check from its `if`.
+1. **`package`** — Downloads the `artifact_name` artifact `website.yml` uploaded earlier in the run and uploads it as the Pages artifact. Needs no permissions.
+2. **`deploy`** — Deploys the Pages artifact, in the `github-pages` environment. It's a job of its own because `deploy-pages` finds the artifact through the artifacts API, which can take a few seconds to list one uploaded in the same job. One deploy runs at a time, in the `pages-deploy` concurrency group. Needs `pages: write` and `id-token: write`. GitHub Free serves Pages only from a public repository, so the generated `pages` job runs only there; on a paid plan, drop the `github.event.repository.private == false` check from its `if`.
 
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
