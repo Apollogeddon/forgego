@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.3](https://github.com/Apollogeddon/forgego/compare/v2.1.2...v2.1.3) (2026-11-28)
+
+
+### Bug Fixes
+
+* **ci:** upload the pages artifact a job before deploy, so deploy-pages finds it listed ([8f4e4fd](https://github.com/Apollogeddon/forgego/commit/8f4e4fd5f640043ae52b43db5f9ac09178c927f1))
+* **ci:** upload the pages artifact a job before deploy, so deploy-pages finds it listed ([332462c](https://github.com/Apollogeddon/forgego/commit/332462cd656efa81a2283a83ee324f5383030d42))
+
 ## [2.1.2](https://github.com/Apollogeddon/forgego/compare/v2.1.1...v2.1.2) (2026-11-26)
 
 
