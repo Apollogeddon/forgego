@@ -120,7 +120,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           # that release's latest patch, so a Go security fix reaches every run without a change to go.mod
@@ -172,7 +172,7 @@ jobs:
       # needs GitHub Code Security for it
       - name: Review the dependency changes
         if: github.event_name == 'pull_request' && github.event.repository.private == false
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
         with:
           fail-on-severity: high
       - name: Install apt packages
@@ -197,7 +197,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: hashFiles(format('{0}/.forgego/govulncheck/go.mod', inputs.working_directory)) != ''
         with:
           go-version: ${{ steps.go.outputs.version }}
@@ -429,7 +429,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           # that release's latest patch, so a Go security fix reaches every run without a change to go.mod
@@ -483,7 +483,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           # that release's latest patch, so a Go security fix reaches every run without a change to go.mod
@@ -549,7 +549,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           # that release's latest patch, so a Go security fix reaches every run without a change to go.mod
@@ -622,7 +622,7 @@ jobs:
           else echo "version=1.27" >> "$GITHUB_OUTPUT"
           fi
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: ${{ steps.go.outputs.version }}
           # that release's latest patch, so a Go security fix reaches every run without a change to go.mod
