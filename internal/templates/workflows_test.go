@@ -105,7 +105,7 @@ var stages = map[string][]string{
 	"docker":  {"build", "test", "push"},
 	"version": {"release"},
 	"publish": {"package", "assets", "attest"},
-	"pages":   {"deploy", "check"},
+	"pages":   {"package", "deploy", "check"},
 	"patch":   {"update"},
 	"merge":   {"review", "squash"},
 }
@@ -682,6 +682,25 @@ func TestRunnerStagesDefaultToNothing(t *testing.T) {
 	if assets := publish.Jobs["assets"]; !slices.Equal(assets.Needs, []string{"assets-native"}) ||
 		!strings.Contains(assets.If, "needs.assets-native.result != 'failure'") {
 		t.Errorf("assets = needs %v, if %q", assets.Needs, assets.If)
+	}
+}
+
+// deploy-pages finds the artifact through the artifacts API, which can lag an upload in the same job by a few
+// seconds, so pages uploads it in a job of its own, which needs no permissions, and deploy waits for it.
+func TestPagesUploadsTheArtifactAJobBeforeDeploy(t *testing.T) {
+	jobs := readWorkflow(t, "pages.yml").Jobs
+	pkg, deploy := jobs["package"], jobs["deploy"]
+	if pkg.Permissions == nil || len(pkg.Permissions) != 0 {
+		t.Errorf("package permissions = %v, want none", pkg.Permissions)
+	}
+	if len(pkg.Steps) != 2 || pkg.Steps[0].With["name"] != "${{ inputs.artifact_name }}" || pkg.Steps[1].Name != "Upload the Pages artifact" {
+		t.Errorf("package steps = %+v", pkg.Steps)
+	}
+	if !slices.Equal(deploy.Needs, []string{"package"}) || len(deploy.Steps) != 1 || deploy.Steps[0].Name != "Deploy to Pages" {
+		t.Errorf("deploy = needs %v, steps %+v", deploy.Needs, deploy.Steps)
+	}
+	if !maps.Equal(deploy.Permissions, map[string]string{"pages": "write", "id-token": "write"}) {
+		t.Errorf("deploy permissions = %v", deploy.Permissions)
 	}
 }
 
